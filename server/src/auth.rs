@@ -2,18 +2,28 @@
 //! 세션은 프로세스 메모리에 두므로 서버를 재시작하면 다시 로그인해야 한다.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::hash::Hash;
+use std::net::{IpAddr, Ipv6Addr};
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use axum::http::HeaderMap;
+use tokio::sync::Semaphore;
 
 pub const COOKIE_NAME: &str = "parley_session";
 const SESSION_TTL: Duration = Duration::from_secs(12 * 60 * 60);
-/// 계정별로 이 시간 안에 이만큼 실패하면 시간이 지날 때까지 로그인을 막는다.
+/// (클라이언트 IP, 아이디)별로 이 시간 안에 이만큼 실패하면 시간이 지날 때까지 로그인을 막는다.
+/// IP별로 세므로 아이디를 아는 공격자가 다른 곳의 주최자를 잠글 수 없다.
 const MAX_FAILURES: u32 = 10;
+/// 여러 IP에 나눠 시도하는 공격을 막는 아이디별 상한. 정상 사용자가 닿지 않도록 넉넉하게 둔다.
+const MAX_USER_FAILURES: u32 = 100;
 const FAILURE_WINDOW: Duration = Duration::from_secs(15 * 60);
+/// 실패 기록 맵의 최대 크기. 없는 아이디도 기록하므로 무한히 커지지 않게 막는다.
+const MAX_TRACKED: usize = 10_000;
+/// 동시에 돌리는 argon2 검증 수. 로그인 요청으로 CPU를 다 쓰게 만들 수 없게 한다.
+const VERIFY_CONCURRENCY: usize = 4;
 /// argon2는 비싸므로 비정상적으로 긴 입력은 해싱 전에 거른다.
 const MAX_PASSWORD_BYTES: usize = 1024;
 
@@ -28,15 +38,154 @@ struct Session {
     expires: Instant,
 }
 
-struct Failures {
+/// in_flight는 아직 검증 중인 시도다. 결과가 나오기 전에도 한도에 넣어야 동시 요청으로 한도를 넘길 수 없다.
+struct Attempts {
     count: u32,
+    in_flight: u32,
     window_start: Instant,
+}
+
+impl Attempts {
+    fn expired(&self, now: Instant) -> bool {
+        now.duration_since(self.window_start) >= FAILURE_WINDOW
+    }
+
+    fn used(&self, now: Instant) -> u32 {
+        let count = if self.expired(now) { 0 } else { self.count };
+        count + self.in_flight
+    }
+}
+
+struct Limiter<K> {
+    max: u32,
+    cap: usize,
+    map: HashMap<K, Attempts>,
+}
+
+impl<K: Eq + Hash + Clone> Limiter<K> {
+    fn new(max: u32, cap: usize) -> Self {
+        Self {
+            max,
+            cap,
+            map: HashMap::new(),
+        }
+    }
+
+    fn is_full(&self, key: &K, now: Instant) -> bool {
+        self.map.get(key).is_some_and(|a| a.used(now) >= self.max)
+    }
+
+    fn reserve(&mut self, key: K, now: Instant) {
+        if !self.map.contains_key(&key) && self.map.len() >= self.cap {
+            self.make_room(now);
+        }
+        let a = self.map.entry(key).or_insert(Attempts {
+            count: 0,
+            in_flight: 0,
+            window_start: now,
+        });
+        if a.expired(now) {
+            a.count = 0;
+            a.window_start = now;
+        }
+        a.in_flight += 1;
+    }
+
+    fn finish(&mut self, key: &K, failed: bool) {
+        let Some(a) = self.map.get_mut(key) else {
+            return;
+        };
+        a.in_flight = a.in_flight.saturating_sub(1);
+        a.count = if failed { a.count + 1 } else { 0 };
+        if a.count == 0 && a.in_flight == 0 {
+            self.map.remove(key);
+        }
+    }
+
+    fn sweep(&mut self, now: Instant) {
+        self.map.retain(|_, a| a.in_flight > 0 || !a.expired(now));
+    }
+
+    /// 실패가 가장 적고 오래된 기록부터 버린다. 무작위 아이디를 대량으로 보내
+    /// 실패가 쌓인 기록을 밀어내는 방식으로 한도를 우회하지 못하게 하려는 것이다.
+    /// 검증 중인 기록은 버리지 않는다(동시 요청 수만큼만 상한을 넘을 수 있다).
+    fn make_room(&mut self, now: Instant) {
+        self.sweep(now);
+        if self.map.len() < self.cap {
+            return;
+        }
+        let victim = self
+            .map
+            .iter()
+            .filter(|(_, a)| a.in_flight == 0)
+            .min_by_key(|(_, a)| (a.count, a.window_start))
+            .map(|(k, _)| k.clone());
+        if let Some(k) = victim {
+            self.map.remove(&k);
+        }
+    }
+}
+
+/// 두 한도를 한 잠금 아래에서 확인·예약해야 동시 요청 사이에 틈이 생기지 않는다.
+struct Throttle {
+    by_client: Limiter<(IpAddr, String)>,
+    by_user: Limiter<String>,
+}
+
+impl Throttle {
+    fn new(cap: usize) -> Self {
+        Self {
+            by_client: Limiter::new(MAX_FAILURES, cap),
+            by_user: Limiter::new(MAX_USER_FAILURES, cap),
+        }
+    }
+
+    fn try_reserve(&mut self, client: IpAddr, username: &str, now: Instant) -> bool {
+        let client_key = (client, username.to_owned());
+        if self.by_client.is_full(&client_key, now)
+            || self.by_user.is_full(&username.to_owned(), now)
+        {
+            return false;
+        }
+        self.by_client.reserve(client_key, now);
+        self.by_user.reserve(username.to_owned(), now);
+        true
+    }
+
+    fn finish(&mut self, client: IpAddr, username: &str, failed: bool) {
+        self.by_client.finish(&(client, username.to_owned()), failed);
+        self.by_user.finish(&username.to_owned(), failed);
+    }
+
+    fn sweep(&mut self, now: Instant) {
+        self.by_client.sweep(now);
+        self.by_user.sweep(now);
+    }
+}
+
+/// 예약한 시도 슬롯. 요청이 중간에 취소돼도(클라이언트 연결 끊김) Drop에서 반납해
+/// in_flight가 새어 계정이 영구히 잠기는 일을 막는다. 결과 없이 끝나면 실패로 센다.
+struct Reservation<'a> {
+    throttle: &'a Mutex<Throttle>,
+    client: IpAddr,
+    username: &'a str,
+    succeeded: bool,
+}
+
+impl Drop for Reservation<'_> {
+    fn drop(&mut self) {
+        self.throttle
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .finish(self.client, self.username, !self.succeeded);
+    }
 }
 
 pub struct Auth {
     accounts: HashMap<String, String>,
     sessions: Mutex<HashMap<String, Session>>,
-    failures: Mutex<HashMap<String, Failures>>,
+    throttle: Mutex<Throttle>,
+    verify_slots: Semaphore,
     /// 없는 계정도 같은 시간이 걸리도록 비교에 쓰는 해시(계정 존재 여부를 응답 시간으로 알 수 없게).
     dummy_hash: String,
 }
@@ -47,7 +196,8 @@ impl Auth {
         Self {
             accounts,
             sessions: Mutex::default(),
-            failures: Mutex::default(),
+            throttle: Mutex::new(Throttle::new(MAX_TRACKED)),
+            verify_slots: Semaphore::new(VERIFY_CONCURRENCY),
             dummy_hash,
         }
     }
@@ -57,26 +207,39 @@ impl Auth {
     }
 
     /// 성공하면 새 세션 토큰을 돌려준다. 비밀번호 검증은 블로킹 스레드에서 돌려 런타임을 막지 않는다.
-    pub async fn login(&self, username: &str, password: &str) -> Result<String, LoginError> {
-        if self.is_locked(username) {
-            return Err(LoginError::Locked);
-        }
-        let known = self.accounts.get(username);
-        let hash = known.unwrap_or(&self.dummy_hash).clone();
-        let password = password.to_owned();
-        let verified = password.len() <= MAX_PASSWORD_BYTES
-            && tokio::task::spawn_blocking(move || verify_password(&password, &hash))
-                .await
-                .unwrap_or(false);
-
-        if !(verified && known.is_some()) {
-            if known.is_some() {
-                self.record_failure(username);
-            }
+    /// 없는 아이디도 같은 방식으로 실패를 세므로 429 응답으로 계정 존재 여부를 알 수 없다.
+    pub async fn login(
+        &self,
+        client: IpAddr,
+        username: &str,
+        password: &str,
+    ) -> Result<String, LoginError> {
+        // 형식에 맞지 않는 아이디는 어떤 계정과도 일치할 수 없다(형식은 공개 정보).
+        // 해싱도 기록도 하지 않아 큰 키가 기록 맵에 쌓이지 않는다.
+        if !is_valid_username(username) {
             return Err(LoginError::Invalid);
         }
+        let client = client_key(client);
+        if !self
+            .throttle
+            .lock()
+            .unwrap()
+            .try_reserve(client, username, Instant::now())
+        {
+            return Err(LoginError::Locked);
+        }
+        let mut reservation = Reservation {
+            throttle: &self.throttle,
+            client,
+            username,
+            succeeded: false,
+        };
+        if !self.verify(username, password).await {
+            return Err(LoginError::Invalid);
+        }
+        reservation.succeeded = true;
+        drop(reservation);
 
-        self.failures.lock().unwrap().remove(username);
         let token = new_token();
         let session = Session {
             username: username.to_owned(),
@@ -84,6 +247,22 @@ impl Auth {
         };
         self.sessions.lock().unwrap().insert(token.clone(), session);
         Ok(token)
+    }
+
+    async fn verify(&self, username: &str, password: &str) -> bool {
+        if password.len() > MAX_PASSWORD_BYTES {
+            return false;
+        }
+        let known = self.accounts.get(username);
+        let hash = known.unwrap_or(&self.dummy_hash).clone();
+        let password = password.to_owned();
+        let Ok(_permit) = self.verify_slots.acquire().await else {
+            return false;
+        };
+        let verified = tokio::task::spawn_blocking(move || verify_password(&password, &hash))
+            .await
+            .unwrap_or(false);
+        verified && known.is_some()
     }
 
     pub fn session_user(&self, token: &str) -> Option<String> {
@@ -110,34 +289,43 @@ impl Auth {
     pub fn sweep(&self) {
         let now = Instant::now();
         self.sessions.lock().unwrap().retain(|_, s| s.expires > now);
-        self.failures
-            .lock()
-            .unwrap()
-            .retain(|_, f| now.duration_since(f.window_start) < FAILURE_WINDOW);
+        self.throttle.lock().unwrap().sweep(now);
     }
+}
 
-    fn is_locked(&self, username: &str) -> bool {
-        let failures = self.failures.lock().unwrap();
-        failures
-            .get(username)
-            .is_some_and(|f| f.count >= MAX_FAILURES && f.window_start.elapsed() < FAILURE_WINDOW)
+/// 실패 기록에 쓰는 클라이언트 키. IPv6는 보통 /64 단위로 한 사용자에게 주어지므로
+/// 주소를 바꿔 가며 한도를 피하지 못하게 /64로 묶는다.
+fn client_key(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => IpAddr::V4(v4),
+            None => IpAddr::V6(Ipv6Addr::from_bits(v6.to_bits() & (u128::MAX << 64))),
+        },
+        v4 => v4,
     }
+}
 
-    fn record_failure(&self, username: &str) {
-        let mut failures = self.failures.lock().unwrap();
-        let now = Instant::now();
-        let entry = failures.entry(username.to_owned()).or_insert(Failures {
-            count: 0,
-            window_start: now,
-        });
-        if now.duration_since(entry.window_start) >= FAILURE_WINDOW {
-            *entry = Failures {
-                count: 0,
-                window_start: now,
-            };
-        }
-        entry.count += 1;
+/// 요청한 클라이언트의 IP. `X-Forwarded-For`는 누구나 보낼 수 있으므로 신뢰하는 프록시 뒤에서만
+/// 읽고, 그 프록시가 덧붙인 마지막 값만 쓴다(앞쪽 값은 클라이언트가 조작할 수 있다).
+pub fn client_ip(peer: IpAddr, headers: &HeaderMap, trust_proxy: bool) -> IpAddr {
+    if !trust_proxy {
+        return peer;
     }
+    headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .next_back()
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.rsplit(',').next())
+        .and_then(|ip| ip.trim().parse().ok())
+        .unwrap_or(peer)
+}
+
+fn is_valid_username(user: &str) -> bool {
+    (1..=32).contains(&user.len())
+        && user
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
 }
 
 /// `HOST_ACCOUNTS` 형식: 공백·줄바꿈으로 구분한 `아이디:argon2 PHC 해시` 목록.
@@ -148,11 +336,7 @@ pub fn parse_accounts(raw: &str) -> Result<HashMap<String, String>, String> {
         let (user, hash) = entry
             .split_once(':')
             .ok_or_else(|| format!("expected user:hash, got `{entry}`"))?;
-        let valid_user = (1..=32).contains(&user.len())
-            && user
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
-        if !valid_user {
+        if !is_valid_username(user) {
             return Err(format!("invalid username `{user}`"));
         }
         PasswordHash::new(hash).map_err(|e| format!("invalid hash for `{user}`: {e}"))?;
@@ -208,7 +392,13 @@ pub fn clear_cookie(secure: bool) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::net::Ipv4Addr;
+    use std::sync::Arc;
+
     use super::*;
+
+    const IP_A: IpAddr = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 1));
+    const IP_B: IpAddr = IpAddr::V4(Ipv4Addr::new(198, 51, 100, 7));
 
     fn auth_with(user: &str, password: &str) -> Auth {
         let raw = format!("{user}:{}", hash_password(password).unwrap());
@@ -218,7 +408,7 @@ mod tests {
     #[tokio::test]
     async fn login_succeeds_with_correct_password_and_creates_session() {
         let auth = auth_with("host", "correct horse");
-        let token = auth.login("host", "correct horse").await.unwrap();
+        let token = auth.login(IP_A, "host", "correct horse").await.unwrap();
         assert_eq!(auth.session_user(&token).as_deref(), Some("host"));
 
         auth.logout(&token);
@@ -229,11 +419,11 @@ mod tests {
     async fn login_rejects_wrong_password_and_unknown_user() {
         let auth = auth_with("host", "correct horse");
         assert_eq!(
-            auth.login("host", "wrong").await.unwrap_err(),
+            auth.login(IP_A, "host", "wrong").await.unwrap_err(),
             LoginError::Invalid
         );
         assert_eq!(
-            auth.login("nobody", "correct horse").await.unwrap_err(),
+            auth.login(IP_A, "nobody", "correct horse").await.unwrap_err(),
             LoginError::Invalid
         );
         assert_eq!(auth.session_user("not-a-token"), None);
@@ -243,12 +433,115 @@ mod tests {
     async fn repeated_failures_lock_the_account_even_for_correct_password() {
         let auth = auth_with("host", "correct horse");
         for _ in 0..MAX_FAILURES {
-            let _ = auth.login("host", "wrong").await;
+            let _ = auth.login(IP_A, "host", "wrong").await;
         }
         assert_eq!(
-            auth.login("host", "correct horse").await.unwrap_err(),
+            auth.login(IP_A, "host", "correct horse").await.unwrap_err(),
             LoginError::Locked
         );
+    }
+
+    #[tokio::test]
+    async fn parallel_attempts_cannot_exceed_the_failure_limit() {
+        let auth = Arc::new(auth_with("host", "correct horse"));
+        let attempts = (0..MAX_FAILURES * 3).map(|_| {
+            let auth = auth.clone();
+            tokio::spawn(async move { auth.login(IP_A, "host", "wrong").await })
+        });
+        let results = futures_util::future::join_all(attempts).await;
+        let verified = results
+            .iter()
+            .filter(|r| matches!(r, Ok(Err(LoginError::Invalid))))
+            .count();
+        assert_eq!(verified, MAX_FAILURES as usize);
+        assert_eq!(
+            auth.login(IP_A, "host", "correct horse").await.unwrap_err(),
+            LoginError::Locked
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_username_locks_out_like_a_real_account() {
+        let auth = auth_with("host", "correct horse");
+        for user in ["host", "nobody"] {
+            for _ in 0..MAX_FAILURES {
+                assert_eq!(
+                    auth.login(IP_A, user, "wrong").await.unwrap_err(),
+                    LoginError::Invalid
+                );
+            }
+            assert_eq!(
+                auth.login(IP_A, user, "wrong").await.unwrap_err(),
+                LoginError::Locked
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn lockout_is_per_client_ip() {
+        let auth = auth_with("host", "correct horse");
+        for _ in 0..MAX_FAILURES {
+            let _ = auth.login(IP_A, "host", "wrong").await;
+        }
+        assert_eq!(
+            auth.login(IP_A, "host", "correct horse").await.unwrap_err(),
+            LoginError::Locked
+        );
+        assert!(auth.login(IP_B, "host", "correct horse").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn per_username_ceiling_stops_attempts_spread_across_ips() {
+        let auth = Arc::new(auth_with("host", "correct horse"));
+        let ips = MAX_USER_FAILURES / MAX_FAILURES;
+        let attempts = (0..ips).flat_map(|i| {
+            let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, i as u8));
+            let auth = auth.clone();
+            (0..MAX_FAILURES).map(move |_| {
+                let auth = auth.clone();
+                tokio::spawn(async move { auth.login(ip, "host", "wrong").await })
+            })
+        });
+        futures_util::future::join_all(attempts).await;
+        assert_eq!(
+            auth.login(IP_B, "host", "correct horse").await.unwrap_err(),
+            LoginError::Locked
+        );
+    }
+
+    #[test]
+    fn eviction_keeps_records_with_the_most_failures() {
+        let now = Instant::now();
+        let mut limiter = Limiter::new(3, 2);
+        for _ in 0..3 {
+            limiter.reserve("target", now);
+            limiter.finish(&"target", true);
+        }
+        for key in ["spam-1", "spam-2", "spam-3"] {
+            limiter.reserve(key, now);
+            limiter.finish(&key, true);
+        }
+        assert!(limiter.map.len() <= 2);
+        assert!(limiter.is_full(&"target", now));
+    }
+
+    #[test]
+    fn client_ip_uses_forwarded_header_only_behind_trusted_proxy() {
+        let peer = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "1.2.3.4, 203.0.113.1".parse().unwrap());
+        assert_eq!(client_ip(peer, &headers, false), peer);
+        assert_eq!(client_ip(peer, &headers, true), IP_A);
+        assert_eq!(client_ip(peer, &HeaderMap::new(), true), peer);
+    }
+
+    #[test]
+    fn ipv6_clients_are_grouped_by_64_prefix() {
+        let a: IpAddr = "2001:db8:1:2:aaaa::1".parse().unwrap();
+        let b: IpAddr = "2001:db8:1:2:bbbb::2".parse().unwrap();
+        let c: IpAddr = "2001:db8:1:3::1".parse().unwrap();
+        assert_eq!(client_key(a), client_key(b));
+        assert_ne!(client_key(a), client_key(c));
     }
 
     #[test]
