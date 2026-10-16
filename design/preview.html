@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meeting Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-jp-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=block">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--stage-bg); color: var(--on-stage); font-family: var(--font); font-size: var(--text-sm); }
+  .icon { font-family: "Material Symbols Rounded"; font-size: 24px; line-height: 1; font-weight: normal; font-style: normal; display: inline-block; user-select: none; }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--control-active-bg); outline-offset: 2px; }
+
+  .room { display: grid; grid-template-rows: 1fr var(--control-bar-height); height: 100%; }
+  .main { display: flex; gap: var(--space-4); padding: var(--space-4) var(--space-4) 0; min-height: 0; }
+
+  /* Stage */
+  .stage { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); align-content: center; min-width: 0; }
+  .tile { position: relative; aspect-ratio: 16 / 9; background: var(--tile-bg); border-radius: var(--radius-tile); display: grid; place-items: center; overflow: hidden; }
+  .tile.speaking { box-shadow: inset 0 0 0 3px var(--control-active-bg); }
+  .avatar { width: 30%; max-width: 120px; aspect-ratio: 1; border-radius: var(--radius-full); display: grid; place-items: center; font-size: clamp(24px, 4vw, 48px); color: #fff; }
+  .name { position: absolute; left: var(--space-3); bottom: var(--space-3); font-size: var(--text-sm); font-weight: 500; text-shadow: 0 1px 2px rgb(0 0 0 / .6); }
+  .tile-status { position: absolute; right: var(--space-3); top: var(--space-3); width: 28px; height: 28px; border-radius: var(--radius-full); background: rgb(32 33 36 / .6); display: grid; place-items: center; }
+  .tile-status .icon { font-size: 18px; }
+
+  /* Caption panel */
+  .panel { width: var(--panel-width); background: var(--panel-bg); color: var(--text); border-radius: var(--radius-panel); display: flex; flex-direction: column; min-height: 0; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4) var(--space-2) var(--space-2) var(--space-5); }
+  .panel-head h2 { margin: 0; font-size: var(--text-lg); font-weight: 400; }
+  .icon-btn { width: 40px; height: 40px; border-radius: var(--radius-full); display: grid; place-items: center; color: var(--text-secondary); }
+  .icon-btn:hover { background: var(--hover); }
+  .langs { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-5) var(--space-4); border-bottom: 1px solid var(--divider); }
+  .langs label { display: flex; flex-direction: column; gap: 2px; flex: 1; font-size: var(--text-xs); color: var(--text-secondary); }
+  .langs select { font: inherit; font-size: var(--text-sm); color: var(--text); height: 36px; padding: 0 var(--space-2); border: 1px solid var(--divider); border-radius: 4px; background: var(--panel-bg); }
+  .langs .icon { color: var(--text-secondary); margin-top: 16px; font-size: 20px; }
+
+  .feed { flex: 1; overflow-y: auto; padding: 0 var(--space-5); }
+  .entry { padding: var(--space-4) 0; border-bottom: 1px solid var(--divider); }
+  .entry:last-child { border-bottom: 0; }
+  .meta { display: flex; gap: var(--space-2); font-size: var(--text-xs); margin-bottom: var(--space-1); }
+  .meta b { font-weight: 500; color: var(--text); }
+  .meta time { color: var(--text-tertiary); }
+  .entry p { margin: 0; font-size: var(--caption-size); line-height: var(--caption-leading); }
+  .entry p + p { margin-top: var(--space-1); }
+  .entry.pending p { color: var(--text-secondary); }
+  .dots::after { content: "…"; }
+
+  /* Control bar */
+  .bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 var(--space-5); }
+  .bar .left { font-size: var(--text-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar .left span { color: var(--on-stage-muted); margin: 0 var(--space-3); }
+  .controls, .bar .right { display: flex; gap: var(--space-2); }
+  .bar .right { justify-content: flex-end; }
+  .ctl { width: var(--control-size); height: var(--control-size); border-radius: var(--radius-full); background: var(--control-bg); display: grid; place-items: center; transition: background var(--duration); }
+  .ctl:hover { background: var(--control-hover); }
+  .ctl.off { background: var(--danger); }
+  .ctl.on { background: var(--control-active-bg); color: var(--control-active-fg); }
+  .ctl.leave { width: 56px; background: var(--danger); }
+  .ctl.plain { background: none; }
+  .ctl.plain:hover { background: var(--control-hover); }
+  .ctl.plain.on { background: none; color: var(--control-active-bg); }
+
+  @media (max-width: 760px) {
+    .main { flex-direction: column; }
+    .stage { grid-template-columns: 1fr 1fr; flex: none; }
+    .panel { width: 100%; flex: 1; }
+    .avatar { width: 48px; font-size: 22px; }
+    .name { font-size: var(--text-xs); left: var(--space-2); bottom: var(--space-2); }
+    .bar { grid-template-columns: 1fr; justify-items: center; padding: 0 var(--space-4); }
+    .bar .left, .bar .right { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="room">
+  <div class="main">
+    <section class="stage" aria-label="참가자">
+      <div class="tile speaking">
+        <div class="avatar" style="background:#e8710a">田</div>
+        <span class="name">田中 さくら</span>
+      </div>
+      <div class="tile">
+        <div class="avatar" style="background:#1e8e3e">유</div>
+        <span class="name">나</span>
+        <span class="tile-status" aria-label="마이크 꺼짐"><span class="icon">mic_off</span></span>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="자막">
+      <div class="panel-head">
+        <h2>자막</h2>
+        <button class="icon-btn" aria-label="자막 패널 닫기"><span class="icon">close</span></button>
+      </div>
+      <div class="langs">
+        <label>내 언어
+          <select><option selected>한국어</option><option>日本語</option><option>English</option></select>
+        </label>
+        <span class="icon" aria-hidden="true">sync_alt</span>
+        <label>상대 언어
+          <select><option>한국어</option><option selected>日本語</option><option>English</option></select>
+        </label>
+      </div>
+
+      <div class="feed" role="log" aria-live="polite">
+        <div class="entry">
+          <div class="meta"><b>田中 さくら</b><time>15:21</time></div>
+          <p>私たちの投資チームは4人のメンバーで投資を行っています。</p>
+          <p>저희 투자팀은 4명의 멤버로 투자를 하고 있습니다.</p>
+        </div>
+        <div class="entry">
+          <div class="meta"><b>나</b><time>15:22</time></div>
+          <p>주로 어떤 분야에 투자하고 계신가요?</p>
+          <p>主にどのような分野に投資されていますか？</p>
+        </div>
+        <div class="entry">
+          <div class="meta"><b>田中 さくら</b><time>15:22</time></div>
+          <p>もちろん AI、それから最近だとディープテック、そういったところへの投資を注力しています。</p>
+          <p>물론 AI, 그리고 최근에는 딥테크 같은 분야에 투자를 집중하고 있습니다.</p>
+        </div>
+        <div class="entry pending" aria-hidden="true">
+          <div class="meta"><b>田中 さくら</b><time>15:23</time></div>
+          <p>来年は海外のスタートアップにも</p>
+          <p class="dots">번역 중</p>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="bar">
+    <div class="left">15:23<span>|</span>abc-defg-hij</div>
+    <div class="controls">
+      <button class="ctl off" aria-pressed="false" aria-label="마이크 켜기"><span class="icon">mic_off</span></button>
+      <button class="ctl" aria-pressed="true" aria-label="카메라 끄기"><span class="icon">videocam</span></button>
+      <button class="ctl on" aria-pressed="true" aria-label="자막 끄기"><span class="icon">closed_caption</span></button>
+      <button class="ctl" aria-label="화면 공유"><span class="icon">present_to_all</span></button>
+      <button class="ctl" aria-label="더보기"><span class="icon">more_vert</span></button>
+      <button class="ctl leave" aria-label="통화에서 나가기"><span class="icon">call_end</span></button>
+    </div>
+    <div class="right">
+      <button class="ctl plain" aria-label="회의 정보"><span class="icon">info</span></button>
+      <button class="ctl plain" aria-label="참가자"><span class="icon">group</span></button>
+      <button class="ctl plain on" aria-pressed="true" aria-label="자막 패널"><span class="icon">translate</span></button>
+    </div>
+  </footer>
+</div>
+<script>
+  // 웹폰트 로드 후 높이가 바뀌므로 load 이후에 최신 줄로 스크롤한다.
+  addEventListener('load', () => {
+    const feed = document.querySelector('.feed');
+    feed.scrollTop = feed.scrollHeight;
+  });
+</script>
+</body>
+</html>

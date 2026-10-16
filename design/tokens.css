@@ -1,0 +1,73 @@
+/*
+ * parley design tokens
+ *
+ * 레퍼런스: Google Meet(회의 화면 레이아웃·컨트롤·색). 자막 패널은 흰 배경 + 얇은 구분선 + 원문 아래 번역.
+ * 장식은 쓰지 않는다. 색은 아래 목록이 전부다.
+ */
+
+:root {
+  /* 브랜드 */
+  --brand-ink: #16181D;
+  --brand-accent: #F2542D;       /* 흰 배경 대비 3.45:1 — 글자에는 쓰지 않고 스위치·포커스·선택 표시 등에만 */
+
+  /* 회의 화면 (어두운 영역) */
+  --stage-bg: #16181D;
+  --tile-bg: #262930;
+  --control-bg: #2C2F36;
+  --control-hover: #3A3E46;
+  --control-active-bg: #F2542D;  /* 켜진 토글·말하는 중 테두리. 위 아이콘은 잉크(5.1:1) */
+  --control-active-fg: #16181D;
+  --danger: #D7263D;             /* 통화 종료, 꺼진 마이크·카메라. 브랜드 주황과 구분되는 크림슨, 흰 글자 5.0:1 */
+  --on-stage: #F3F2EE;
+  --on-stage-muted: #A3A6AD;
+
+  /* 밝은 화면 */
+  --page-bg: #FAFAF7;
+  --panel-bg: #FFFFFF;
+  --text: #16181D;               /* 흰 배경 17.8:1 */
+  --text-secondary: #5B5F68;     /* 흰 배경 6.4:1 */
+  --text-tertiary: #767A83;      /* 흰 배경 4.3:1 — 시간 같은 보조 정보에만 */
+  --divider: #ECEAE5;
+  --border: #D6D3CB;
+  --hover: #F3F2EE;
+  --field-bg: #EDEBE5;            /* 채운 입력 칸. 종이 배경(#FAFAF7)·흰 패널 모두에서 보이는 밝기 */
+  --field-bg-hover: #E6E3DC;
+  --accent: var(--brand-ink);    /* 주요 버튼 배경 */
+  --accent-hover: #2C2F36;
+  --accent-text: #C2381A;        /* 링크·텍스트 버튼. 흰 배경 5.4:1 */
+
+  /* 타이포 */
+  --font: "Pretendard JP Variable", "Pretendard JP", "Pretendard Variable", Pretendard,
+    -apple-system, BlinkMacSystemFont, system-ui, "Noto Sans SC", sans-serif;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+
+  /* 자막 크기 (설정에서 S 14 / M 16 / L 20) */
+  --caption-size: 16px;
+  --caption-leading: 1.6;
+
+  /* 간격 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* 형태 */
+  --radius-tile: 8px;
+  --radius-panel: 8px;
+  --radius-full: 9999px;
+  --control-size: 40px;
+  --control-bar-height: 80px;
+  --panel-width: 380px;
+
+  --duration: 150ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --duration: 0ms; }
+}

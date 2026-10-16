@@ -1,0 +1,146 @@
+/**
+ * 참가자마다 RTCPeerConnection 하나씩 두는 P2P mesh.
+ * 양쪽이 동시에 offer를 보내는 경우는 "perfect negotiation" 패턴으로 처리한다.
+ * https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation
+ */
+
+export type SignalData = {
+  description?: RTCSessionDescriptionInit
+  candidate?: RTCIceCandidateInit
+}
+
+type PeerLink = {
+  pc: RTCPeerConnection
+  polite: boolean
+  makingOffer: boolean
+  ignoreOffer: boolean
+  videoSender: RTCRtpSender | null
+  remote: MediaStream
+  // 같은 상대의 시그널은 도착 순서대로 하나씩 처리해야 한다(sRD 완료 전 candidate 추가 방지).
+  queue: Promise<void>
+}
+
+export class Mesh {
+  private links = new Map<string, PeerLink>()
+  private videoTrack: MediaStreamTrack | null
+  private selfId: string
+  private local: MediaStream
+  private iceServers: RTCIceServer[]
+  private sendSignal: (to: string, data: SignalData) => void
+  private onRemoteStream: (peerId: string, stream: MediaStream) => void
+
+  constructor(
+    selfId: string,
+    local: MediaStream,
+    iceServers: RTCIceServer[],
+    sendSignal: (to: string, data: SignalData) => void,
+    onRemoteStream: (peerId: string, stream: MediaStream) => void,
+  ) {
+    this.selfId = selfId
+    this.local = local
+    this.iceServers = iceServers
+    this.sendSignal = sendSignal
+    this.onRemoteStream = onRemoteStream
+    this.videoTrack = local.getVideoTracks()[0] ?? null
+  }
+
+  /** 새로 입장한 쪽이 기존 참가자들에게 먼저 연결한다. 기존 참가자는 offer를 받을 때 링크를 만든다. */
+  connect(peerId: string) {
+    this.ensure(peerId)
+  }
+
+  handleSignal(from: string, data: SignalData) {
+    const link = this.ensure(from)
+    link.queue = link.queue
+      .then(() => this.applySignal(link, from, data))
+      .catch((err) => console.error('signal handling failed', from, err))
+  }
+
+  /** 카메라 ↔ 화면공유 전환. 트랙만 교체하므로 재협상이 필요 없다(비디오 송신자가 없을 때만 추가 후 협상). */
+  async setVideoTrack(track: MediaStreamTrack | null) {
+    this.videoTrack = track
+    await Promise.all(
+      [...this.links.values()].map(async (link) => {
+        if (link.videoSender) await link.videoSender.replaceTrack(track)
+        else if (track) link.videoSender = link.pc.addTrack(track, this.local)
+      }),
+    )
+  }
+
+  remove(peerId: string) {
+    this.links.get(peerId)?.pc.close()
+    this.links.delete(peerId)
+  }
+
+  close() {
+    for (const link of this.links.values()) link.pc.close()
+    this.links.clear()
+  }
+
+  private ensure(peerId: string): PeerLink {
+    const existing = this.links.get(peerId)
+    if (existing) return existing
+
+    const pc = new RTCPeerConnection({ iceServers: this.iceServers })
+    const link: PeerLink = {
+      pc,
+      // 어느 쪽이 양보할지 양쪽이 같은 결론을 내기만 하면 된다.
+      polite: this.selfId < peerId,
+      makingOffer: false,
+      ignoreOffer: false,
+      videoSender: null,
+      remote: new MediaStream(),
+      queue: Promise.resolve(),
+    }
+    this.links.set(peerId, link)
+
+    for (const track of this.local.getAudioTracks()) pc.addTrack(track, this.local)
+    if (this.videoTrack) link.videoSender = pc.addTrack(this.videoTrack, this.local)
+
+    pc.onnegotiationneeded = async () => {
+      try {
+        link.makingOffer = true
+        await pc.setLocalDescription()
+        this.sendSignal(peerId, { description: pc.localDescription!.toJSON() })
+      } catch (err) {
+        console.error('negotiation failed', peerId, err)
+      } finally {
+        link.makingOffer = false
+      }
+    }
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) this.sendSignal(peerId, { candidate: candidate.toJSON() })
+    }
+    pc.ontrack = ({ track }) => {
+      link.remote.addTrack(track)
+      // React가 변경을 감지하도록 새 MediaStream 객체로 알린다.
+      this.onRemoteStream(peerId, new MediaStream(link.remote.getTracks()))
+    }
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed') pc.restartIce()
+    }
+    return link
+  }
+
+  private async applySignal(link: PeerLink, from: string, data: SignalData) {
+    const { pc } = link
+    if (data.description) {
+      const collision = data.description.type === 'offer' && (link.makingOffer || pc.signalingState !== 'stable')
+      link.ignoreOffer = !link.polite && collision
+      if (link.ignoreOffer) return
+
+      await pc.setRemoteDescription(data.description)
+      if (data.description.type === 'offer') {
+        await pc.setLocalDescription()
+        this.sendSignal(from, { description: pc.localDescription!.toJSON() })
+      }
+    } else if (data.candidate) {
+      try {
+        await pc.addIceCandidate(data.candidate)
+      } catch (err) {
+        // 무시한 offer에 딸린 candidate는 실패해도 정상이다.
+        if (!link.ignoreOffer) throw err
+      }
+    }
+  }
+}

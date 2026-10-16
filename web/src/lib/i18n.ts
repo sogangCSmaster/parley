@@ -1,0 +1,346 @@
+/**
+ * 의존성 없는 i18n. 사전이 작아서(로케일당 수 KB) 지연 로딩 대신 전부 번들에 넣는다 —
+ * 언어 전환 시 네트워크 왕복이 없고 첫 렌더가 막히지 않는다.
+ * 새 문자열은 `en`에 먼저 추가하면 `ko`·`ja`에 빠진 키가 타입 에러로 드러난다.
+ */
+import { useSyncExternalStore } from 'react'
+
+const en = {
+  'home.title': 'Video meetings that just work, whatever language you speak',
+  'home.lead': 'Everyone speaks their own language. The original and its translation appear together as captions.',
+  'home.newMeeting': 'New meeting',
+  'home.creating': 'Creating…',
+  'home.codePlaceholder': 'Enter a code or link',
+  'home.codeLabel': 'Meeting code or link',
+  'home.join': 'Join',
+  'home.invalidLink': 'That meeting link isn’t valid.',
+  'home.invalidCode': 'Check the meeting code. Example: abcd-efgh-ijkm',
+  'home.createFailed': 'Couldn’t create a meeting. Please try again in a moment.',
+  'home.hint': 'No sign-up needed. Share the link and everyone picks their own language.',
+
+  'lobby.title': 'Ready to join?',
+  'lobby.name': 'Name',
+  'lobby.namePlaceholder': 'Name others will see',
+  'lobby.joinNow': 'Join now',
+  'lobby.preparing': 'Getting your camera and microphone ready…',
+  'lobby.me': 'Me',
+
+  'lang.mine': 'My language',
+  'lang.partner': 'Their language',
+  'lang.swap': 'Swap my language and their language',
+  'ui.language': 'Display language',
+
+  'media.camera': 'camera',
+  'media.both': 'camera and microphone',
+  'media.denied': 'Access to your {device} is blocked. Allow it in the site settings next to the address bar, then refresh.',
+  'media.notFound': 'No {device} found. Check that it’s connected.',
+  'media.busy': 'Another app is using your {device}. Close it and refresh.',
+  'media.unknown': 'Your {device} can’t be used.',
+
+  'ctl.micOff': 'Turn off microphone',
+  'ctl.micOn': 'Turn on microphone',
+  'ctl.camOff': 'Turn off camera',
+  'ctl.camOn': 'Turn on camera',
+  'ctl.share': 'Present screen',
+  'ctl.stopShare': 'Stop presenting',
+  'ctl.leave': 'Leave call',
+  'ctl.copyLink': 'Copy meeting link',
+  'ctl.captions': 'Captions panel',
+
+  'room.participants': 'Participants',
+  'room.you': '{name} (You)',
+  'room.micMuted': 'Microphone off',
+  'room.aloneTitle': 'No one else is here yet',
+  'room.aloneBody': 'Send this link to invite someone.',
+  'room.copyLink': 'Copy link',
+  'room.linkCopied': 'Meeting link copied',
+  'room.linkFallback': 'Link: {url}',
+  'room.disconnected': 'Lost connection to the server.',
+  'room.rejoin': 'Rejoin',
+  'room.full': 'This meeting is limited to 4 people.',
+  'room.serverDown': 'Couldn’t reach the server. Please try again in a moment.',
+  'room.cannotJoin': 'Can’t join',
+  'room.retry': 'Try again',
+  'room.leave': 'Leave',
+  'room.left': 'You left the meeting',
+  'room.home': 'Return to home',
+
+  'auth.hostLogin': 'Host login',
+  'auth.loginTitle': 'Host login',
+  'auth.loginLead': 'Only hosts can create meetings. Guests can join with a meeting link.',
+  'auth.username': 'ID',
+  'auth.password': 'Password',
+  'auth.submit': 'Log in',
+  'auth.loggingIn': 'Logging in…',
+  'auth.invalid': 'Incorrect ID or password.',
+  'auth.locked': 'Too many failed attempts. Try again in 15 minutes.',
+  'auth.failed': 'Couldn’t log in. Please try again in a moment.',
+  'auth.logout': 'Log out',
+  'home.translation': 'Translated captions',
+  'home.guestHint': 'Got a meeting link? Open it, or enter the code here.',
+  'lobby.askToJoin': 'Ask to join',
+  'room.notFound': 'This meeting doesn’t exist or has already ended.',
+  'room.waitingTitle': 'Asking to join…',
+  'room.waitingBody': 'You’ll join as soon as the host lets you in.',
+  'room.cancel': 'Cancel',
+  'room.denied': 'The host declined your request to join.',
+  'room.queueFull': 'Too many people are waiting to join. Please try again shortly.',
+  'knock.title': '{name} wants to join',
+  'knock.admit': 'Admit',
+  'knock.deny': 'Deny',
+  'captions.translation': 'Translated captions',
+  'captions.off': 'Translated captions are off.',
+  'captions.offHost': 'Turn them on and everyone will see the original and its translation.',
+
+  'captions.title': 'Captions',
+  'captions.close': 'Close captions panel',
+  'captions.empty': 'Once the conversation starts, the original and its translation will appear here.',
+} as const
+
+export type MessageKey = keyof typeof en
+type Messages = Record<MessageKey, string>
+
+const ko: Messages = {
+  'home.title': '언어가 달라도 바로 통하는 화상 회의',
+  'home.lead': '각자 자기 언어로 말하면, 원문과 번역이 자막으로 함께 보여요.',
+  'home.newMeeting': '새 회의',
+  'home.creating': '만드는 중…',
+  'home.codePlaceholder': '회의 코드 또는 링크 입력',
+  'home.codeLabel': '회의 코드 또는 링크',
+  'home.join': '참여',
+  'home.invalidLink': '회의 링크가 올바르지 않아요.',
+  'home.invalidCode': '회의 코드를 확인해 주세요. 예: abcd-efgh-ijkm',
+  'home.createFailed': '회의를 만들지 못했어요. 잠시 후 다시 시도해 주세요.',
+  'home.hint': '가입 없이 링크만 공유하면, 각자 자기 언어를 고르면 돼요.',
+
+  'lobby.title': '참여할 준비가 되셨나요?',
+  'lobby.name': '이름',
+  'lobby.namePlaceholder': '상대에게 보일 이름',
+  'lobby.joinNow': '지금 참여하기',
+  'lobby.preparing': '카메라와 마이크를 준비하는 중…',
+  'lobby.me': '나',
+
+  'lang.mine': '내 언어',
+  'lang.partner': '상대 언어',
+  'lang.swap': '내 언어와 상대 언어 바꾸기',
+  'ui.language': '화면 언어',
+
+  'media.camera': '카메라',
+  'media.both': '카메라와 마이크',
+  'media.denied': '{device} 권한이 차단되어 있어요. 주소창 왼쪽의 사이트 설정에서 허용한 뒤 새로고침해 주세요.',
+  'media.notFound': '{device}를 찾지 못했어요. 장치가 연결되어 있는지 확인해 주세요.',
+  'media.busy': '다른 앱이 {device}를 사용 중이에요. 그 앱을 닫고 새로고침해 주세요.',
+  'media.unknown': '{device}를 사용할 수 없어요.',
+
+  'ctl.micOff': '마이크 끄기',
+  'ctl.micOn': '마이크 켜기',
+  'ctl.camOff': '카메라 끄기',
+  'ctl.camOn': '카메라 켜기',
+  'ctl.share': '화면 공유',
+  'ctl.stopShare': '화면 공유 중지',
+  'ctl.leave': '통화에서 나가기',
+  'ctl.copyLink': '회의 링크 복사',
+  'ctl.captions': '자막 패널',
+
+  'room.participants': '참가자',
+  'room.you': '{name} (나)',
+  'room.micMuted': '마이크 꺼짐',
+  'room.aloneTitle': '상대가 아직 없어요',
+  'room.aloneBody': '이 링크를 보내 상대를 초대하세요.',
+  'room.copyLink': '링크 복사',
+  'room.linkCopied': '회의 링크를 복사했어요',
+  'room.linkFallback': '링크: {url}',
+  'room.disconnected': '서버 연결이 끊어졌어요.',
+  'room.rejoin': '다시 참여',
+  'room.full': '이 회의는 최대 4명까지 참여할 수 있어요.',
+  'room.serverDown': '서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.',
+  'room.cannotJoin': '참여할 수 없어요',
+  'room.retry': '다시 시도',
+  'room.leave': '나가기',
+  'room.left': '회의에서 나갔어요',
+  'room.home': '홈으로',
+
+  'auth.hostLogin': '주최자 로그인',
+  'auth.loginTitle': '주최자 로그인',
+  'auth.loginLead': '회의는 주최자만 만들 수 있어요. 참가자는 회의 링크로 들어오면 돼요.',
+  'auth.username': '아이디',
+  'auth.password': '비밀번호',
+  'auth.submit': '로그인',
+  'auth.loggingIn': '로그인 중…',
+  'auth.invalid': '아이디 또는 비밀번호가 맞지 않아요.',
+  'auth.locked': '실패가 너무 많아요. 15분 뒤에 다시 시도해 주세요.',
+  'auth.failed': '로그인하지 못했어요. 잠시 후 다시 시도해 주세요.',
+  'auth.logout': '로그아웃',
+  'home.translation': '번역 자막',
+  'home.guestHint': '회의 링크를 받으셨나요? 링크를 열거나 코드를 입력하세요.',
+  'lobby.askToJoin': '참여 요청하기',
+  'room.notFound': '없는 회의이거나 이미 끝난 회의예요.',
+  'room.waitingTitle': '참여를 요청하는 중…',
+  'room.waitingBody': '주최자가 수락하면 바로 참여돼요.',
+  'room.cancel': '취소',
+  'room.denied': '주최자가 참여 요청을 거절했어요.',
+  'room.queueFull': '참여를 기다리는 사람이 너무 많아요. 잠시 후 다시 시도해 주세요.',
+  'knock.title': '{name}님이 참여하려고 해요',
+  'knock.admit': '수락',
+  'knock.deny': '거절',
+  'captions.translation': '번역 자막',
+  'captions.off': '번역 자막이 꺼져 있어요.',
+  'captions.offHost': '켜면 모두에게 원문과 번역이 함께 보여요.',
+
+  'captions.title': '자막',
+  'captions.close': '자막 패널 닫기',
+  'captions.empty': '대화가 시작되면 여기에 원문과 번역이 함께 표시돼요.',
+}
+
+const ja: Messages = {
+  'home.title': '言語が違っても、すぐに通じるビデオ会議',
+  'home.lead': 'それぞれが自分の言語で話すと、原文と翻訳が字幕で一緒に表示されます。',
+  'home.newMeeting': '新しい会議',
+  'home.creating': '作成中…',
+  'home.codePlaceholder': '会議コードまたはリンクを入力',
+  'home.codeLabel': '会議コードまたはリンク',
+  'home.join': '参加',
+  'home.invalidLink': '会議リンクが正しくありません。',
+  'home.invalidCode': '会議コードを確認してください。例: abcd-efgh-ijkm',
+  'home.createFailed': '会議を作成できませんでした。しばらくしてからもう一度お試しください。',
+  'home.hint': '登録不要。リンクを共有すれば、それぞれが自分の言語を選ぶだけです。',
+
+  'lobby.title': '参加の準備はできましたか？',
+  'lobby.name': '名前',
+  'lobby.namePlaceholder': '相手に表示される名前',
+  'lobby.joinNow': '今すぐ参加',
+  'lobby.preparing': 'カメラとマイクを準備しています…',
+  'lobby.me': '自分',
+
+  'lang.mine': '自分の言語',
+  'lang.partner': '相手の言語',
+  'lang.swap': '自分の言語と相手の言語を入れ替える',
+  'ui.language': '表示言語',
+
+  'media.camera': 'カメラ',
+  'media.both': 'カメラとマイク',
+  'media.denied': '{device}へのアクセスがブロックされています。アドレスバー横のサイト設定で許可してから再読み込みしてください。',
+  'media.notFound': '{device}が見つかりません。接続されているか確認してください。',
+  'media.busy': '別のアプリが{device}を使用中です。そのアプリを閉じてから再読み込みしてください。',
+  'media.unknown': '{device}を使用できません。',
+
+  'ctl.micOff': 'マイクをオフ',
+  'ctl.micOn': 'マイクをオン',
+  'ctl.camOff': 'カメラをオフ',
+  'ctl.camOn': 'カメラをオン',
+  'ctl.share': '画面を共有',
+  'ctl.stopShare': '画面共有を停止',
+  'ctl.leave': '通話から退出',
+  'ctl.copyLink': '会議リンクをコピー',
+  'ctl.captions': '字幕パネル',
+
+  'room.participants': '参加者',
+  'room.you': '{name}（自分）',
+  'room.micMuted': 'マイクオフ',
+  'room.aloneTitle': 'まだ誰も参加していません',
+  'room.aloneBody': 'このリンクを送って相手を招待しましょう。',
+  'room.copyLink': 'リンクをコピー',
+  'room.linkCopied': '会議リンクをコピーしました',
+  'room.linkFallback': 'リンク: {url}',
+  'room.disconnected': 'サーバーとの接続が切れました。',
+  'room.rejoin': '再参加',
+  'room.full': 'この会議には最大4人まで参加できます。',
+  'room.serverDown': 'サーバーに接続できませんでした。しばらくしてからもう一度お試しください。',
+  'room.cannotJoin': '参加できません',
+  'room.retry': '再試行',
+  'room.leave': '退出',
+  'room.left': '会議から退出しました',
+  'room.home': 'ホームに戻る',
+
+  'auth.hostLogin': '主催者ログイン',
+  'auth.loginTitle': '主催者ログイン',
+  'auth.loginLead': '会議を作成できるのは主催者だけです。参加者は会議リンクから参加できます。',
+  'auth.username': 'ID',
+  'auth.password': 'パスワード',
+  'auth.submit': 'ログイン',
+  'auth.loggingIn': 'ログイン中…',
+  'auth.invalid': 'IDまたはパスワードが正しくありません。',
+  'auth.locked': '失敗回数が多すぎます。15分後にもう一度お試しください。',
+  'auth.failed': 'ログインできませんでした。しばらくしてからもう一度お試しください。',
+  'auth.logout': 'ログアウト',
+  'home.translation': '翻訳字幕',
+  'home.guestHint': '会議リンクを受け取りましたか？リンクを開くか、コードを入力してください。',
+  'lobby.askToJoin': '参加をリクエスト',
+  'room.notFound': '存在しない会議か、すでに終了した会議です。',
+  'room.waitingTitle': '参加をリクエストしています…',
+  'room.waitingBody': '主催者が承認するとすぐに参加できます。',
+  'room.cancel': 'キャンセル',
+  'room.denied': '主催者が参加リクエストを拒否しました。',
+  'room.queueFull': '参加を待っている人が多すぎます。しばらくしてからもう一度お試しください。',
+  'knock.title': '{name}さんが参加しようとしています',
+  'knock.admit': '承認',
+  'knock.deny': '拒否',
+  'captions.translation': '翻訳字幕',
+  'captions.off': '翻訳字幕はオフです。',
+  'captions.offHost': 'オンにすると、全員に原文と翻訳が一緒に表示されます。',
+
+  'captions.title': '字幕',
+  'captions.close': '字幕パネルを閉じる',
+  'captions.empty': '会話が始まると、ここに原文と翻訳が一緒に表示されます。',
+}
+
+const DICTS = { en, ko, ja } as const
+export type Locale = keyof typeof DICTS
+export const LOCALES: { code: Locale; name: string }[] = [
+  { code: 'en', name: 'English' },
+  { code: 'ko', name: '한국어' },
+  { code: 'ja', name: '日本語' },
+]
+
+const STORAGE_KEY = 'parley.locale'
+
+function detect(): Locale {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved && saved in DICTS) return saved as Locale
+  } catch {
+    // 저장소가 막혀 있으면 브라우저 언어로
+  }
+  for (const tag of navigator.languages ?? [navigator.language]) {
+    const base = tag.toLowerCase().split('-')[0]
+    if (base in DICTS) return base as Locale
+  }
+  return 'en'
+}
+
+let locale: Locale = detect()
+document.documentElement.lang = locale
+const listeners = new Set<() => void>()
+
+export function setLocale(next: Locale) {
+  if (next === locale) return
+  locale = next
+  document.documentElement.lang = next
+  try {
+    localStorage.setItem(STORAGE_KEY, next)
+  } catch {
+    // 저장 실패해도 현재 세션에서는 적용됨
+  }
+  listeners.forEach((l) => l())
+}
+
+export function currentLocale(): Locale {
+  return locale
+}
+
+function subscribe(cb: () => void) {
+  listeners.add(cb)
+  return () => listeners.delete(cb)
+}
+
+export function translate(loc: Locale, key: MessageKey, params?: Record<string, string>): string {
+  const template = DICTS[loc][key]
+  return params ? template.replace(/\{(\w+)\}/g, (m, name: string) => params[name] ?? m) : template
+}
+
+/** 컴포넌트에서 `const { t, locale } = useI18n()`. 로케일이 바뀔 때만 다시 렌더된다. */
+export function useI18n() {
+  const loc = useSyncExternalStore(subscribe, () => locale)
+  const t = (key: MessageKey, params?: Record<string, string>) => translate(loc, key, params)
+  return { t, locale: loc }
+}
