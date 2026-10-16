@@ -7,11 +7,11 @@
 //! - 수락·거절·설정 변경은 그 방의 주최자 참가자만 할 수 있다. 모든 검사는 이 모듈에서 한다.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rand::RngExt;
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 
 use crate::protocol::{ErrorCode, Knock, MediaState, Peer, PeerId, RoomSettings, ServerMsg};
 
@@ -27,7 +27,25 @@ pub const ROOM_IDLE_TTL: Duration = Duration::from_secs(30 * 60);
 /// 혼동하기 쉬운 문자(l, o, 0, 1)를 뺀 32자. 4-4-4 형식이면 60bit.
 const CODE_ALPHABET: &[u8] = b"abcdefghijkmnpqrstuvwxyz23456789";
 
-pub type Outbox = mpsc::Sender<ServerMsg>;
+#[derive(Clone)]
+pub struct Outbox {
+    tx: mpsc::Sender<ServerMsg>,
+    disconnect: Arc<Notify>,
+}
+
+impl Outbox {
+    pub fn new(tx: mpsc::Sender<ServerMsg>, disconnect: Arc<Notify>) -> Self {
+        Self { tx, disconnect }
+    }
+
+    pub fn send(&self, msg: ServerMsg) {
+        if let Err(err) = self.tx.try_send(msg) {
+            // 제어 메시지가 누락된 연결은 복구할 수 없으므로 닫아 상태 불일치를 알린다.
+            tracing::warn!(%err, "disconnecting slow or closed client");
+            self.disconnect.notify_one();
+        }
+    }
+}
 
 struct Member {
     peer: Peer,
@@ -313,10 +331,7 @@ fn broadcast(members: &HashMap<PeerId, Member>, except: &str, msg: ServerMsg) {
 }
 
 fn send(tx: &Outbox, msg: ServerMsg) {
-    // 느린 클라이언트 때문에 방 전체가 막히지 않도록 버퍼가 차면 버린다. 연결이 끊기면 leave로 정리된다.
-    if let Err(err) = tx.try_send(msg) {
-        tracing::warn!(%err, "dropping message to slow or closed client");
-    }
+    tx.send(msg);
 }
 
 fn random_token(len: usize) -> String {
@@ -382,7 +397,10 @@ mod tests {
 
     fn client() -> Client {
         let (tx, rx) = mpsc::channel(32);
-        Client { tx, rx }
+        Client {
+            tx: Outbox::new(tx, Arc::new(Notify::new())),
+            rx,
+        }
     }
 
     impl Client {

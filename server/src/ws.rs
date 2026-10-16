@@ -9,16 +9,19 @@ use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use futures_util::{SinkExt, StreamExt};
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 
-use crate::auth::Auth;
+use crate::auth::{self, Auth};
 use crate::protocol::{ClientMsg, ErrorCode, PeerId, ServerMsg};
-use crate::room::{self, JoinOutcome, JoinRequest, Rooms};
+use crate::room::{self, JoinOutcome, JoinRequest, Outbox, Rooms};
 
 /// SDP는 수 KB 수준이다. 이보다 큰 메시지는 거부한다.
 const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 const OUTBOX_CAPACITY: usize = 64;
 const PING_INTERVAL: Duration = Duration::from_secs(20);
+const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+const JOIN_TIMEOUT: Duration = Duration::from_secs(15);
+const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub async fn handler(
     ws: WebSocketUpgrade,
@@ -30,10 +33,11 @@ pub async fn handler(
     if !same_origin(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let account = auth.user_from_headers(&headers);
+    let token =
+        auth::token_from_headers(&headers).filter(|token| auth.session_user(token).is_some());
     ws.max_message_size(MAX_MESSAGE_BYTES)
         .max_frame_size(MAX_MESSAGE_BYTES)
-        .on_upgrade(move |socket| run(socket, rooms, account))
+        .on_upgrade(move |socket| run(socket, rooms, auth, token))
 }
 
 /// 브라우저가 보낸 Origin의 host:port가 요청 Host와 같아야 한다. Origin이 없으면 거부.
@@ -48,11 +52,13 @@ fn same_origin(headers: &HeaderMap) -> bool {
     }
 }
 
-async fn run(socket: WebSocket, rooms: Arc<Rooms>, account: Option<String>) {
+async fn run(socket: WebSocket, rooms: Arc<Rooms>, auth: Arc<Auth>, token: Option<String>) {
     let (mut sink, mut stream) = socket.split();
-    let (tx, mut rx) = mpsc::channel::<ServerMsg>(OUTBOX_CAPACITY);
+    let (sender, mut rx) = mpsc::channel::<ServerMsg>(OUTBOX_CAPACITY);
+    let disconnect = Arc::new(Notify::new());
+    let tx = Outbox::new(sender, disconnect.clone());
 
-    let writer = tokio::spawn(async move {
+    let mut writer = tokio::spawn(async move {
         let mut ping = tokio::time::interval(PING_INTERVAL);
         loop {
             let msg = tokio::select! {
@@ -66,7 +72,10 @@ async fn run(socket: WebSocket, rooms: Arc<Rooms>, account: Option<String>) {
                 },
                 _ = ping.tick() => Message::Ping(Default::default()),
             };
-            if sink.send(msg).await.is_err() {
+            if !matches!(
+                tokio::time::timeout(WRITE_TIMEOUT, sink.send(msg)).await,
+                Ok(Ok(()))
+            ) {
                 break;
             }
         }
@@ -75,7 +84,41 @@ async fn run(socket: WebSocket, rooms: Arc<Rooms>, account: Option<String>) {
     // 입장했거나 대기 중인 (방 코드, 참가자 id). 실제 권한은 매 요청마다 Rooms가 확인한다.
     let mut session: Option<(String, PeerId)> = None;
 
-    while let Some(Ok(msg)) = stream.next().await {
+    let connected_at = tokio::time::Instant::now();
+    let mut last_seen = connected_at;
+    let mut session_check = tokio::time::interval(PING_INTERVAL);
+    let mut writer_finished = false;
+    loop {
+        let deadline = if session.is_some() {
+            last_seen + IDLE_TIMEOUT
+        } else {
+            connected_at + JOIN_TIMEOUT
+        };
+        let msg = tokio::select! {
+            biased;
+            _ = disconnect.notified() => break,
+            _ = &mut writer => {
+                writer_finished = true;
+                break;
+            }
+            _ = session_check.tick() => {
+                if token.as_ref().is_some_and(|token| auth.session_user(token).is_none()) {
+                    break;
+                }
+                continue;
+            }
+            _ = tokio::time::sleep_until(deadline) => break,
+            msg = stream.next() => match msg {
+                Some(Ok(msg)) => msg,
+                _ => break,
+            },
+        };
+        last_seen = tokio::time::Instant::now();
+        // 업그레이드 때의 계정 복사본을 권한으로 쓰지 않는다. 로그아웃·만료가 즉시 반영되어야 한다.
+        let account = token.as_ref().and_then(|token| auth.session_user(token));
+        if token.is_some() && account.is_none() {
+            break;
+        }
         let text = match msg {
             Message::Text(text) => text,
             Message::Close(_) => break,
@@ -152,11 +195,14 @@ async fn run(socket: WebSocket, rooms: Arc<Rooms>, account: Option<String>) {
         rooms.leave(&room, &id);
     }
     drop(tx);
-    let _ = writer.await;
+    writer.abort();
+    if !writer_finished {
+        let _ = writer.await;
+    }
 }
 
-fn reply(tx: &mpsc::Sender<ServerMsg>, code: ErrorCode) {
-    let _ = tx.try_send(ServerMsg::Error {
+fn reply(tx: &Outbox, code: ErrorCode) {
+    tx.send(ServerMsg::Error {
         code,
         message: format!("{code:?}"),
     });
@@ -194,5 +240,198 @@ mod tests {
             "meet.example.com"
         )));
         assert!(!same_origin(&headers(None, "meet.example.com")));
+    }
+
+    struct TestServer {
+        addr: std::net::SocketAddr,
+        rooms: Arc<Rooms>,
+        auth: Arc<Auth>,
+        task: tokio::task::JoinHandle<()>,
+    }
+
+    impl Drop for TestServer {
+        fn drop(&mut self) {
+            self.task.abort();
+        }
+    }
+
+    type TestSocket = tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >;
+
+    impl TestServer {
+        async fn start() -> Self {
+            let rooms = Arc::new(Rooms::default());
+            let auth = Arc::new(Auth::new(std::collections::HashMap::from([(
+                "host".into(),
+                auth::hash_password("test password").unwrap(),
+            )])));
+            let state = crate::AppState {
+                rooms: rooms.clone(),
+                auth: auth.clone(),
+                ice_servers: Arc::new(serde_json::json!([])),
+                cookie_secure: false,
+                trusted_proxy: false,
+            };
+            let app = axum::Router::new()
+                .route("/ws", axum::routing::get(handler))
+                .with_state(state);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let task = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            Self {
+                addr,
+                rooms,
+                auth,
+                task,
+            }
+        }
+
+        async fn connect(&self, token: &str) -> TestSocket {
+            use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+            let mut req = format!("ws://{}/ws", self.addr)
+                .into_client_request()
+                .unwrap();
+            req.headers_mut().insert(
+                header::ORIGIN,
+                format!("http://{}", self.addr).parse().unwrap(),
+            );
+            req.headers_mut().insert(
+                header::COOKIE,
+                format!("{}={token}", auth::COOKIE_NAME).parse().unwrap(),
+            );
+            tokio_tungstenite::connect_async(req).await.unwrap().0
+        }
+
+        async fn token(&self) -> String {
+            self.auth
+                .login(self.addr.ip(), "host", "test password")
+                .await
+                .unwrap()
+        }
+
+        fn room(&self) -> String {
+            self.rooms
+                .create("host", crate::protocol::RoomSettings { translation: true })
+                .unwrap()
+        }
+    }
+
+    async fn send(socket: &mut TestSocket, msg: ClientMsg) {
+        socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                serde_json::to_string(&msg).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+    }
+
+    async fn next_message(socket: &mut TestSocket) -> Option<ServerMsg> {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while let Some(Ok(msg)) = socket.next().await {
+                if let tokio_tungstenite::tungstenite::Message::Text(text) = msg {
+                    return Some(serde_json::from_str(&text).unwrap());
+                }
+            }
+            None
+        })
+        .await
+        .expect("socket should respond or close")
+    }
+
+    async fn join(socket: &mut TestSocket, room: &str) {
+        send(
+            socket,
+            ClientMsg::Join {
+                room: room.into(),
+                name: "Host".into(),
+                lang: "en".into(),
+                partner_lang: "ko".into(),
+                media: crate::protocol::MediaState::default(),
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn logout_revokes_both_pending_host_join_and_existing_host_commands() {
+        let server = TestServer::start().await;
+        let room = server.room();
+        let token = server.token().await;
+        let mut socket = server.connect(&token).await;
+        server.auth.logout(&token);
+        join(&mut socket, &room).await;
+        assert!(next_message(&mut socket).await.is_none());
+
+        let token = server.token().await;
+        let mut socket = server.connect(&token).await;
+        join(&mut socket, &room).await;
+        assert!(matches!(
+            next_message(&mut socket).await,
+            Some(ServerMsg::Welcome { host: true, .. })
+        ));
+        server.auth.logout(&token);
+        send(
+            &mut socket,
+            ClientMsg::Settings {
+                settings: crate::protocol::RoomSettings { translation: false },
+            },
+        )
+        .await;
+        assert!(next_message(&mut socket).await.is_none());
+        assert!(server.rooms.settings(&room).unwrap().translation);
+    }
+
+    #[tokio::test]
+    async fn stalled_client_is_disconnected_and_its_room_slot_is_released() {
+        let server = TestServer::start().await;
+        let room = server.room();
+        let token = server.token().await;
+        let mut socket = server.connect(&token).await;
+        join(&mut socket, &room).await;
+        assert!(matches!(
+            next_message(&mut socket).await,
+            Some(ServerMsg::Welcome { .. })
+        ));
+        tokio::time::pause();
+        tokio::time::advance(IDLE_TIMEOUT + Duration::from_secs(1)).await;
+        // Allow the server's expired read deadline to run before reading (and replying to) pings.
+        tokio::task::yield_now().await;
+        tokio::time::resume();
+        assert!(next_message(&mut socket).await.is_none());
+        server
+            .rooms
+            .sweep(std::time::Instant::now() + room::ROOM_IDLE_TTL + Duration::from_secs(1));
+        assert!(server.rooms.settings(&room).is_none());
+    }
+
+    #[tokio::test]
+    async fn overflow_closes_the_connection_instead_of_silently_losing_room_state() {
+        let server = TestServer::start().await;
+        let room = server.room();
+        let token = server.token().await;
+        let mut socket = server.connect(&token).await;
+        join(&mut socket, &room).await;
+        let Some(ServerMsg::Welcome { you, .. }) = next_message(&mut socket).await else {
+            panic!("expected welcome");
+        };
+        // No await here: fill the outbox before the writer can drain it.
+        for _ in 0..=OUTBOX_CAPACITY {
+            server
+                .rooms
+                .set_settings(
+                    &room,
+                    &you,
+                    crate::protocol::RoomSettings { translation: false },
+                )
+                .unwrap();
+        }
+        while next_message(&mut socket).await.is_some() {}
+        server
+            .rooms
+            .sweep(std::time::Instant::now() + room::ROOM_IDLE_TTL + Duration::from_secs(1));
+        assert!(server.rooms.settings(&room).is_none());
     }
 }

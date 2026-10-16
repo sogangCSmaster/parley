@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { logout, useAuth } from '../lib/auth'
 import { useI18n } from '../lib/i18n'
 import { navigate, usePath } from '../lib/router'
@@ -9,6 +10,16 @@ export function Header() {
   const { t } = useI18n()
   const auth = useAuth()
   const path = usePath()
+  const [loggingOut, setLoggingOut] = useState(false)
+  const [logoutFailed, setLogoutFailed] = useState(false)
+
+  async function handleLogout() {
+    if (loggingOut) return
+    setLoggingOut(true)
+    setLogoutFailed(false)
+    setLogoutFailed(!(await logout()))
+    setLoggingOut(false)
+  }
   return (
     <header className="app-header">
       <a
@@ -34,9 +45,10 @@ export function Header() {
               <Icon name="account_circle" />
               {auth.username}
             </span>
-            <button className="btn btn-text" onClick={() => void logout()}>
+            <button className="btn btn-text" onClick={() => void handleLogout()} disabled={loggingOut}>
               {t('auth.logout')}
             </button>
+            {logoutFailed && <span className="header-error form-error" role="alert">{t('auth.logoutFailed')}</span>}
           </>
         )}
         <LocaleSelect />

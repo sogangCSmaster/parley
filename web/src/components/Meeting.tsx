@@ -33,7 +33,9 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
     }
   }, [code])
 
+  const captureNeeded = room !== null && stage !== 'left'
   useEffect(() => {
+    if (!captureNeeded) return
     let cancelled = false
     let acquired: MediaStream | null = null
     acquireLocalMedia().then((result) => {
@@ -48,7 +50,7 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
       cancelled = true
       acquired?.getTracks().forEach((t) => t.stop())
     }
-  }, [])
+  }, [captureNeeded])
 
   // 트랙의 enabled는 미디어 상태를 따라간다(로비에서 끈 채로 입장하는 경우 포함).
   useEffect(() => {

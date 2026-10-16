@@ -23,7 +23,8 @@ export async function login(username: string, password: string): Promise<LoginRe
 }
 
 export async function logout() {
-  await fetch('/api/logout', { method: 'POST' })
+  const res = await fetch('/api/logout', { method: 'POST' })
+  if (!res.ok) throw new Error(`status ${res.status}`)
 }
 
 export async function createRoom(settings: RoomSettings): Promise<string> {

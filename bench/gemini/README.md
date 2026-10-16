@@ -10,7 +10,7 @@ A Rust tool that measures the latency and cost of the real-time caption pipeline
 
 Uses macOS's built-in TTS (Yuna, Kyoko) to create `fixtures/ko.wav` and `fixtures/ja.wav` (16kHz mono). You can also use real recordings in the same format.
 
-Put the API key in `GEMINI_API_KEY=...` in `.env` (excluded from git), or pass it as an environment variable.
+Put `GEMINI_API_KEY=...` in the repository root `.env` (excluded from git), or pass it as an environment variable. Environment variables take precedence; the old `bench/gemini/.env` location remains a fallback.
 
 ## Running
 

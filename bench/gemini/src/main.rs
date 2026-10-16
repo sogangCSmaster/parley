@@ -5,7 +5,7 @@
 //! - `transcribe`: 16kHz WAV를 실시간 속도(100ms 조각)로 Live API에 흘려 넣고
 //!   중간 결과가 오는 간격, 누적/증분 여부, 말 끝 → 확정 결과 지연을 잰다.
 //!
-//! API 키는 `GEMINI_API_KEY` 환경변수 또는 이 폴더의 `.env`(git 제외)에서만 읽고, 출력하지 않는다.
+//! API 키는 `GEMINI_API_KEY` 환경변수 또는 저장소 루트의 `.env`(git 제외)에서만 읽고, 출력하지 않는다.
 
 mod gap;
 
@@ -100,15 +100,34 @@ fn api_key() -> String {
     {
         return k.trim().to_owned();
     }
-    let env_path = concat!(env!("CARGO_MANIFEST_DIR"), "/.env");
-    std::fs::read_to_string(env_path)
-        .ok()
-        .and_then(|s| s.lines().find_map(|l| l.trim().strip_prefix("GEMINI_API_KEY=").map(|v| v.trim().to_owned())))
-        .filter(|k| !k.is_empty())
-        .unwrap_or_else(|| {
-            eprintln!("GEMINI_API_KEY가 없습니다. 환경변수로 넘기거나 bench/gemini/.env 에 GEMINI_API_KEY=... 를 넣어 주세요.");
-            std::process::exit(2)
-        })
+    // Read without mutating the process environment after Tokio has started.
+    for path in [
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../.env"),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/.env"),
+    ] {
+        let entries = match dotenvy::from_path_iter(path) {
+            Ok(entries) => entries,
+            Err(error) if error.not_found() => continue,
+            Err(_) => {
+                eprintln!("Could not read .env; check its permissions.");
+                std::process::exit(2);
+            }
+        };
+        for entry in entries {
+            match entry {
+                Ok((name, value)) if name == "GEMINI_API_KEY" && !value.trim().is_empty() => {
+                    return value.trim().to_owned();
+                }
+                Ok(_) => {}
+                Err(_) => {
+                    eprintln!("Could not parse .env; check its syntax.");
+                    std::process::exit(2);
+                }
+            }
+        }
+    }
+    eprintln!("GEMINI_API_KEY가 없습니다. 루트 .env에 GEMINI_API_KEY=... 를 넣어 주세요.");
+    std::process::exit(2)
 }
 
 // ───────────────────────── translate ─────────────────────────

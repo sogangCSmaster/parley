@@ -11,23 +11,28 @@ export class Signaling {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
     this.ws = new WebSocket(`${proto}//${location.host}/ws`)
     this.ws.onopen = () => {
+      if (this.closedByUs) return
       for (const m of this.queue) this.ws.send(m)
       this.queue = []
     }
-    this.ws.onmessage = (e) => onMessage(JSON.parse(e.data) as ServerMsg)
+    this.ws.onmessage = (e) => {
+      if (!this.closedByUs) onMessage(JSON.parse(e.data) as ServerMsg)
+    }
     this.ws.onclose = () => {
       if (!this.closedByUs) onDisconnect()
     }
   }
 
   send(msg: ClientMsg) {
+    if (this.closedByUs) return
     const raw = JSON.stringify(msg)
     if (this.ws.readyState === WebSocket.OPEN) this.ws.send(raw)
-    else this.queue.push(raw)
+    else if (this.ws.readyState === WebSocket.CONNECTING) this.queue.push(raw)
   }
 
   close() {
     this.closedByUs = true
+    this.queue = []
     this.ws.close()
   }
 }

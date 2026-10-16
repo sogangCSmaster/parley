@@ -9,6 +9,7 @@ import { useI18n, type Locale, type MessageKey } from '../lib/i18n'
 import { Mesh, type SignalData } from '../lib/mesh'
 import type { Prefs } from '../lib/prefs'
 import { Signaling } from '../lib/signaling'
+import { ScreenShare } from '../lib/screen'
 import { CaptionPanel } from './CaptionPanel'
 import { Header } from './Header'
 import { KnockPrompts } from './KnockPrompts'
@@ -45,6 +46,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const [peers, setPeers] = useState<Record<string, Peer>>({})
   const [streams, setStreams] = useState<Record<string, MediaStream>>({})
   const [screenTrack, setScreenTrack] = useState<MediaStreamTrack | null>(null)
+  const [screenBusy, setScreenBusy] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
   const [disconnected, setDisconnected] = useState(false)
   const [toast, setToast] = useState<{ key: MessageKey; params?: Record<string, string> } | null>(null)
@@ -54,6 +56,9 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
 
   const sigRef = useRef<Signaling | null>(null)
   const meshRef = useRef<Mesh | null>(null)
+  const screenRef = useRef<ScreenShare | null>(null)
+  const onMediaChangeRef = useRef(onMediaChange)
+  useEffect(() => { onMediaChangeRef.current = onMediaChange }, [onMediaChange])
   // 입장 메시지는 마운트 시점 값으로 한 번만 보낸다. 이후 변경은 lang/media 메시지로 보낸다.
   const joinRef = useRef({ name: prefs.name.trim(), lang: prefs.lang, partnerLang: prefs.partnerLang, media })
   // 브라우저의 "공유 중지"처럼 나중에 호출되는 콜백이 최신 미디어 상태를 보도록 한다.
@@ -66,6 +71,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
     let disposed = false
 
     const onMessage = (msg: ServerMsg) => {
+      if (disposed) return
       switch (msg.t) {
         case 'welcome': {
           const iceServers = iceRef.current
@@ -77,6 +83,19 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             (id, stream) => setStreams((s) => ({ ...s, [id]: stream })),
           )
           meshRef.current = mesh
+          screenRef.current = new ScreenShare(
+            mesh,
+            local.getVideoTracks()[0] ?? null,
+            (track) => {
+              setScreenTrack(track)
+              const next = { ...mediaRef.current, screen: !!track }
+              mediaRef.current = next
+              onMediaChangeRef.current(next)
+              sig.send({ t: 'media', media: next })
+            },
+            setScreenBusy,
+            () => setToast({ key: 'room.screenFailed' }),
+          )
           joinedRef.current = true
           setStatus({ kind: 'joined', selfId: msg.you })
           setIsHost(msg.host)
@@ -115,7 +134,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           break
         case 'error': {
           const fatal = FATAL_ERRORS[msg.code]
-          if (fatal && !joinedRef.current) setStatus({ kind: 'error', message: fatal })
+          if (!joinedRef.current) setStatus({ kind: 'error', message: fatal ?? 'room.cannotJoin' })
           else if (msg.code === 'room_full') setToast({ key: 'room.full' })
           else console.warn('server error', msg.code, msg.message)
           break
@@ -125,7 +144,18 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
 
     const iceRef = { current: [] as RTCIceServer[] }
     const joinedRef = { current: false }
-    const sig = new Signaling(onMessage, () => setDisconnected(true))
+    const sig = new Signaling(onMessage, () => {
+      if (disposed) return
+      screenRef.current?.dispose()
+      screenRef.current = null
+      setScreenTrack(null)
+      setScreenBusy(false)
+      meshRef.current?.close()
+      meshRef.current = null
+      setStreams({})
+      if (joinedRef.current) setDisconnected(true)
+      else setStatus({ kind: 'error', message: 'room.disconnected' })
+    })
     sigRef.current = sig
 
     fetch('/api/config')
@@ -143,14 +173,13 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
     return () => {
       disposed = true
       sig.close()
+      screenRef.current?.dispose()
+      screenRef.current = null
       meshRef.current?.close()
       meshRef.current = null
       sigRef.current = null
     }
   }, [code, local])
-
-  // 화면공유 트랙은 Room이 소유한다. 나갈 때 함께 정리.
-  useEffect(() => () => screenTrack?.stop(), [screenTrack])
 
   useEffect(() => {
     if (!toast) return
@@ -159,10 +188,11 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   }, [toast])
 
   const joined = status.kind === 'joined'
-  const showPanel = panelOpen && (settings.translation || isHost)
+  const showPanel = joined && panelOpen && (settings.translation || isHost)
   const selfStream = useMemo(() => (screenTrack ? new MediaStream([screenTrack]) : local), [screenTrack, local])
 
   function changeMedia(next: MediaState) {
+    mediaRef.current = next
     onMediaChange(next)
     if (joined) sigRef.current?.send({ t: 'media', media: next })
   }
@@ -170,34 +200,6 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   function changePrefs(next: Prefs) {
     onPrefsChange(next)
     if (joined) sigRef.current?.send({ t: 'lang', lang: next.lang, partner_lang: next.partnerLang })
-  }
-
-  async function toggleScreen() {
-    const camera = local.getVideoTracks()[0] ?? null
-    if (screenTrack) {
-      await meshRef.current?.setVideoTrack(camera)
-      setScreenTrack(null)
-      changeMedia({ ...media, screen: false })
-      return
-    }
-    let track: MediaStreamTrack
-    try {
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
-      track = display.getVideoTracks()[0]
-    } catch {
-      return // 사용자가 공유 선택 창을 닫은 경우
-    }
-    // 브라우저의 "공유 중지" 버튼으로 끝낸 경우도 같은 정리를 한다.
-    track.onended = () => {
-      const next = { ...mediaRef.current, screen: false }
-      meshRef.current?.setVideoTrack(camera)
-      setScreenTrack(null)
-      onMediaChange(next)
-      sigRef.current?.send({ t: 'media', media: next })
-    }
-    await meshRef.current?.setVideoTrack(track)
-    setScreenTrack(track)
-    changeMedia({ ...media, screen: true })
   }
 
   async function copyLink() {
@@ -211,12 +213,10 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
 
   function admit(id: string) {
     sigRef.current?.send({ t: 'admit', id })
-    setKnocks((ks) => ks.filter((k) => k.id !== id))
   }
 
   function deny(id: string) {
     sigRef.current?.send({ t: 'deny', id })
-    setKnocks((ks) => ks.filter((k) => k.id !== id))
   }
 
   function changeTranslation(translation: boolean) {
@@ -344,7 +344,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
         <div className="controls">
           <button
             className={`ctl ${hasMic && media.mic ? '' : 'off'}`}
-            disabled={!hasMic}
+            disabled={!joined || disconnected || !hasMic}
             aria-pressed={media.mic}
             aria-label={media.mic ? t('ctl.micOff') : t('ctl.micOn')}
             onClick={() => changeMedia({ ...media, mic: !media.mic })}
@@ -353,7 +353,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           </button>
           <button
             className={`ctl ${hasCam && media.cam ? '' : 'off'}`}
-            disabled={!hasCam}
+            disabled={!joined || disconnected || !hasCam}
             aria-pressed={media.cam}
             aria-label={media.cam ? t('ctl.camOff') : t('ctl.camOn')}
             onClick={() => changeMedia({ ...media, cam: !media.cam })}
@@ -362,10 +362,10 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           </button>
           <button
             className={`ctl ${screenTrack ? 'on' : ''}`}
-            disabled={!joined || (!!presenterId && !screenTrack)}
+            disabled={!joined || disconnected || screenBusy || (!!presenterId && !screenTrack)}
             aria-pressed={!!screenTrack}
             aria-label={screenTrack ? t('ctl.stopShare') : t('ctl.share')}
-            onClick={toggleScreen}
+            onClick={() => { void screenRef.current?.toggle() }}
           >
             <Icon name={screenTrack ? 'cancel_presentation' : 'present_to_all'} />
           </button>
@@ -374,11 +374,11 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           </button>
         </div>
         <div className="bar-right">
-          <button className="ctl plain" aria-label={t('ctl.copyLink')} onClick={copyLink}>
+          <button className="ctl plain copy-link" aria-label={t('ctl.copyLink')} onClick={copyLink}>
             <Icon name="link" />
           </button>
           {/* 번역이 꺼지면 게스트에게는 자막 패널이 없다. 주최자는 다시 켤 수 있도록 남긴다. */}
-          {(settings.translation || isHost) && (
+          {joined && (settings.translation || isHost) && (
             <button
               className={`ctl plain ${showPanel ? 'on' : ''}`}
               aria-pressed={showPanel}

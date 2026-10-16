@@ -56,15 +56,22 @@ export class Mesh {
       .catch((err) => console.error('signal handling failed', from, err))
   }
 
-  /** 카메라 ↔ 화면공유 전환. 트랙만 교체하므로 재협상이 필요 없다(비디오 송신자가 없을 때만 추가 후 협상). */
+  /** 카메라 ↔ 화면공유 전환. 미리 만든 비디오 송신자의 트랙만 교체한다. */
   async setVideoTrack(track: MediaStreamTrack | null) {
     this.videoTrack = track
-    await Promise.all(
+    const results = await Promise.allSettled(
       [...this.links.values()].map(async (link) => {
-        if (link.videoSender) await link.videoSender.replaceTrack(track)
-        else if (track) link.videoSender = link.pc.addTrack(track, this.local)
+        try {
+          await link.videoSender?.replaceTrack(track)
+        } catch (err) {
+          // 전환 도중 퇴장한 참가자는 더 이상 트랙을 받을 대상이 아니다.
+          if (link.pc.signalingState !== 'closed') throw err
+        }
       }),
     )
+    // 다른 참가자의 늦은 교체가 실패 후 복원 작업을 덮어쓰지 않도록 모두 기다린다.
+    const failed = results.find((result) => result.status === 'rejected')
+    if (failed?.status === 'rejected') throw failed.reason
   }
 
   remove(peerId: string) {
@@ -94,8 +101,15 @@ export class Mesh {
     }
     this.links.set(peerId, link)
 
-    for (const track of this.local.getAudioTracks()) pc.addTrack(track, this.local)
-    if (this.videoTrack) link.videoSender = pc.addTrack(this.videoTrack, this.local)
+    // 장치나 권한이 없어도 수신용 미디어 구간을 만들어 먼저 협상할 수 있어야 한다.
+    pc.addTransceiver(this.local.getAudioTracks()[0] ?? 'audio', {
+      direction: 'sendrecv',
+      streams: [this.local],
+    })
+    link.videoSender = pc.addTransceiver(this.videoTrack ?? 'video', {
+      direction: 'sendrecv',
+      streams: [this.local],
+    }).sender
 
     pc.onnegotiationneeded = async () => {
       try {

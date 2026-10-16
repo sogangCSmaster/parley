@@ -4,13 +4,13 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::net::{IpAddr, Ipv6Addr};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use axum::http::HeaderMap;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 pub const COOKIE_NAME: &str = "parley_session";
 const SESSION_TTL: Duration = Duration::from_secs(12 * 60 * 60);
@@ -153,7 +153,8 @@ impl Throttle {
     }
 
     fn finish(&mut self, client: IpAddr, username: &str, failed: bool) {
-        self.by_client.finish(&(client, username.to_owned()), failed);
+        self.by_client
+            .finish(&(client, username.to_owned()), failed);
         self.by_user.finish(&username.to_owned(), failed);
     }
 
@@ -185,7 +186,7 @@ pub struct Auth {
     accounts: HashMap<String, String>,
     sessions: Mutex<HashMap<String, Session>>,
     throttle: Mutex<Throttle>,
-    verify_slots: Semaphore,
+    verify_slots: Arc<Semaphore>,
     /// 없는 계정도 같은 시간이 걸리도록 비교에 쓰는 해시(계정 존재 여부를 응답 시간으로 알 수 없게).
     dummy_hash: String,
 }
@@ -197,7 +198,7 @@ impl Auth {
             accounts,
             sessions: Mutex::default(),
             throttle: Mutex::new(Throttle::new(MAX_TRACKED)),
-            verify_slots: Semaphore::new(VERIFY_CONCURRENCY),
+            verify_slots: Arc::new(Semaphore::new(VERIFY_CONCURRENCY)),
             dummy_hash,
         }
     }
@@ -219,6 +220,12 @@ impl Auth {
         if !is_valid_username(username) {
             return Err(LoginError::Invalid);
         }
+        // 대기열도 제한한다. 검증 슬롯이 없으면 시도 기록을 소비하지 않고 재시도를 요청한다.
+        let permit = self
+            .verify_slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| LoginError::Locked)?;
         let client = client_key(client);
         if !self
             .throttle
@@ -234,7 +241,7 @@ impl Auth {
             username,
             succeeded: false,
         };
-        if !self.verify(username, password).await {
+        if !self.verify(username, password, permit).await {
             return Err(LoginError::Invalid);
         }
         reservation.succeeded = true;
@@ -249,19 +256,20 @@ impl Auth {
         Ok(token)
     }
 
-    async fn verify(&self, username: &str, password: &str) -> bool {
+    async fn verify(&self, username: &str, password: &str, permit: OwnedSemaphorePermit) -> bool {
         if password.len() > MAX_PASSWORD_BYTES {
             return false;
         }
         let known = self.accounts.get(username);
         let hash = known.unwrap_or(&self.dummy_hash).clone();
         let password = password.to_owned();
-        let Ok(_permit) = self.verify_slots.acquire().await else {
-            return false;
-        };
-        let verified = tokio::task::spawn_blocking(move || verify_password(&password, &hash))
-            .await
-            .unwrap_or(false);
+        let verified = tokio::task::spawn_blocking(move || {
+            // HTTP 요청이 취소돼도 spawn_blocking은 계속되므로 실제 작업이 슬롯을 소유한다.
+            let _permit = permit;
+            verify_password(&password, &hash)
+        })
+        .await
+        .unwrap_or(false);
         verified && known.is_some()
     }
 
@@ -423,7 +431,9 @@ mod tests {
             LoginError::Invalid
         );
         assert_eq!(
-            auth.login(IP_A, "nobody", "correct horse").await.unwrap_err(),
+            auth.login(IP_A, "nobody", "correct horse")
+                .await
+                .unwrap_err(),
             LoginError::Invalid
         );
         assert_eq!(auth.session_user("not-a-token"), None);
@@ -453,7 +463,13 @@ mod tests {
             .iter()
             .filter(|r| matches!(r, Ok(Err(LoginError::Invalid))))
             .count();
-        assert_eq!(verified, MAX_FAILURES as usize);
+        assert!((1..=MAX_FAILURES as usize).contains(&verified));
+        for _ in verified..MAX_FAILURES as usize {
+            assert_eq!(
+                auth.login(IP_A, "host", "wrong").await,
+                Err(LoginError::Invalid)
+            );
+        }
         assert_eq!(
             auth.login(IP_A, "host", "correct horse").await.unwrap_err(),
             LoginError::Locked
@@ -492,21 +508,77 @@ mod tests {
 
     #[tokio::test]
     async fn per_username_ceiling_stops_attempts_spread_across_ips() {
-        let auth = Arc::new(auth_with("host", "correct horse"));
-        let ips = MAX_USER_FAILURES / MAX_FAILURES;
-        let attempts = (0..ips).flat_map(|i| {
+        let auth = auth_with("host", "correct horse");
+        for i in 0..MAX_USER_FAILURES / MAX_FAILURES {
             let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, i as u8));
-            let auth = auth.clone();
-            (0..MAX_FAILURES).map(move |_| {
-                let auth = auth.clone();
-                tokio::spawn(async move { auth.login(ip, "host", "wrong").await })
-            })
-        });
-        futures_util::future::join_all(attempts).await;
+            for _ in 0..MAX_FAILURES {
+                assert_eq!(
+                    auth.login(ip, "host", "wrong").await,
+                    Err(LoginError::Invalid)
+                );
+            }
+        }
         assert_eq!(
             auth.login(IP_B, "host", "correct horse").await.unwrap_err(),
             LoginError::Locked
         );
+    }
+
+    #[tokio::test]
+    async fn busy_verification_rejects_without_recording_a_password_failure() {
+        let auth = auth_with("host", "correct horse");
+        let slots = auth
+            .verify_slots
+            .clone()
+            .acquire_many_owned(VERIFY_CONCURRENCY as u32)
+            .await
+            .unwrap();
+        assert_eq!(
+            auth.login(IP_A, "host", "correct horse").await,
+            Err(LoginError::Locked)
+        );
+        assert!(auth.throttle.lock().unwrap().by_client.map.is_empty());
+        drop(slots);
+        assert!(auth.login(IP_A, "host", "correct horse").await.is_ok());
+    }
+
+    #[test]
+    fn cancelled_login_keeps_its_slot_until_the_blocking_job_finishes() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let auth = Arc::new(auth_with("host", "correct horse"));
+            let (release, hold) = std::sync::mpsc::channel();
+            let (started, ready) = tokio::sync::oneshot::channel();
+            let blocker = tokio::task::spawn_blocking(move || {
+                started.send(()).unwrap();
+                hold.recv().unwrap();
+            });
+            ready.await.unwrap();
+            let pending = tokio::spawn({
+                let auth = auth.clone();
+                async move { auth.login(IP_A, "host", "wrong").await }
+            });
+            while auth.verify_slots.available_permits() == VERIFY_CONCURRENCY {
+                tokio::task::yield_now().await;
+            }
+            pending.abort();
+            let _ = pending.await;
+            let remaining = auth.verify_slots.available_permits();
+            release.send(()).unwrap();
+            blocker.await.unwrap();
+            assert_eq!(remaining, VERIFY_CONCURRENCY - 1);
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while auth.verify_slots.available_permits() != VERIFY_CONCURRENCY {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+        });
     }
 
     #[test]
@@ -559,7 +631,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             axum::http::header::COOKIE,
-            "theme=dark; parley_session=abc123; other=1".parse().unwrap(),
+            "theme=dark; parley_session=abc123; other=1"
+                .parse()
+                .unwrap(),
         );
         assert_eq!(token_from_headers(&headers).as_deref(), Some("abc123"));
     }

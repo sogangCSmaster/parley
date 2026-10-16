@@ -44,8 +44,21 @@ impl FromRef<AppState> for Arc<Auth> {
     }
 }
 
+fn main() {
+    // Load before starting worker threads; environment writes must stay single-threaded.
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../.env");
+    if let Err(error) = dotenvy::from_path(path)
+        && !error.not_found()
+    {
+        // dotenv parse errors can contain the source line, including credentials.
+        eprintln!("Could not load root .env; check its syntax and permissions.");
+        std::process::exit(1);
+    }
+    run();
+}
+
 #[tokio::main]
-async fn main() {
+async fn run() {
     // `parley-server hash-password` : 표준입력의 비밀번호를 HOST_ACCOUNTS용 해시로 바꿔 출력한다.
     if std::env::args().nth(1).as_deref() == Some("hash-password") {
         let mut line = String::new();
@@ -130,11 +143,11 @@ async fn main() {
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await
-        .expect("server error");
+    .with_graceful_shutdown(async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+    .await
+    .expect("server error");
 }
 
 fn static_ice_credential(ice_servers: &Value) -> Option<&'static str> {

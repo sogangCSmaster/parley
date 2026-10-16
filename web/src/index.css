@@ -53,7 +53,7 @@ h1 { text-wrap: balance; }
 
 /* ── 흰 페이지 공통 (홈·로비·나감) ───────────── */
 .shell { min-height: 100%; display: flex; flex-direction: column; }
-.app-header { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 var(--space-5); }
+.app-header { position: relative; height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 var(--space-5); }
 .brand { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; font-size: 24px; font-weight: 800; letter-spacing: -0.05em; color: var(--brand-ink); text-decoration: none; }
 .brand-mark { flex: none; }
 
@@ -146,6 +146,7 @@ h1 { text-wrap: balance; }
 .header-actions { display: flex; align-items: center; gap: var(--space-2); }
 .header-user { display: flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); font-weight: 500; }
 .header-user .icon { font-size: 20px; }
+.header-error { position: absolute; right: var(--space-4); top: 100%; z-index: 40; max-width: calc(100% - 2 * var(--space-4)); padding: var(--space-3); margin: 0; background: var(--panel-bg); border-radius: 8px; box-shadow: 0 2px 8px rgb(0 0 0 / .15); }
 .auth { flex: 1; display: grid; place-items: center; padding: var(--space-5) var(--space-4) 64px; }
 .auth-card { width: min(400px, 100%); display: flex; flex-direction: column; gap: var(--space-5); }
 .auth-card h1 { font-size: 28px; letter-spacing: -0.025em; }
@@ -249,8 +250,8 @@ h1 { text-wrap: balance; }
   .panel { width: 100%; flex: 1; }
   .avatar { width: 48px; font-size: 22px; }
   .name { font-size: var(--text-xs); left: var(--space-2); bottom: var(--space-2); }
-  .bar { grid-template-columns: 1fr; justify-items: center; padding: 0 var(--space-4); }
-  .bar-left, .bar-right { display: none; }
+  .bar { grid-template-columns: auto auto; justify-content: center; gap: var(--space-2); padding: 0 var(--space-4); }
+  .bar-left, .bar-right .copy-link { display: none; }
   .home h1 { font-size: 30px; }
   .home .lead { font-size: var(--text-md); }
   .home-actions { margin-top: var(--space-6); }
