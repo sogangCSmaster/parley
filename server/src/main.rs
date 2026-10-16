@@ -25,6 +25,7 @@ use pipeline::Pipeline;
 use protocol::{ErrorCode, RoomSettings};
 use providers::Translator;
 use providers::gemini::{self, Gemini};
+use providers::live::{self, GeminiLive, SttTokens};
 use room::Rooms;
 
 #[derive(Clone)]
@@ -32,6 +33,8 @@ struct AppState {
     rooms: Arc<Rooms>,
     auth: Arc<Auth>,
     pipeline: Arc<Pipeline>,
+    /// 브라우저 음성 인식 토큰 발급. Gemini 키가 없으면 None.
+    stt: Option<Arc<dyn SttTokens>>,
     ice_servers: Arc<Value>,
     /// 로컬 http 개발에서만 false. 운영(https)에서는 반드시 true.
     cookie_secure: bool,
@@ -48,6 +51,12 @@ impl FromRef<AppState> for Arc<Rooms> {
 impl FromRef<AppState> for Arc<Pipeline> {
     fn from_ref(state: &AppState) -> Self {
         state.pipeline.clone()
+    }
+}
+
+impl FromRef<AppState> for Option<Arc<dyn SttTokens>> {
+    fn from_ref(state: &AppState) -> Self {
+        state.stt.clone()
     }
 }
 
@@ -137,24 +146,31 @@ async fn run() {
     let trusted_proxy = std::env::var("TRUSTED_PROXY").is_ok_and(|v| v == "1");
 
     // 번역 키는 서버에만 둔다. 없으면 자막은 원문만 확정된다.
-    let translator: Option<Arc<dyn Translator>> = match std::env::var("GEMINI_API_KEY") {
+    // 음성 인식 토큰도 같은 키로 발급하고, 번역기와 HTTP 연결을 공유한다.
+    let mut translator: Option<Arc<dyn Translator>> = None;
+    let mut stt: Option<Arc<dyn SttTokens>> = None;
+    match std::env::var("GEMINI_API_KEY") {
         Ok(key) if !key.trim().is_empty() => {
+            let key = key.trim().to_owned();
             let model = std::env::var("GEMINI_TRANSLATE_MODEL")
                 .unwrap_or_else(|_| gemini::DEFAULT_MODEL.into());
-            let gemini = Arc::new(Gemini::new(key.trim().to_owned(), model));
+            let gemini = Arc::new(Gemini::new(key.clone(), model));
+            let stt_model =
+                std::env::var("GEMINI_STT_MODEL").unwrap_or_else(|_| live::DEFAULT_MODEL.into());
+            stt = Some(Arc::new(GeminiLive::new(gemini.client(), key, stt_model)));
             let warm = gemini.clone();
             tokio::spawn(async move { warm.warm_up().await });
-            Some(gemini)
+            translator = Some(gemini);
         }
-        _ => {
-            tracing::warn!("GEMINI_API_KEY is not set: captions will show the original only");
-            None
-        }
-    };
+        _ => tracing::warn!(
+            "GEMINI_API_KEY is not set: no speech recognition, captions show the original only"
+        ),
+    }
     let rooms = Arc::new(Rooms::default());
 
     let state = AppState {
         pipeline: Arc::new(Pipeline::new(rooms.clone(), translator)),
+        stt,
         rooms,
         auth,
         ice_servers: Arc::new(ice_servers),

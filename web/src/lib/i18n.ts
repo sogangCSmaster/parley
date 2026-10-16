@@ -108,6 +108,8 @@ const en = {
   'captions.empty': 'Once the conversation starts, the original and its translation will appear here.',
   'captions.translating': 'Translating…',
   'captions.failed': 'A caption couldn’t be translated, so only the original is shown.',
+  'captions.sttPaused': 'Your speech isn’t being captioned right now. Reconnecting…',
+  'captions.sttUnavailable': 'Speech recognition isn’t available here, so your voice won’t be captioned.',
 } as const
 
 export type MessageKey = keyof typeof en
@@ -216,6 +218,8 @@ const ko: Messages = {
   'captions.empty': '대화가 시작되면 여기에 원문과 번역이 함께 표시돼요.',
   'captions.translating': '번역 중…',
   'captions.failed': '번역하지 못한 자막은 원문만 표시했어요.',
+  'captions.sttPaused': '지금은 내 말이 자막으로 나오지 않아요. 다시 연결하는 중…',
+  'captions.sttUnavailable': '여기서는 음성 인식을 쓸 수 없어서 내 말은 자막으로 나오지 않아요.',
 }
 
 const ja: Messages = {
@@ -321,6 +325,8 @@ const ja: Messages = {
   'captions.empty': '会話が始まると、ここに原文と翻訳が一緒に表示されます。',
   'captions.translating': '翻訳中…',
   'captions.failed': '翻訳できなかった字幕は原文のみ表示しています。',
+  'captions.sttPaused': '現在、あなたの発言は字幕になっていません。再接続しています…',
+  'captions.sttUnavailable': 'ここでは音声認識を使えないため、あなたの発言は字幕になりません。',
 }
 
 const DICTS = { en, ko, ja } as const

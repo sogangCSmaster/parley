@@ -11,6 +11,8 @@ import { Mesh, type SignalData } from '../lib/mesh'
 import type { Prefs } from '../lib/prefs'
 import { Signaling } from '../lib/signaling'
 import { ScreenShare } from '../lib/screen'
+import { startSpeech, type Speech } from '../lib/speech'
+import type { Grant, SegCounter, SttStatus, TokenError } from '../lib/stt'
 import { CaptionPanel } from './CaptionPanel'
 import { Header } from './Header'
 import { KnockPrompts } from './KnockPrompts'
@@ -57,10 +59,15 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const [captions, setCaptions] = useState<Caption[]>([])
   // 나간 참가자의 지난 자막에도 이름이 보이도록 이름은 지우지 않고 모은다.
   const [names, setNames] = useState<Record<string, string>>({})
+  const [sttStatus, setSttStatus] = useState<SttStatus | null>(null)
 
   const sigRef = useRef<Signaling | null>(null)
   const meshRef = useRef<Mesh | null>(null)
   const screenRef = useRef<ScreenShare | null>(null)
+  const speechRef = useRef<Speech | null>(null)
+  // STT 구간 번호는 서버 연결 하나에서 계속 늘어나야 한다(음성 인식이 꺼졌다 켜져도).
+  const segRef = useRef<SegCounter>({ next: 0 })
+  const tokenRef = useRef<{ resolve: (g: Grant) => void; reject: (e: TokenError) => void } | null>(null)
   const onMediaChangeRef = useRef(onMediaChange)
   useEffect(() => { onMediaChangeRef.current = onMediaChange }, [onMediaChange])
   // 입장 메시지는 마운트 시점 값으로 한 번만 보낸다. 이후 변경은 lang/media 메시지로 보낸다.
@@ -70,6 +77,10 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   useEffect(() => {
     mediaRef.current = media
   }, [media])
+  const langRef = useRef(prefs.lang)
+  useEffect(() => {
+    langRef.current = prefs.lang
+  }, [prefs.lang])
 
   useEffect(() => {
     let disposed = false
@@ -141,8 +152,16 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
         case 'caption':
           setCaptions((list) => applyCaption(list, msg, Date.now()))
           break
+        case 'stt_token':
+          tokenRef.current?.resolve(msg)
+          tokenRef.current = null
+          break
         case 'notice':
           if (msg.code === 'translation_failed') setToast({ key: 'captions.failed' })
+          else {
+            tokenRef.current?.reject(msg.code === 'stt_unavailable' ? 'unavailable' : 'failed')
+            tokenRef.current = null
+          }
           break
         case 'error': {
           const fatal = FATAL_ERRORS[msg.code]
@@ -169,6 +188,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
       else setStatus({ kind: 'error', message: 'room.disconnected' })
     })
     sigRef.current = sig
+    segRef.current = { next: 0 }
 
     fetch('/api/config')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`))))
@@ -200,6 +220,49 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   }, [toast])
 
   const joined = status.kind === 'joined'
+  const micTrack = local.getAudioTracks()[0] ?? null
+  // 내 말은 내 브라우저가 직접 인식한다. 번역이 켜진 방에 입장해 있는 동안만.
+  const sttEnabled = joined && !disconnected && settings.translation && !!micTrack
+
+  useEffect(() => {
+    const sig = sigRef.current
+    if (!sttEnabled || !micTrack || !sig) return
+    const speech = startSpeech({
+      track: micTrack,
+      lang: langRef.current,
+      mic: mediaRef.current.mic,
+      seg: segRef.current,
+      requestToken: () =>
+        new Promise<Grant>((resolve, reject) => {
+          tokenRef.current?.reject('failed')
+          const waiter = { resolve, reject }
+          tokenRef.current = waiter
+          sig.send({ t: 'stt_token' })
+          setTimeout(() => {
+            if (tokenRef.current !== waiter) return
+            tokenRef.current = null
+            reject('failed')
+          }, 10_000)
+        }),
+      sendStt: (seg, text, final) => sig.send({ t: 'stt', seg, text, final }),
+      onStatus: setSttStatus,
+    })
+    speechRef.current = speech
+    return () => {
+      speech.close()
+      speechRef.current = null
+      tokenRef.current = null
+      setSttStatus(null)
+    }
+  }, [sttEnabled, micTrack])
+
+  useEffect(() => {
+    speechRef.current?.setMic(media.mic)
+  }, [media.mic, sttEnabled])
+
+  useEffect(() => {
+    speechRef.current?.setLang(prefs.lang)
+  }, [prefs.lang, sttEnabled])
   const showPanel = joined && panelOpen && (settings.translation || isHost)
   const selfStream = useMemo(() => (screenTrack ? new MediaStream([screenTrack]) : local), [screenTrack, local])
 
@@ -341,6 +404,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             translation={settings.translation}
             isHost={isHost}
             captions={captions}
+            sttStatus={sttStatus}
             speakerName={(id) => (joined && id === status.selfId ? t('room.you', { name: prefs.name.trim() }) : (names[id] ?? ''))}
             onPrefsChange={changePrefs}
             onTranslationChange={changeTranslation}

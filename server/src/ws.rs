@@ -13,7 +13,8 @@ use tokio::sync::{Notify, mpsc};
 
 use crate::auth::{self, Auth};
 use crate::pipeline::{self, Pipeline, SpeakerHandle};
-use crate::protocol::{ClientMsg, ErrorCode, PeerId, ServerMsg};
+use crate::protocol::{ClientMsg, ErrorCode, NoticeCode, PeerId, ServerMsg};
+use crate::providers::live::SttTokens;
 use crate::room::{self, JoinOutcome, JoinRequest, Outbox, Rooms};
 
 /// SDP는 수 KB 수준이다. 이보다 큰 메시지는 거부한다.
@@ -26,6 +27,9 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 /// STT 중간 결과는 약 0.5초마다 온다. 이보다 훨씬 잦으면 버린다(번역 비용 폭주 방지).
 const STT_PER_SEC: f64 = 5.0;
 const STT_BURST: f64 = 10.0;
+/// 음성 인식 세션은 3분 넘게 조용하거나 언어가 바뀔 때 새로 연다. 평소 몇 분에 1개면 충분하다.
+const STT_TOKENS_PER_SEC: f64 = 1.0 / 30.0;
+const STT_TOKEN_BURST: f64 = 4.0;
 
 pub async fn handler(
     ws: WebSocketUpgrade,
@@ -33,6 +37,7 @@ pub async fn handler(
     State(rooms): State<Arc<Rooms>>,
     State(auth): State<Arc<Auth>>,
     State(pipeline): State<Arc<Pipeline>>,
+    State(stt): State<Option<Arc<dyn SttTokens>>>,
 ) -> Response {
     // 다른 사이트의 페이지가 사용자의 쿠키로 연결하는 것(cross-site WebSocket hijacking)을 막는다.
     if !same_origin(&headers) {
@@ -42,7 +47,7 @@ pub async fn handler(
         auth::token_from_headers(&headers).filter(|token| auth.session_user(token).is_some());
     ws.max_message_size(MAX_MESSAGE_BYTES)
         .max_frame_size(MAX_MESSAGE_BYTES)
-        .on_upgrade(move |socket| run(socket, rooms, pipeline, auth, token))
+        .on_upgrade(move |socket| run(socket, rooms, pipeline, stt, auth, token))
 }
 
 /// 브라우저가 보낸 Origin의 host:port가 요청 Host와 같아야 한다. Origin이 없으면 거부.
@@ -57,7 +62,14 @@ fn same_origin(headers: &HeaderMap) -> bool {
     }
 }
 
-async fn run(socket: WebSocket, rooms: Arc<Rooms>, pipeline: Arc<Pipeline>, auth: Arc<Auth>, token: Option<String>) {
+async fn run(
+    socket: WebSocket,
+    rooms: Arc<Rooms>,
+    pipeline: Arc<Pipeline>,
+    stt: Option<Arc<dyn SttTokens>>,
+    auth: Arc<Auth>,
+    token: Option<String>,
+) {
     let (mut sink, mut stream) = socket.split();
     let (sender, mut rx) = mpsc::channel::<ServerMsg>(OUTBOX_CAPACITY);
     let disconnect = Arc::new(Notify::new());
@@ -91,6 +103,7 @@ async fn run(socket: WebSocket, rooms: Arc<Rooms>, pipeline: Arc<Pipeline>, auth
     // 첫 STT 메시지에서 띄운다. 연결이 끝나 버려지면 진행 중 번역도 멈춘다.
     let mut speaker: Option<SpeakerHandle> = None;
     let mut stt_limit = TokenBucket::new(STT_PER_SEC, STT_BURST);
+    let mut stt_token_limit = TokenBucket::new(STT_TOKENS_PER_SEC, STT_TOKEN_BURST);
 
     let connected_at = tokio::time::Instant::now();
     let mut last_seen = connected_at;
@@ -204,6 +217,37 @@ async fn run(socket: WebSocket, rooms: Arc<Rooms>, pipeline: Arc<Pipeline>, auth
                     }
                     Ok(())
                 }
+            }
+            (ClientMsg::SttToken, Some((room, id))) => {
+                match (&stt, rooms.stt_lang(room, id)) {
+                    (Some(issuer), Some(lang)) if stt_token_limit.take(Instant::now()) => {
+                        // 발급은 Gemini 왕복(수백 ms)이라 연결 루프를 막지 않도록 따로 돌린다.
+                        let issue = issuer.issue(&lang);
+                        let tx = tx.clone();
+                        tokio::spawn(async move {
+                            let msg = match issue.await {
+                                Ok(grant) => ServerMsg::SttToken {
+                                    token: grant.token,
+                                    model: grant.model,
+                                    lang,
+                                },
+                                Err(err) => {
+                                    tracing::warn!(%err, "stt token failed");
+                                    ServerMsg::Notice { code: NoticeCode::SttFailed }
+                                }
+                            };
+                            tx.send(msg);
+                        });
+                    }
+                    (Some(_), Some(_)) => tx.send(ServerMsg::Notice {
+                        code: NoticeCode::SttFailed,
+                    }),
+                    // 키가 없거나, 입장 전이거나, 번역이 꺼진 방
+                    _ => tx.send(ServerMsg::Notice {
+                        code: NoticeCode::SttUnavailable,
+                    }),
+                }
+                Ok(())
             }
         };
         if let Err(code) = result {
@@ -326,6 +370,13 @@ mod tests {
 
     impl TestServer {
         async fn start() -> Self {
+            Self::start_with(Some(Arc::new(
+                crate::providers::live::testing::FakeTokens::default(),
+            )))
+            .await
+        }
+
+        async fn start_with(stt: Option<Arc<dyn SttTokens>>) -> Self {
             let rooms = Arc::new(Rooms::default());
             let auth = Arc::new(Auth::new(std::collections::HashMap::from([(
                 "host".into(),
@@ -333,6 +384,7 @@ mod tests {
             )])));
             let state = crate::AppState {
                 pipeline: Arc::new(Pipeline::new(rooms.clone(), None)),
+                stt,
                 rooms: rooms.clone(),
                 auth: auth.clone(),
                 ice_servers: Arc::new(serde_json::json!([])),
@@ -419,6 +471,105 @@ mod tests {
             },
         )
         .await;
+    }
+
+    async fn welcomed(server: &TestServer, room: &str) -> TestSocket {
+        let token = server.token().await;
+        let mut socket = server.connect(&token).await;
+        join(&mut socket, room).await;
+        assert!(matches!(
+            next_message(&mut socket).await,
+            Some(ServerMsg::Welcome { .. })
+        ));
+        socket
+    }
+
+    #[tokio::test]
+    async fn stt_tokens_go_only_to_admitted_participants_in_translated_rooms() {
+        let server = TestServer::start().await;
+        let room = server.room();
+        let mut host = welcomed(&server, &room).await;
+        send(&mut host, ClientMsg::SttToken).await;
+        match next_message(&mut host).await {
+            Some(ServerMsg::SttToken { token, model, lang }) => {
+                assert_eq!(token, "auth_tokens/fake-en");
+                assert_eq!(model, "models/gemini-3.5-transcribe-live");
+                assert_eq!(lang, "en");
+            }
+            other => panic!("expected stt_token, got {other:?}"),
+        }
+
+        // 대기 중인 게스트(쿠키 없음)는 받지 못한다.
+        let mut guest = server.connect("no-session").await;
+        join(&mut guest, &room).await;
+        assert!(matches!(next_message(&mut guest).await, Some(ServerMsg::Waiting)));
+        send(&mut guest, ClientMsg::SttToken).await;
+        assert!(matches!(
+            next_message(&mut guest).await,
+            Some(ServerMsg::Notice { code: NoticeCode::SttUnavailable })
+        ));
+
+        // 번역을 끄면 주최자도 받지 못한다.
+        send(
+            &mut host,
+            ClientMsg::Settings {
+                settings: crate::protocol::RoomSettings { translation: false },
+            },
+        )
+        .await;
+        loop {
+            match next_message(&mut host).await {
+                Some(ServerMsg::Settings { .. }) => break,
+                Some(_) => continue,
+                None => panic!("closed"),
+            }
+        }
+        send(&mut host, ClientMsg::SttToken).await;
+        assert!(matches!(
+            next_message(&mut host).await,
+            Some(ServerMsg::Notice { code: NoticeCode::SttUnavailable })
+        ));
+    }
+
+    #[tokio::test]
+    async fn stt_tokens_are_rate_limited_and_failures_are_retryable() {
+        let server = TestServer::start().await;
+        let room = server.room();
+        let mut socket = welcomed(&server, &room).await;
+        for _ in 0..STT_TOKEN_BURST as usize {
+            send(&mut socket, ClientMsg::SttToken).await;
+            assert!(matches!(
+                next_message(&mut socket).await,
+                Some(ServerMsg::SttToken { .. })
+            ));
+        }
+        send(&mut socket, ClientMsg::SttToken).await;
+        assert!(matches!(
+            next_message(&mut socket).await,
+            Some(ServerMsg::Notice { code: NoticeCode::SttFailed })
+        ));
+
+        let failing = crate::providers::live::testing::FakeTokens {
+            fail: true,
+            ..Default::default()
+        };
+        let server = TestServer::start_with(Some(Arc::new(failing))).await;
+        let room = server.room();
+        let mut socket = welcomed(&server, &room).await;
+        send(&mut socket, ClientMsg::SttToken).await;
+        assert!(matches!(
+            next_message(&mut socket).await,
+            Some(ServerMsg::Notice { code: NoticeCode::SttFailed })
+        ));
+
+        let server = TestServer::start_with(None).await;
+        let room = server.room();
+        let mut socket = welcomed(&server, &room).await;
+        send(&mut socket, ClientMsg::SttToken).await;
+        assert!(matches!(
+            next_message(&mut socket).await,
+            Some(ServerMsg::Notice { code: NoticeCode::SttUnavailable })
+        ));
     }
 
     #[tokio::test]

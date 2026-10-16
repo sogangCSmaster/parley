@@ -412,6 +412,13 @@ impl Rooms {
         })
     }
 
+    /// 음성 인식 토큰을 받을 수 있으면 그 참가자의 언어. 입장한 참가자이고 번역이 켜진 방이어야 한다.
+    pub fn stt_lang(&self, code: &str, id: &str) -> Option<String> {
+        let rooms = self.rooms.lock().unwrap();
+        let room = rooms.get(code).filter(|r| r.settings.translation)?;
+        room.members.get(id).map(|m| m.peer.lang.clone())
+    }
+
     /// 오래 빈 방을 지운다(주기 작업).
     pub fn sweep(&self, now: Instant) {
         self.rooms.lock().unwrap().retain(|_, r| {

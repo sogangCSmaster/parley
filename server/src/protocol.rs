@@ -85,6 +85,9 @@ pub enum ClientMsg {
         #[serde(rename = "final")]
         is_final: bool,
     },
+    /// 음성 인식 세션 하나를 열 1회용 토큰을 요청한다. 입장했고 번역이 켜진 방에서만 발급된다.
+    /// 답은 `stt_token`, 또는 `notice`(`stt_unavailable` / `stt_failed`)다.
+    SttToken,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -142,6 +145,13 @@ pub enum ServerMsg {
         is_final: bool,
         rev: u32,
     },
+    /// Gemini Live `BidiGenerateContentConstrained`에 `access_token`으로 쓰는 1회용 토큰.
+    /// 모델·전사 언어(`lang`)·수동 활동 모드가 토큰에 잠겨 있다. 받은 즉시(1분 안에) 세션을 열어야 한다.
+    SttToken {
+        token: String,
+        model: String,
+        lang: String,
+    },
     Notice {
         code: NoticeCode,
     },
@@ -170,4 +180,8 @@ pub enum ErrorCode {
 pub enum NoticeCode {
     /// 번역에 실패해 원문만 확정했다.
     TranslationFailed,
+    /// 이 서버(또는 지금 방 상태)에서는 음성 인식을 쓸 수 없다. 다시 요청하지 않는다.
+    SttUnavailable,
+    /// 음성 인식 토큰을 지금 받지 못했다(일시적 오류·요청 과다). 잠시 뒤 다시 요청한다.
+    SttFailed,
 }
