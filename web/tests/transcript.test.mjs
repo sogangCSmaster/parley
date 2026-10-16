@@ -43,16 +43,16 @@ test('transcript text shows speaker, time, original and translation', () => {
     { seg: 'b', speaker: 'p2', at: Date.UTC(2026, 9, 16, 13, 6), src_lang: 'ja', src: 'はい', tgt_lang: 'ja', text: null },
   ]
   const text = formatTranscript(lines, {
-    title: 'Parley 회의 자막', code: 'abcd-efgh-ijkm', savedAt: new Date(Date.UTC(2026, 9, 16, 14)), locale: 'ko',
+    title: 'Tolkmeet 회의 자막', code: 'abcd-efgh-ijkm', savedAt: new Date(Date.UTC(2026, 9, 16, 14)), locale: 'ko',
     speakerName: (id) => (id === 'me' ? '유승재 (나)' : 'Sakura'),
   })
-  assert.match(text, /^Parley 회의 자막 · abcd-efgh-ijkm\n/)
+  assert.match(text, /^Tolkmeet 회의 자막 · abcd-efgh-ijkm\n/)
   assert.match(text, /\[\d\d:05\] 유승재 \(나\)\n\(ko\) 안녕하세요\n\(ja\) こんにちは/)
   assert.match(text, /\[\d\d:06\] Sakura\n\(ja\) はい\n\n?$/, 'no translation row when there is none')
 })
 
 test('file name uses the meeting code and local time', () => {
-  assert.equal(transcriptFileName('abcd-efgh-ijkm', new Date(2026, 9, 16, 9, 5)), 'parley-abcd-efgh-ijkm-20261016-0905.txt')
+  assert.equal(transcriptFileName('abcd-efgh-ijkm', new Date(2026, 9, 16, 9, 5)), 'tolkmeet-abcd-efgh-ijkm-20261016-0905.txt')
 })
 
 test('a meeting that crosses midnight shows dates where the day changes', () => {

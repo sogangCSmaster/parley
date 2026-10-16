@@ -1,4 +1,5 @@
 import { useI18n } from '../lib/i18n'
+import { DemoFace, type Face } from './DemoFaces'
 import type { MeetingKind } from './NewMeetingDialog'
 
 /**
@@ -16,12 +17,10 @@ export function KindPreview({ kind }: { kind: MeetingKind }) {
   )
 }
 
-function Tile({ initial, name, color, speaking }: { initial: string; name: string; color: string; speaking?: boolean }) {
+function Tile({ face, name, speaking }: { face: Face; name: string; speaking?: boolean }) {
   return (
     <div className={`kp-tile${speaking ? ' speaking' : ''}`}>
-      <span className="kp-avatar" style={{ background: color }}>
-        {initial}
-      </span>
+      <DemoFace who={face} />
       <span className="kp-name">{name}</span>
     </div>
   )
@@ -38,34 +37,27 @@ function Controls() {
   )
 }
 
+// 홈 데모처럼 민준(한국어)이 보는 회의 화면. 자막은 실제 패널처럼 원문 다음 줄에 번역.
 function Global() {
   const { t } = useI18n()
   return (
     <div className="kp-stage kp-split">
       <div className="kp-tiles">
-        <Tile initial="さ" name="さくら" color="#C2381A" speaking />
-        <Tile initial="민" name="민준" color="#0E7F6A" />
+        <Tile face="sakura" name="さくら" speaking />
+        <Tile face="minjun" name={t('room.you', { name: '민준' })} />
         <Controls />
       </div>
       <div className="kp-panel">
         <b className="kp-panel-title">{t('captions.title')}</b>
         <div className="kp-entry">
           <small>さくら</small>
-          <p>
-            <em>JA</em>私たちの投資チームは4人です。
-          </p>
-          <p className="tr">
-            <em>KO</em>저희 투자팀은 4명이에요.
-          </p>
+          <p lang="ja">私たちの投資チームは4人です。</p>
+          <p lang="ko">저희 투자팀은 4명이에요.</p>
         </div>
         <div className="kp-entry">
-          <small>민준</small>
-          <p>
-            <em>KO</em>어떤 분야에 투자하세요?
-          </p>
-          <p className="tr">
-            <em>JA</em>どの分野に投資していますか？
-          </p>
+          <small>{t('room.you', { name: '민준' })}</small>
+          <p lang="ko">어떤 분야에 투자하세요?</p>
+          <p lang="ja">どの分野に投資していますか？</p>
         </div>
       </div>
     </div>
@@ -73,11 +65,12 @@ function Global() {
 }
 
 function Standard() {
+  const { t } = useI18n()
   return (
     <div className="kp-stage">
       <div className="kp-tiles two">
-        <Tile initial="민" name="민준" color="#0E7F6A" speaking />
-        <Tile initial="지" name="지은" color="#5B5F68" />
+        <Tile face="sakura" name="지은" speaking />
+        <Tile face="minjun" name={t('room.you', { name: '민준' })} />
       </div>
       <Controls />
     </div>

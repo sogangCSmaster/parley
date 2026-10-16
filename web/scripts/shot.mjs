@@ -60,9 +60,9 @@ const context = await browser.newContext({
 await context.addInitScript(
   ([loc]) => {
     try {
-      localStorage.setItem('parley.locale', loc)
-      if (!localStorage.getItem('parley.prefs')) {
-        localStorage.setItem('parley.prefs', JSON.stringify({ name: 'AI Tester', lang: loc, partnerLang: loc === 'ko' ? 'ja' : 'ko' }))
+      localStorage.setItem('tolkmeet.locale', loc)
+      if (!localStorage.getItem('tolkmeet.prefs')) {
+        localStorage.setItem('tolkmeet.prefs', JSON.stringify({ name: 'AI Tester', lang: loc, partnerLang: loc === 'ko' ? 'ja' : 'ko' }))
       }
     } catch {
       // 저장소가 막혀도 캡처는 계속한다

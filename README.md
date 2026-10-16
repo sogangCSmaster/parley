@@ -1,8 +1,8 @@
-# parley
+# tolkmeet
 
 Open-source video meetings with context-aware multilingual captions powered by Google Gemini.
 
-Parley uses **Google Gemini as its only AI provider**, with one API key configured by the server operator. Video, audio and screen sharing use peer-to-peer WebRTC.
+Tolkmeet uses **Google Gemini as its only AI provider**, with one API key configured by the server operator. Video, audio and screen sharing use peer-to-peer WebRTC.
 
 ## Screenshots
 
@@ -11,8 +11,6 @@ Parley uses **Google Gemini as its only AI provider**, with one API key configur
 | ![Meeting room: two participants, caption panel with the original and the translation](docs/screenshots/meeting.jpg) | ![Live captions screen on a tablet: each sentence's original in small text and the translation in large text](docs/screenshots/live-captions.jpg) |
 | **Home** | **New meeting: pick a kind and see what it looks like** |
 | ![Home with the live caption demo](docs/screenshots/home.jpg) | ![New meeting dialog with a preview of the selected kind](docs/screenshots/new-meeting.jpg) |
-
-Captured from the running app with real Gemini recognition and translation (speech played through a fake microphone).
 
 ## Current status
 
@@ -96,7 +94,7 @@ Server environment variables:
 | `GEMINI_STT_MODEL` | `gemini-3.5-transcribe-live` | Speech recognition model, locked into each browser token |
 | `TRUSTED_PROXY` | (unset) | Set to `1` only behind a reverse proxy (Caddy) that sets `X-Forwarded-For`; login throttling then uses its last hop as the client IP. Otherwise the socket peer address is used |
 
-Per-step translation latency (first token, total, STT → translation) is logged at debug level: `RUST_LOG=info,parley_server::pipeline=debug`. Caption text is never logged.
+Per-step translation latency (first token, total, STT → translation) is logged at debug level: `RUST_LOG=info,tolkmeet_server::pipeline=debug`. Caption text is never logged.
 
 Protocol types are defined in `server/src/protocol.rs`; `cargo test --manifest-path server/Cargo.toml` regenerates `web/src/protocol/*.ts`.
 
@@ -110,7 +108,7 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node web/tests/browser-
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node web/tests/browser-mesh.mjs
 ```
 
-To check the real speech path (fake microphone playing a WAV → Gemini Live → translated captions, with per-step timings), run the app with a Gemini key and:
+To check the real speech path (a WAV played as the microphone → Gemini Live → translated captions, with per-step timings), run the app with a Gemini key and:
 
 ```bash
 node web/tests/browser-stt.mjs speech.wav --lang ko --partner ja
@@ -124,6 +122,6 @@ These scripts check waiting-room disconnects, failed admissions, mobile caption 
 
 Copyright (C) 2026 Yoo Seung Jae
 
-Parley is free software under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
+Tolkmeet is free software under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
 If you run a modified version as a network service, you must offer its source code to the users of that service.
 Third-party material is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

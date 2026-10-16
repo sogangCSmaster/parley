@@ -117,7 +117,7 @@ const en = {
   'talk.notTalkRoom': 'This code isn’t an in-person conversation. Create one from the home screen.',
   'talk.noMic': 'Microphone isn’t available. Check the browser’s permission.',
   'home.guestHint': 'Got a meeting link? Open it, or enter the code here.',
-  'home.openSource': 'Parley is open source (AGPL-3.0).',
+  'home.openSource': 'Tolkmeet is open source (AGPL-3.0).',
   'home.sourceCode': 'View source code',
   'lobby.askToJoin': 'Ask to join',
   'room.notFound': 'This meeting doesn’t exist or has already ended.',
@@ -137,7 +137,7 @@ const en = {
   'captions.download': 'Save captions',
   'captions.participant': 'Participant',
   'captions.saveNotice': 'Captions aren’t stored on the server. Anyone in the meeting can save the captions on their own screen as a file.',
-  'transcript.title': 'Parley meeting captions',
+  'transcript.title': 'Tolkmeet meeting captions',
   'captions.close': 'Close captions panel',
   'captions.empty': 'Once the conversation starts, the original and its translation will appear here.',
   'captions.translating': 'Translating…',
@@ -262,7 +262,7 @@ const ko: Messages = {
   'talk.notTalkRoom': '이 코드는 대면 대화가 아니에요. 홈에서 새로 만들어 주세요.',
   'talk.noMic': '마이크를 쓸 수 없어요. 브라우저 권한을 확인해 주세요.',
   'home.guestHint': '회의 링크를 받으셨나요? 링크를 열거나 코드를 입력하세요.',
-  'home.openSource': 'Parley는 오픈 소스예요(AGPL-3.0).',
+  'home.openSource': 'Tolkmeet은 오픈 소스예요(AGPL-3.0).',
   'home.sourceCode': '소스 코드 보기',
   'lobby.askToJoin': '참여 요청하기',
   'room.notFound': '없는 회의이거나 이미 끝난 회의예요.',
@@ -282,7 +282,7 @@ const ko: Messages = {
   'captions.download': '자막 저장',
   'captions.participant': '참가자',
   'captions.saveNotice': '자막은 서버에 남지 않아요. 참가자는 자기 화면의 자막을 파일로 저장할 수 있어요.',
-  'transcript.title': 'Parley 회의 자막',
+  'transcript.title': 'Tolkmeet 회의 자막',
   'captions.close': '자막 패널 닫기',
   'captions.empty': '대화가 시작되면 여기에 원문과 번역이 함께 표시돼요.',
   'captions.translating': '번역 중…',
@@ -404,7 +404,7 @@ const ja: Messages = {
   'talk.notTalkRoom': 'このコードは対面会話ではありません。ホーム画面から新しく作成してください。',
   'talk.noMic': 'マイクを使用できません。ブラウザの許可を確認してください。',
   'home.guestHint': '会議リンクを受け取りましたか？リンクを開くか、コードを入力してください。',
-  'home.openSource': 'Parleyはオープンソースです（AGPL-3.0）。',
+  'home.openSource': 'Tolkmeetはオープンソースです（AGPL-3.0）。',
   'home.sourceCode': 'ソースコードを見る',
   'lobby.askToJoin': '参加をリクエスト',
   'room.notFound': '存在しない会議か、すでに終了した会議です。',
@@ -424,7 +424,7 @@ const ja: Messages = {
   'captions.download': '字幕を保存',
   'captions.participant': '参加者',
   'captions.saveNotice': '字幕はサーバーに残りません。参加者は自分の画面の字幕をファイルに保存できます。',
-  'transcript.title': 'Parley 会議字幕',
+  'transcript.title': 'Tolkmeet 会議字幕',
   'captions.close': '字幕パネルを閉じる',
   'captions.empty': '会話が始まると、ここに原文と翻訳が一緒に表示されます。',
   'captions.translating': '翻訳中…',
@@ -442,7 +442,7 @@ export const LOCALES: { code: Locale; name: string }[] = [
   { code: 'ja', name: '日本語' },
 ]
 
-const STORAGE_KEY = 'parley.locale'
+const STORAGE_KEY = 'tolkmeet.locale'
 
 function detect(): Locale {
   try {

@@ -83,7 +83,7 @@ fn main() {
 
 #[tokio::main]
 async fn run() {
-    // `parley-server hash-password` : 표준입력의 비밀번호를 HOST_ACCOUNTS용 해시로 바꿔 출력한다.
+    // `tolkmeet-server hash-password` : 표준입력의 비밀번호를 HOST_ACCOUNTS용 해시로 바꿔 출력한다.
     if std::env::args().nth(1).as_deref() == Some("hash-password") {
         let mut line = String::new();
         std::io::stdin()
@@ -96,7 +96,7 @@ async fn run() {
         return;
     }
 
-    // `parley-server dev` : 개발용(테스트 계정 자동 생성, http 쿠키). loopback 바인딩에서만 허용.
+    // `tolkmeet-server dev` : 개발용(테스트 계정 자동 생성, http 쿠키). loopback 바인딩에서만 허용.
     let dev_mode = std::env::args().nth(1).as_deref() == Some("dev");
 
     tracing_subscriber::fmt()

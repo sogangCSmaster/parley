@@ -62,7 +62,6 @@ h1 { text-wrap: balance; }
 
 
 
-@keyframes demo-pulse { from { transform: scale(.9); opacity: .7; } to { transform: scale(1.25); opacity: 0; } }
 .demo-wave { display: inline-flex; align-items: center; gap: 2px; height: 10px; }
 .demo-wave i { width: 2px; height: 100%; border-radius: 1px; background: var(--brand-accent); animation: demo-wave .8s ease-in-out infinite; }
 .demo-wave i:nth-child(2) { animation-delay: .15s; }
@@ -73,7 +72,7 @@ h1 { text-wrap: balance; }
 @keyframes demo-enter { from { opacity: 0; transform: translateY(6px); } }
 .demo-caret { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -0.15em; background: var(--brand-accent); animation: demo-blink .9s steps(1) infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .demo-wave i, .demo-caret, .demo-tile.speaking .demo-avatar::after, .demo-entry { animation: none; }
+  .demo-wave i, .demo-caret, .demo-tile.speaking .demo-mouth, .demo-entry { animation: none; }
 }
 
 /* ── 홈: 좌측 소개·입력, 우측 라이브 데모 ── */
@@ -93,26 +92,26 @@ h1 { text-wrap: balance; }
 /* 라이브 데모: 상자 높이는 고정, 자막이 쌓이면 자막 영역 안에서만 스크롤된다. */
 .demo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 10px; height: 440px; padding: 12px; border-radius: 24px; background: var(--stage-bg); box-shadow: 0 2px 4px rgb(22 24 29 / .06), 0 32px 64px -12px rgb(22 24 29 / .35); }
 .demo-stage { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.demo-tile { position: relative; flex: 1; min-height: 0; border-radius: 14px; background: var(--tile-bg); display: grid; place-items: center; transition: box-shadow 200ms; }
-.demo-tile.speaking { box-shadow: inset 0 0 0 2px var(--brand-accent); }
-.demo-avatar { position: relative; width: 52px; height: 52px; border-radius: var(--radius-full); display: grid; place-items: center; color: #fff; font-size: var(--text-xl); font-weight: 700; }
-.demo-tile.speaking .demo-avatar::after { content: ""; position: absolute; inset: -6px; border-radius: inherit; border: 2px solid var(--brand-accent); animation: demo-pulse 1.2s ease-out infinite; }
-.demo-name { position: absolute; left: 10px; bottom: 10px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: var(--radius-full); background: rgb(22 24 29 / .55); color: var(--on-stage); font-size: 12px; font-weight: 600; }
+.demo-tile { position: relative; flex: 1; min-height: 0; overflow: hidden; border-radius: 14px; background: var(--tile-bg); }
+/* 그림은 칸을 꽉 채우고, 말하는 테두리(inset 그림자)는 그림 위에 보이도록 ::after로 다시 그린다. */
+.demo-face { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.demo-tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 2px var(--brand-accent); pointer-events: none; opacity: 0; transition: opacity 200ms; }
+.demo-tile.speaking::after { opacity: 1; }
+.demo-mouth { transform-box: fill-box; transform-origin: center; }
+.demo-tile.speaking .demo-mouth { animation: demo-talk .32s ease-in-out infinite alternate; }
+@keyframes demo-talk { to { transform: scaleY(2.6); } }
+.demo-name { position: absolute; z-index: 1; left: 10px; bottom: 10px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: var(--radius-full); background: rgb(22 24 29 / .55); color: var(--on-stage); font-size: 12px; font-weight: 600; }
 .demo-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-radius: 14px; background: var(--panel-bg); }
+/* 실제 자막 패널 머리(제목 + 언어)를 줄여 그린다. */
+.demo-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 14px 16px 10px; border-bottom: 1px solid var(--divider); }
+.demo-head b { font-size: var(--text-md); }
+.demo-langs { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--radius-full); background: var(--field-bg); color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.demo-langs .icon { font-size: 14px; }
 /* 자막 영역: 내부 스크롤 + 스크롤바 자리 확보(gutter). 첫 줄을 아래로 밀어 최신 줄이 바닥에 붙는다. */
-.demo-feed { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; scrollbar-gutter: stable; padding: 4px 4px 8px 16px; }
-.demo-entry { padding: 12px 0; border-bottom: 1px solid var(--divider); animation: demo-enter 260ms cubic-bezier(.2, .8, .2, 1); }
+.demo-feed { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; scrollbar-gutter: stable; padding: 0 4px 4px 16px; }
+/* 항목 모양은 실제 패널의 .entry를 그대로 쓴다. 여기서는 등장 움직임과 아래 붙이기만. */
+.demo-entry { animation: demo-enter 260ms cubic-bezier(.2, .8, .2, 1); }
 .demo-entry:first-child { margin-top: auto; }
-.demo-entry:last-child { border-bottom: 0; }
-.demo-entry .meta { display: flex; gap: var(--space-2); margin-bottom: 6px; font-size: 11px; }
-.demo-entry .meta b { font-weight: 700; }
-.demo-entry .meta time { color: var(--text-tertiary); }
-.demo-orig, .demo-tr { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 14px; line-height: 1.55; }
-.demo-tr { margin-top: 4px; font-weight: 600; transition: color 200ms; }
-.demo-tr.interim { color: var(--text-tertiary); font-weight: 500; }
-.lang-tag { flex: none; position: relative; top: -1px; padding: 1px 5px; border-radius: 4px; background: var(--field-bg); color: var(--text-secondary); font-size: 10px; font-weight: 800; letter-spacing: .04em; }
-.lang-tag-tr { background: var(--brand-ink); color: var(--page-bg); }
-@keyframes demo-enter { from { opacity: 0; transform: translateY(6px); } }
 
 /* ── 스크롤바: 얇고 둥글게, 공간은 미리 확보(gutter)해 내용이 밀리지 않게 ── */
 .select-list, .feed, .panel, .demo-feed { scrollbar-gutter: stable; }
@@ -432,10 +431,9 @@ h1 { text-wrap: balance; }
 .kp-split { flex-direction: row; }
 .kp-tiles { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .kp-tiles.two { flex-direction: row; }
-.kp-tile { position: relative; flex: 1; display: grid; place-items: center; border-radius: 10px; background: var(--tile-bg); }
-.kp-tile.speaking { box-shadow: inset 0 0 0 2px var(--brand-accent); }
-.kp-avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
-.kp-name { position: absolute; left: 6px; bottom: 6px; padding: 1px 6px; border-radius: 6px; background: rgb(0 0 0 / .45); color: var(--on-stage); font-size: 10px; }
+.kp-tile { position: relative; flex: 1; overflow: hidden; border-radius: 10px; background: var(--tile-bg); }
+.kp-tile.speaking::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 2px var(--brand-accent); }
+.kp-name { position: absolute; z-index: 1; left: 6px; bottom: 6px; padding: 1px 6px; border-radius: 6px; background: rgb(0 0 0 / .45); color: var(--on-stage); font-size: 10px; }
 .kp-controls { display: flex; justify-content: center; gap: 6px; }
 .kp-controls i { width: 18px; height: 18px; border-radius: 50%; background: var(--control-bg); }
 .kp-controls i.end { width: 26px; border-radius: 9px; background: var(--danger); }
@@ -443,10 +441,7 @@ h1 { text-wrap: balance; }
 .kp-panel-title { font-size: 12px; }
 .kp-entry { display: flex; flex-direction: column; gap: 3px; padding-bottom: 8px; border-bottom: 1px solid var(--divider); }
 .kp-entry small { font-weight: 600; font-size: 10px; }
-.kp-entry p { margin: 0; display: flex; gap: 4px; }
-.kp-entry p.tr { color: var(--text-secondary); }
-.kp-entry em { flex: none; font-style: normal; font-size: 8px; font-weight: 700; padding: 1px 3px; border-radius: 3px; background: var(--field-bg); color: var(--text-secondary); align-self: start; }
-.kp-entry p.tr em { background: var(--brand-ink); color: var(--page-bg); }
+.kp-entry p { margin: 0; }
 .kp-device { height: 100%; display: flex; flex-direction: column; overflow: hidden; padding: 10px; background: var(--page-bg); border: 6px solid var(--brand-ink); border-radius: 16px; color: var(--text); }
 .kp-talk { gap: 6px; }
 .kp-half { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; }

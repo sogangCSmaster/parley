@@ -31,7 +31,7 @@ export function Header() {
         }}
       >
         <BrandMark />
-        parley
+        tolkmeet
       </a>
       <div className="header-actions">
         {auth.status === 'guest' && path !== '/login' && (

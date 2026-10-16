@@ -1,6 +1,6 @@
 # Third-party notices
 
-Parley is licensed under the GNU Affero General Public License v3.0 (see [LICENSE](LICENSE)).
+Tolkmeet is licensed under the GNU Affero General Public License v3.0 (see [LICENSE](LICENSE)).
 It includes the following third-party material, which keeps its own license.
 
 ## Material Symbols (icon paths)

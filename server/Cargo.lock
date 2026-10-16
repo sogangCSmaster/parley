@@ -930,30 +930,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
-name = "parley-server"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "axum",
- "base64 0.22.1",
- "bytes",
- "dotenvy",
- "futures-util",
- "getrandom 0.4.3",
- "hmac",
- "rand 0.10.3",
- "reqwest",
- "serde",
- "serde_json",
- "sha1",
- "tokio",
- "tokio-tungstenite",
- "tracing",
- "tracing-subscriber",
- "ts-rs",
-]
-
-[[package]]
 name = "password-hash"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1682,6 +1658,30 @@ dependencies = [
  "libc",
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "tolkmeet-server"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "dotenvy",
+ "futures-util",
+ "getrandom 0.4.3",
+ "hmac",
+ "rand 0.10.3",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha1",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-subscriber",
+ "ts-rs",
 ]
 
 [[package]]

@@ -7,8 +7,8 @@ async function setup({ missing = false, delayed = false, mobile = false } = {}) 
     const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 } });
     const page = await context.newPage();
     await page.addInitScript(({ delayed }) => {
-        localStorage.setItem('parley.locale', 'en');
-        localStorage.setItem('parley.prefs', JSON.stringify({ name: 'Tester', lang: 'en', partnerLang: 'ko' }));
+        localStorage.setItem('tolkmeet.locale', 'en');
+        localStorage.setItem('tolkmeet.prefs', JSON.stringify({ name: 'Tester', lang: 'en', partnerLang: 'ko' }));
         window.captures = [];
         window.releaseMedia = [];
         navigator.mediaDevices.getUserMedia = () => new Promise(resolve => {

@@ -6,7 +6,7 @@ import { FRAME_SAMPLES, SAMPLE_RATE } from './vad'
  * 평균 내림으로 16kHz로 줄인다(Firefox는 다른 샘플레이트 컨텍스트에 마이크를 연결하지 못한다).
  */
 const WORKLET = `
-class ParleyCapture extends AudioWorkletProcessor {
+class TolkmeetCapture extends AudioWorkletProcessor {
   constructor() {
     super()
     this.step = Math.max(1, sampleRate / ${SAMPLE_RATE})
@@ -31,7 +31,7 @@ class ParleyCapture extends AudioWorkletProcessor {
     return true
   }
 }
-registerProcessor('parley-capture', ParleyCapture)
+registerProcessor('tolkmeet-capture', TolkmeetCapture)
 `
 
 export type Capture = {
@@ -52,7 +52,7 @@ export async function startCapture(track: MediaStreamTrack, onFrame: (frame: Int
     URL.revokeObjectURL(url)
   }
   const source = ctx.createMediaStreamSource(new MediaStream([track]))
-  const node = new AudioWorkletNode(ctx, 'parley-capture', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] })
+  const node = new AudioWorkletNode(ctx, 'tolkmeet-capture', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] })
   node.port.onmessage = (e: MessageEvent<Int16Array>) => onFrame(e.data)
   source.connect(node)
   // 출력은 쓰지 않지만(무음), 목적지에 연결해야 모든 브라우저가 노드를 처리한다.

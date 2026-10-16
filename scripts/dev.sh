@@ -16,7 +16,7 @@ running() { [ -f "$STATE/$1.pid" ] && kill -0 "$(cat "$STATE/$1.pid")" 2>/dev/nu
 stop() {
   for name in web server; do
     if running "$name"; then
-      # 자식 프로세스(cargo → parley-server, pnpm → vite)까지 함께 끈다.
+      # 자식 프로세스(cargo → tolkmeet-server, pnpm → vite)까지 함께 끈다.
       pkill -TERM -P "$(cat "$STATE/$name.pid")" 2>/dev/null || true
       kill "$(cat "$STATE/$name.pid")" 2>/dev/null || true
       echo "stopped $name"

@@ -48,7 +48,7 @@ const context = await browser.newContext({
   ignoreHTTPSErrors: process.env.PROXY_IGNORE_CERT === '1',
 })
 await context.addInitScript(
-  ([l, p]) => localStorage.setItem('parley.prefs', JSON.stringify({ name: 'STT Tester', lang: l, partnerLang: p })),
+  ([l, p]) => localStorage.setItem('tolkmeet.prefs', JSON.stringify({ name: 'STT Tester', lang: l, partnerLang: p })),
   [lang, partner],
 )
 // 단계별 시각을 잰다: Gemini 연결·준비, 말 시작, 첫 중간/확정 결과, stt 송신, 첫 번역/확정 자막.

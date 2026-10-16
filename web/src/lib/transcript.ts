@@ -85,11 +85,11 @@ export function formatTranscript(lines: TranscriptLine[], o: FormatOptions): str
   return [head, ...body].join('\n\n') + '\n'
 }
 
-/** parley-abcd-efgh-ijkm-20261016-2231.txt (로컬 시각) */
+/** tolkmeet-abcd-efgh-ijkm-20261016-2231.txt (로컬 시각) */
 export function transcriptFileName(code: string, at: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
   const stamp = `${at.getFullYear()}${p(at.getMonth() + 1)}${p(at.getDate())}-${p(at.getHours())}${p(at.getMinutes())}`
-  return `parley-${code}-${stamp}.txt`
+  return `tolkmeet-${code}-${stamp}.txt`
 }
 
 /** 브라우저에서 바로 파일로 내려받는다(서버 왕복 없음). */

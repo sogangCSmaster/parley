@@ -6,7 +6,7 @@ import type { IconName } from './icons'
 
 export type MeetingKind = 'global' | 'standard' | 'inPerson' | 'live'
 
-const KIND_KEY = 'parley.meetingKind'
+const KIND_KEY = 'tolkmeet.meetingKind'
 
 /** 지난번 선택을 기본값으로. 저장소가 막혀 있으면 글로벌 미팅. */
 function lastMeetingKind(): MeetingKind {

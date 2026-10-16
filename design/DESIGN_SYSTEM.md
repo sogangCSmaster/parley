@@ -5,7 +5,7 @@ No decoration: gradients, shimmer effects, per-speaker colors and the like are n
 
 ## Brand
 
-- Name **parley** (always lowercase). Wordmark is Pretendard 800, letter-spacing -0.05em.
+- Name **tolkmeet** (always lowercase). Wordmark is Pretendard 800, letter-spacing -0.05em.
 - Mark **"Pair"**: two offset rounded bars (original on top, translation below). Ink `--brand-ink` #16181D + accent `--brand-accent` #F2542D. Component: `web/src/components/BrandMark.tsx`; favicon: `web/public/favicon.svg`.
 - UI color rules:
   - Primary buttons are ink (`--accent` = brand ink).

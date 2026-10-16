@@ -12,7 +12,7 @@ use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use axum::http::HeaderMap;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-pub const COOKIE_NAME: &str = "parley_session";
+pub const COOKIE_NAME: &str = "tolkmeet_session";
 const SESSION_TTL: Duration = Duration::from_secs(12 * 60 * 60);
 /// (클라이언트 IP, 아이디)별로 이 시간 안에 이만큼 실패하면 시간이 지날 때까지 로그인을 막는다.
 /// IP별로 세므로 아이디를 아는 공격자가 다른 곳의 주최자를 잠글 수 없다.
@@ -631,7 +631,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             axum::http::header::COOKIE,
-            "theme=dark; parley_session=abc123; other=1"
+            "theme=dark; tolkmeet_session=abc123; other=1"
                 .parse()
                 .unwrap(),
         );

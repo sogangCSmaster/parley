@@ -1,4 +1,4 @@
-//! `parley-server dev`: 로컬·클라우드 개발용 실행 모드.
+//! `tolkmeet-server dev`: 로컬·클라우드 개발용 실행 모드.
 //!
 //! 주최자 계정이 설정돼 있지 않으면 테스트 계정 `dev`를 만들고 비밀번호를 git 제외 파일에 저장한다.
 //! 사람이든 AI든 그 파일을 읽어 바로 로그인해 화면을 볼 수 있다. 파일이 이미 있으면 같은 비밀번호를
@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn creates_once_then_reuses_the_same_password() {
-        let path = std::env::temp_dir().join(format!("parley-dev-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("tolkmeet-dev-{}", std::process::id()));
         let _ = fs::remove_file(&path);
 
         let first = ensure_credentials(&path).unwrap();

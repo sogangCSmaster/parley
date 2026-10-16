@@ -29,7 +29,7 @@ fi
 nohup cargo build -q --manifest-path server/Cargo.toml >>"$LOG" 2>&1 &
 
 cat <<'EOF'
-parley cloud dev environment is ready:
+tolkmeet cloud dev environment is ready:
 - Start the app: scripts/dev.sh (Rust server in dev mode + Vite at http://localhost:5173; stop with scripts/dev.sh stop)
 - Test host login: user "dev", password in server/.dev-host-password (created automatically on first start)
 - See screens: pnpm --dir web shot [--login] [--mobile] [--locale ko|ja|en] / /login @meeting  → PNG paths are printed; open them with the Read tool
