@@ -25,3 +25,11 @@ cargo run --release -- transcribe fixtures/ko.wav --lang ko
 ```
 
 Sends audio at real-time speed (100ms chunks) and reports interim-result cadence, whether results are cumulative or incremental, and latency from end of speech to the final result.
+
+```bash
+cargo run --release -- gap fixtures/ko.wav fixtures/ja.wav --gap 20 --manual --keepalive 30
+```
+
+Utterance → silence where no audio is sent at all → utterance. Checks whether the session survives, whether the second utterance is recognized, and when the final result arrives. `--manual` disables server VAD and sends `activityStart`/`activityEnd`, and `--keepalive N` sends 100ms of silence every N seconds during the silence.
+
+Translation also takes `--service-tier standard|priority|flex` (Priority is for Tier 2–3 accounts only).
