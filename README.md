@@ -5,7 +5,7 @@
 
 | Path | Contents |
 |---|---|
-| `server/` | Rust (axum) — rooms, WebRTC signaling, (later) translation pipeline |
+| `server/` | Rust (axum) — rooms, WebRTC signaling, translation pipeline |
 | `web/` | React + Vite + TypeScript — home, lobby, meeting room, caption panel |
 | `design/` | Design tokens (`tokens.css`), rules, static preview |
 | `docs/ARCHITECTURE.md` | Architecture and deployment (EC2) plan |
@@ -41,7 +41,7 @@ For local secrets, put `GEMINI_API_KEY=your-key` in the repository root `.env` (
 The Rust server loads this file before starting its runtime; existing environment variables take precedence.
 The Gemini benchmark also reads the root file, with `bench/gemini/.env` as a legacy fallback.
 `.env` is ignored by Git. Keep this key server-side; never give it a `VITE_` prefix.
-The meeting server's Gemini translation pipeline is still planned, so loading the key does not enable captions yet.
+The server translates STT messages with this key; browser microphone-to-STT capture is still planned, so loading the key alone does not enable microphone captions yet.
 
 Server environment variables:
 
@@ -52,7 +52,11 @@ Server environment variables:
 | `RUST_LOG` | `info` | Log filter |
 | `HOST_ACCOUNTS` | (none) | Host accounts: `id:argon2-hash`, space-separated. If empty, nobody can create meetings |
 | `COOKIE_SECURE` | `true` | Session cookie `Secure` flag. Use `false` only for local http development |
+| `GEMINI_API_KEY` | (none) | Translation API key (server only, never sent to browsers). If empty, captions show the original only |
+| `GEMINI_TRANSLATE_MODEL` | `gemini-3.5-flash-lite` | Translation model |
 | `TRUSTED_PROXY` | (unset) | Set to `1` only behind a reverse proxy (Caddy) that sets `X-Forwarded-For`; login throttling then uses its last hop as the client IP. Otherwise the socket peer address is used |
+
+Per-step translation latency (first token, total, STT → translation) is logged at debug level: `RUST_LOG=info,parley_server::pipeline=debug`. Caption text is never logged.
 
 Protocol types are defined in `server/src/protocol.rs`; `cargo test --manifest-path server/Cargo.toml` regenerates `web/src/protocol/*.ts`.
 

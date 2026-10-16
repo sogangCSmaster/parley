@@ -77,6 +77,14 @@ pub enum ClientMsg {
     Settings {
         settings: RoomSettings,
     },
+    /// 내 음성 인식 결과. `seg`는 STT 구간 번호이고, 같은 구간의 중간 결과는 "지금까지의 전체 문장"이다.
+    /// `final`이 오면 그 구간은 확정되고 다음 구간 번호로 넘어간다. 바뀐 경우에만 보낸다.
+    Stt {
+        seg: u32,
+        text: String,
+        #[serde(rename = "final")]
+        is_final: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -119,6 +127,23 @@ pub enum ServerMsg {
         from: PeerId,
         data: serde_json::Value,
     },
+    /// 자막 한 줄(한 문장). 같은 `seg`는 같은 줄이고, 더 큰 `rev`만 반영한다.
+    Caption {
+        seg: String,
+        speaker: PeerId,
+        src_lang: String,
+        src: String,
+        tgt_lang: String,
+        /// 번역. 아직 없거나 번역할 필요가 없거나(같은 언어) 실패하면 null이다.
+        /// 확정 전에는 이전 원문에 대한 번역일 수 있다.
+        text: Option<String>,
+        #[serde(rename = "final")]
+        is_final: bool,
+        rev: u32,
+    },
+    Notice {
+        code: NoticeCode,
+    },
     Error {
         code: ErrorCode,
         message: String,
@@ -136,4 +161,12 @@ pub enum ErrorCode {
     RoomNotFound,
     Forbidden,
     TooManyWaiting,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum NoticeCode {
+    /// 번역에 실패해 원문만 확정했다.
+    TranslationFailed,
 }

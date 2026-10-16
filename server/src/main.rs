@@ -1,5 +1,7 @@
 mod auth;
+mod pipeline;
 mod protocol;
+mod providers;
 mod room;
 mod ws;
 
@@ -18,13 +20,17 @@ use serde_json::{Value, json};
 use tracing_subscriber::EnvFilter;
 
 use auth::{Auth, LoginError};
+use pipeline::Pipeline;
 use protocol::{ErrorCode, RoomSettings};
+use providers::Translator;
+use providers::gemini::{self, Gemini};
 use room::Rooms;
 
 #[derive(Clone)]
 struct AppState {
     rooms: Arc<Rooms>,
     auth: Arc<Auth>,
+    pipeline: Arc<Pipeline>,
     ice_servers: Arc<Value>,
     /// 로컬 http 개발에서만 false. 운영(https)에서는 반드시 true.
     cookie_secure: bool,
@@ -35,6 +41,12 @@ struct AppState {
 impl FromRef<AppState> for Arc<Rooms> {
     fn from_ref(state: &AppState) -> Self {
         state.rooms.clone()
+    }
+}
+
+impl FromRef<AppState> for Arc<Pipeline> {
+    fn from_ref(state: &AppState) -> Self {
+        state.pipeline.clone()
     }
 }
 
@@ -106,8 +118,26 @@ async fn run() {
         .unwrap_or(true);
     let trusted_proxy = std::env::var("TRUSTED_PROXY").is_ok_and(|v| v == "1");
 
+    // 번역 키는 서버에만 둔다. 없으면 자막은 원문만 확정된다.
+    let translator: Option<Arc<dyn Translator>> = match std::env::var("GEMINI_API_KEY") {
+        Ok(key) if !key.trim().is_empty() => {
+            let model = std::env::var("GEMINI_TRANSLATE_MODEL")
+                .unwrap_or_else(|_| gemini::DEFAULT_MODEL.into());
+            let gemini = Arc::new(Gemini::new(key.trim().to_owned(), model));
+            let warm = gemini.clone();
+            tokio::spawn(async move { warm.warm_up().await });
+            Some(gemini)
+        }
+        _ => {
+            tracing::warn!("GEMINI_API_KEY is not set: captions will show the original only");
+            None
+        }
+    };
+    let rooms = Arc::new(Rooms::default());
+
     let state = AppState {
-        rooms: Arc::new(Rooms::default()),
+        pipeline: Arc::new(Pipeline::new(rooms.clone(), translator)),
+        rooms,
         auth,
         ice_servers: Arc::new(ice_servers),
         cookie_secure,

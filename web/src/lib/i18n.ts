@@ -97,6 +97,8 @@ const en = {
   'captions.title': 'Captions',
   'captions.close': 'Close captions panel',
   'captions.empty': 'Once the conversation starts, the original and its translation will appear here.',
+  'captions.translating': 'Translating…',
+  'captions.failed': 'A caption couldn’t be translated, so only the original is shown.',
 } as const
 
 export type MessageKey = keyof typeof en
@@ -194,6 +196,8 @@ const ko: Messages = {
   'captions.title': '자막',
   'captions.close': '자막 패널 닫기',
   'captions.empty': '대화가 시작되면 여기에 원문과 번역이 함께 표시돼요.',
+  'captions.translating': '번역 중…',
+  'captions.failed': '번역하지 못한 자막은 원문만 표시했어요.',
 }
 
 const ja: Messages = {
@@ -288,6 +292,8 @@ const ja: Messages = {
   'captions.title': '字幕',
   'captions.close': '字幕パネルを閉じる',
   'captions.empty': '会話が始まると、ここに原文と翻訳が一緒に表示されます。',
+  'captions.translating': '翻訳中…',
+  'captions.failed': '翻訳できなかった字幕は原文のみ表示しています。',
 }
 
 const DICTS = { en, ko, ja } as const

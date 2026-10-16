@@ -5,6 +5,7 @@ import type { Peer } from '../protocol/Peer'
 import type { RoomSettings } from '../protocol/RoomSettings'
 import type { ServerMsg } from '../protocol/ServerMsg'
 import type { JsonValue } from '../protocol/serde_json/JsonValue'
+import { applyCaption, type Caption } from '../lib/captions'
 import { useI18n, type Locale, type MessageKey } from '../lib/i18n'
 import { Mesh, type SignalData } from '../lib/mesh'
 import type { Prefs } from '../lib/prefs'
@@ -53,6 +54,9 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const [isHost, setIsHost] = useState(false)
   const [settings, setSettings] = useState<RoomSettings>({ translation: true })
   const [knocks, setKnocks] = useState<Knock[]>([])
+  const [captions, setCaptions] = useState<Caption[]>([])
+  // 나간 참가자의 지난 자막에도 이름이 보이도록 이름은 지우지 않고 모은다.
+  const [names, setNames] = useState<Record<string, string>>({})
 
   const sigRef = useRef<Signaling | null>(null)
   const meshRef = useRef<Mesh | null>(null)
@@ -102,12 +106,14 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           setSettings(msg.settings)
           setKnocks(msg.knocks)
           setPeers(Object.fromEntries(msg.peers.map((p) => [p.id, p])))
+          setNames((n) => ({ ...n, ...Object.fromEntries(msg.peers.map((p) => [p.id, p.name])) }))
           msg.peers.forEach((p) => mesh.connect(p.id))
           break
         }
         case 'peer_joined':
         case 'peer_updated':
           setPeers((ps) => ({ ...ps, [msg.peer.id]: msg.peer }))
+          setNames((n) => ({ ...n, [msg.peer.id]: msg.peer.name }))
           break
         case 'peer_left':
           meshRef.current?.remove(msg.id)
@@ -131,6 +137,12 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           break
         case 'settings':
           setSettings(msg.settings)
+          break
+        case 'caption':
+          setCaptions((list) => applyCaption(list, msg, Date.now()))
+          break
+        case 'notice':
+          if (msg.code === 'translation_failed') setToast({ key: 'captions.failed' })
           break
         case 'error': {
           const fatal = FATAL_ERRORS[msg.code]
@@ -328,6 +340,8 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             prefs={prefs}
             translation={settings.translation}
             isHost={isHost}
+            captions={captions}
+            speakerName={(id) => (joined && id === status.selfId ? t('room.you', { name: prefs.name.trim() }) : (names[id] ?? ''))}
             onPrefsChange={changePrefs}
             onTranslationChange={changeTranslation}
             onClose={() => setPanelOpen(false)}
