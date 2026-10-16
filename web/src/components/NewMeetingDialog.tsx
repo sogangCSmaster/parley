@@ -3,7 +3,7 @@ import { useI18n, type MessageKey } from '../lib/i18n'
 import { Icon } from './Icon'
 import type { IconName } from './icons'
 
-export type MeetingKind = 'global' | 'standard' | 'inPerson'
+export type MeetingKind = 'global' | 'standard' | 'inPerson' | 'live'
 
 const KIND_KEY = 'parley.meetingKind'
 
@@ -11,7 +11,7 @@ const KIND_KEY = 'parley.meetingKind'
 function lastMeetingKind(): MeetingKind {
   try {
     const saved = localStorage.getItem(KIND_KEY)
-    return saved === 'standard' || saved === 'inPerson' ? saved : 'global'
+    return saved === 'standard' || saved === 'inPerson' || saved === 'live' ? saved : 'global'
   } catch {
     return 'global'
   }
@@ -29,6 +29,7 @@ const OPTIONS: { kind: MeetingKind; icon: IconName; title: MessageKey; body: Mes
   { kind: 'global', icon: 'translate', title: 'newMeeting.global', body: 'newMeeting.globalBody' },
   { kind: 'standard', icon: 'video_call', title: 'newMeeting.standard', body: 'newMeeting.standardBody' },
   { kind: 'inPerson', icon: 'forum', title: 'newMeeting.inPerson', body: 'newMeeting.inPersonBody' },
+  { kind: 'live', icon: 'subtitles', title: 'newMeeting.live', body: 'newMeeting.liveBody' },
 ]
 
 type Props = {

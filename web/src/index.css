@@ -363,3 +363,28 @@ h1 { text-wrap: balance; }
 .talk-button .icon { font-size: 22px; }
 .talk-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-4); background: var(--panel-bg); border-block: 1px solid var(--divider); }
 .talk-bar-actions { display: flex; align-items: center; gap: var(--space-2); }
+
+/* 자막 화면: 위 막대(언어·상태·조작) + 쌓이는 큰 자막 */
+.live { height: 100dvh; display: flex; flex-direction: column; background: var(--page-bg); }
+.live-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) var(--space-4); background: var(--panel-bg); border-bottom: 1px solid var(--divider); }
+.live-langs { display: flex; align-items: center; gap: var(--space-2); color: var(--text-secondary); }
+.live-status { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--text-secondary); font-size: var(--text-sm); font-weight: 500; }
+.live-dot { width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--border); }
+.live-status.on .live-dot { background: var(--brand-accent); animation: live-pulse 1.6s ease-in-out infinite; }
+@keyframes live-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .live-status.on .live-dot { animation: none; } }
+.live-actions { display: flex; align-items: center; gap: var(--space-2); }
+.live-warning { margin: 0; padding: var(--space-3) var(--space-5); background: var(--hover); color: var(--text); font-size: var(--text-sm); }
+.live-feed { flex: 1; min-height: 0; overflow-y: auto; }
+.live-feed-inner { max-width: 1400px; margin: 0 auto; padding: var(--space-2) var(--space-5) var(--space-4); }
+.live-entry { padding: var(--space-3) 0; border-bottom: 1px solid var(--divider); }
+.live-meta { margin-right: var(--space-2); color: var(--text-tertiary); font-size: var(--text-sm); white-space: nowrap; }
+.live-meta b { font-weight: 600; color: var(--text-secondary); }
+/* 읽을 사람에게 필요한 건 번역이다: 번역은 크게·진하게, 원문(말한 사람이 이미 아는 말)은 작게·흐리게. */
+.live-src { margin: 0; font-size: clamp(16px, 2vw, 22px); line-height: 1.5; color: var(--text-secondary); font-weight: 500; }
+.live-tgt { margin: 2px 0 0; font-size: clamp(24px, 3.4vw, 38px); line-height: 1.35; color: var(--text); font-weight: 600; }
+.live-entry.pending .live-tgt { color: var(--text-secondary); }
+@media (max-width: 640px) {
+  .live-bar { padding: var(--space-3); }
+  .live-actions .btn { padding-inline: var(--space-3); }
+}

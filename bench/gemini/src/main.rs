@@ -89,7 +89,7 @@ async fn main() {
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  gemini-bench translate [--model gemini-3.5-flash-lite] [--thinking minimal|low|none] [--runs 1]\n  gemini-bench transcribe fixtures/ko.wav [--lang ko] [--model gemini-3.5-transcribe-live]\n  gemini-bench gap fixtures/ko.wav [fixtures/ja.wav] [--gap 20] [--tail 8] [--manual] [--keepalive 30] [--lang ko]"
+        "usage:\n  gemini-bench translate [--model gemini-3.5-flash-lite] [--thinking minimal|low|none] [--runs 1]\n  gemini-bench transcribe fixtures/ko.wav [--lang ko] [--model gemini-3.5-transcribe-live]\n  gemini-bench gap fixtures/ko.wav [fixtures/ja.wav] [--gap 20] [--tail 8] [--manual] [--keepalive 30] [--lang ko | ko,ja]"
     );
     std::process::exit(2)
 }

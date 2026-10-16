@@ -9,7 +9,8 @@ import type { Grant, SegCounter, SttStatus, TokenError } from './stt'
 /**
  * 대면 모드의 한쪽 사람. 한 기기에서 두 사람을 같은 방의 두 참가자(서버 연결 둘)로 나타낸다.
  * 서버의 번역 파이프라인을 그대로 쓰고, 영상·음성 연결(WebRTC)은 없다.
- * 음성 인식 세션은 양쪽 다 미리 열어 두고, 마이크 입력만 말하는 쪽으로 돌린다(전환 지연 없음).
+ * 대면 모드(버튼): 음성 인식 세션은 양쪽 다 미리 열어 두고, 마이크 입력만 말하는 쪽으로 돌린다(전환 지연 없음).
+ * 자막 화면(자동 판별): `track` 없이 연결만 쓰고, 바깥의 음성 인식 하나가 발화마다 맞는 쪽으로 보낸다.
  */
 export type TalkEvents = {
   onJoined: (selfId: string) => void
@@ -33,10 +34,11 @@ export class TalkSide {
   private warm = true
   private lang: string
   private closed = false
-  private track: MediaStreamTrack
+  private track: MediaStreamTrack | null
   private events: TalkEvents
 
-  constructor(code: string, lang: string, partnerLang: string, track: MediaStreamTrack, events: TalkEvents) {
+  /** `track`이 null이면 자기 음성 인식을 띄우지 않는다(`requestToken`·`sendStt`를 바깥에서 쓴다). */
+  constructor(code: string, lang: string, partnerLang: string, track: MediaStreamTrack | null, events: TalkEvents) {
     this.lang = lang
     this.track = track
     this.events = events
@@ -125,23 +127,33 @@ export class TalkSide {
     this.events.onFailed(reason)
   }
 
+  /** 이 사람 언어로 잠근 음성 인식 토큰. 발급은 비동기라 요청 id로 짝을 맞춘다. */
+  requestToken(): Promise<Grant> {
+    return new Promise<Grant>((resolve, reject) => {
+      if (this.closed) return reject('failed')
+      const id = ++this.tokenId
+      this.tokens.set(id, { resolve, reject })
+      this.sig.send({ t: 'stt_token', id })
+      setTimeout(() => {
+        if (this.tokens.delete(id)) reject('failed')
+      }, TOKEN_TIMEOUT_MS)
+    })
+  }
+
+  /** 이 사람이 한 말로 서버에 보낸다(구간 번호는 연결 하나 안에서 늘어나기만 하면 건너뛰어도 된다). */
+  sendStt(seg: number, text: string, final: boolean) {
+    this.sig.send({ t: 'stt', seg, text, final })
+  }
+
   private startSpeech() {
-    if (this.speech) return
+    if (this.speech || !this.track) return
     this.speech = startSpeech({
       track: this.track,
       lang: this.lang,
       mic: this.active,
       seg: this.seg,
-      requestToken: () =>
-        new Promise<Grant>((resolve, reject) => {
-          const id = ++this.tokenId
-          this.tokens.set(id, { resolve, reject })
-          this.sig.send({ t: 'stt_token', id })
-          setTimeout(() => {
-            if (this.tokens.delete(id)) reject('failed')
-          }, TOKEN_TIMEOUT_MS)
-        }),
-      sendStt: (seg, text, final) => this.sig.send({ t: 'stt', seg, text, final }),
+      requestToken: () => this.requestToken(),
+      sendStt: (seg, text, final) => this.sendStt(seg, text, final),
       onStatus: (s) => this.events.onSttStatus(s),
       // 상대 목소리가 스피커로 나오지 않는다(같은 자리에서 직접 말한다).
       farEnd: () => [],

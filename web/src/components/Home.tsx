@@ -29,9 +29,9 @@ export function Home({ invalidPath }: { invalidPath: boolean }) {
     setCreating(true)
     setCreateError(null)
     try {
-      // 대면 대화도 회의실 하나를 쓴다(번역 켜짐). 같은 기기의 두 사람이 그 방의 두 참가자가 된다.
+      // 대면 대화·자막 화면도 회의실 하나를 쓴다(번역 켜짐). 같은 기기의 두 언어가 그 방의 두 참가자가 된다.
       const code = await createRoom({ translation: kind !== 'standard' })
-      navigate(kind === 'inPerson' ? `/talk/${code}` : `/${code}`)
+      navigate(kind === 'inPerson' ? `/talk/${code}` : kind === 'live' ? `/live/${code}` : `/${code}`)
     } catch {
       // 세션이 만료됐을 수 있으니 로그인 상태를 다시 확인한다.
       void refreshAuth()

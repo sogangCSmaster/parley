@@ -39,11 +39,8 @@ pub async fn run(key: &str, o: Options<'_>) {
         .await
         .unwrap_or_else(|e| fail(&format!("websocket connect failed: {e}")));
     let (mut tx, mut rx) = ws.split();
-    let langs: Vec<&str> = if o.lang.is_empty() {
-        vec![]
-    } else {
-        vec![o.lang]
-    };
+    // 쉼표로 여러 언어를 줄 수 있다(예: ko,ja). 비우면 언어를 지정하지 않는다.
+    let langs: Vec<&str> = o.lang.split(',').filter(|l| !l.is_empty()).collect();
     let mut setup = json!({ "setup": {
         "model": format!("models/{}", o.model),
         "generationConfig": { "responseModalities": ["TEXT"] },
