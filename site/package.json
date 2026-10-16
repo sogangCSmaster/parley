@@ -1,0 +1,14 @@
+{
+  "name": "tolkmeet-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "build": "astro build",
+    "preview": "astro preview --port 4321",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "astro": "7.3.5"
+  }
+}

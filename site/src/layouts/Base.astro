@@ -1,0 +1,60 @@
+---
+import type { Dict } from '../i18n/en'
+import { LOCALES, SITE_URL } from '../site'
+import '../styles/site.css'
+
+interface Props {
+  t: Dict
+  /** 검색 결과용 구조화 데이터(JSON-LD) */
+  jsonLd?: object[]
+  /** 없는 페이지 등: 검색에 올리지 않고 대표 주소·언어 대안도 걸지 않는다. */
+  noindex?: boolean
+}
+const { t, jsonLd = [], noindex = false } = Astro.props
+const canonical = new URL(t.path, SITE_URL).href
+const ogImage = new URL(`/og-${t.lang}.png`, SITE_URL).href
+const ogLocale = { en: 'en_US', ko: 'ko_KR', ja: 'ja_JP' }[t.lang]
+---
+<!doctype html>
+<html lang={t.htmlLang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{t.metaTitle}</title>
+    <meta name="description" content={t.metaDescription} />
+    {noindex ? (
+      <meta name="robots" content="noindex" />
+    ) : (
+      <>
+        <link rel="canonical" href={canonical} />
+        {LOCALES.map((l) => <link rel="alternate" hreflang={l.lang} href={new URL(l.path, SITE_URL).href} />)}
+        <link rel="alternate" hreflang="x-default" href={new URL('/', SITE_URL).href} />
+      </>
+    )}
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Tolkmeet" />
+    <meta property="og:title" content={t.metaTitle} />
+    <meta property="og:description" content={t.metaDescription} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content={ogLocale} />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#FAFAF7" />
+
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    {/* 앱과 같은 글꼴. dynamic subset이라 화면에 쓰인 글자 범위의 조각만 받는다. crossorigin으로 preconnect한 연결을 같이 쓴다. */}
+    <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-jp-dynamic-subset.min.css" />
+    {jsonLd.map((data) => <script type="application/ld+json" set:html={JSON.stringify(data)} />)}
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

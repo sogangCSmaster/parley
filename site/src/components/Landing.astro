@@ -1,0 +1,288 @@
+---
+import type { Dict } from '../i18n/en'
+import Base from '../layouts/Base.astro'
+import { GITHUB_URL, LOCALES, SIGN_IN_URL, SITE_URL, TRIAL_URL } from '../site'
+import Face from './Face.astro'
+import Mark from './Mark.astro'
+
+interface Props { t: Dict }
+const { t } = Astro.props
+const [first] = t.heroLines
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Tolkmeet',
+    url: new URL(t.path, SITE_URL).href,
+    description: t.metaDescription,
+    applicationCategory: 'CommunicationApplication',
+    operatingSystem: 'Web browser',
+    inLanguage: t.lang,
+    offers: t.plans.map((p) => ({
+      '@type': 'Offer',
+      name: p.name,
+      price: p.price.replace('$', ''),
+      priceCurrency: 'USD',
+    })),
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: t.faq.map((f) => ({
+      '@type': 'Question',
+      name: f.q,
+      acceptedAnswer: { '@type': 'Answer', text: f.a },
+    })),
+  },
+]
+---
+<Base t={t} jsonLd={jsonLd}>
+  <a class="skip" href="#main">{t.skipToContent}</a>
+  <header class="top">
+    <div class="wrap top-row">
+      <a class="brand" href={t.path} aria-label="Tolkmeet">
+        <Mark size={30} />
+        <span>tolkmeet</span>
+      </a>
+      <nav class="top-nav" aria-label={t.navLabel}>
+        <a href="#how">{t.navHow}</a>
+        <a href="#pricing">{t.navPricing}</a>
+        <a href="#faq">{t.navFaq}</a>
+      </nav>
+      <div class="top-actions">
+        <nav class="langs" aria-label={t.languageLabel}>
+          {LOCALES.map((l) => (
+            <a href={l.path} hreflang={l.lang} lang={l.lang} aria-current={l.lang === t.lang ? 'page' : undefined}>{l.langName}</a>
+          ))}
+        </nav>
+        <a class="link-quiet" href={SIGN_IN_URL}>{t.signIn}</a>
+        <a class="btn btn-ink" href={TRIAL_URL}>{t.startTrial}</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap">
+      <div class="hero-copy">
+        <h1>{t.heroTitle}</h1>
+        <p class="lead">{t.heroLead}</p>
+        <div class="hero-cta">
+          <a class="btn btn-ink btn-lg" href={TRIAL_URL}>{t.startTrial}</a>
+          <a class="btn btn-plain btn-lg" href="#demo">{t.heroSecondary}</a>
+        </div>
+      </div>
+
+      {/* 이 페이지의 한 가지 큰 장면: 말이 글자로 찍히고, 번역이 회색 중간 결과로 따라오다가 확정된다(로고 "Pair"처럼 번역 줄은 오른쪽으로 비켜 선다). */}
+      <div class="pair" role="img" aria-label={t.heroCaptionLabel} data-lines={JSON.stringify(t.heroLines)}>
+        <p class="pair-meta"><b data-name lang={first[1]}>{first[0]}</b><span data-lang lang={first[1]}>{first[2]}</span></p>
+        <div class="pair-body">
+          <p class="pair-src" data-src lang={first[1]}>{first[3]}</p>
+          <p class="pair-tgt" data-tgt><span class="pair-bar"></span><span data-tgt-text>{first[5]}</span></p>
+        </div>
+      </div>
+    </section>
+
+    <section id="demo" class="demo-band" aria-labelledby="demo-title">
+      <div class="wrap">
+        <div class="section-head on-dark">
+          <h2 id="demo-title">{t.demoTitle}</h2>
+          <p>{t.demoLead}</p>
+        </div>
+        <div class="meeting" aria-hidden="true">
+          <div class="meeting-tiles">
+            <div class="tile speaking"><Face who="sakura" /><span class="tile-name" lang="ja">さくら</span></div>
+            <div class="tile"><Face who="minjun" /><span class="tile-name">{t.demoYou}</span></div>
+          </div>
+          <div class="meeting-panel">
+            <div class="panel-head"><b>{t.demoCaptions}</b><span class="panel-langs"><span lang="ko">한국어</span> ⇄ <span lang="ja">日本語</span></span></div>
+            <div class="panel-feed">
+              <div class="entry">
+                <p class="entry-meta"><b lang="ja">さくら</b><time>15:21</time></p>
+                <p lang="ja">私たちの投資チームは4人のメンバーです。</p>
+                <p lang="ko">저희 투자팀은 4명의 멤버로 구성돼 있어요.</p>
+              </div>
+              <div class="entry">
+                <p class="entry-meta"><b>{t.demoYou}</b><time>15:22</time></p>
+                <p lang="ko">주로 어떤 분야에 투자하고 계신가요?</p>
+                <p lang="ja">主にどのような分野に投資されていますか？</p>
+              </div>
+              <div class="entry pending">
+                <p class="entry-meta"><b lang="ja">さくら</b><time>15:22</time></p>
+                <p lang="ja">AIと、最近だとディープテックに</p>
+                <p lang="ko">AI와 최근에는 딥테크</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap section" aria-labelledby="modes-title">
+      <div class="section-head">
+        <h2 id="modes-title">{t.modesTitle}</h2>
+      </div>
+      <div class="modes">
+        <article class="mode">
+          <div class="mock mock-video" aria-hidden="true">
+            <div class="mv-tiles"><div class="tile"><Face who="sakura" /></div><div class="tile"><Face who="minjun" /></div></div>
+            <div class="mv-panel"><i></i><i class="short"></i><i></i><i class="short"></i></div>
+          </div>
+          <h3>{t.modes[0].title}</h3>
+          <p>{t.modes[0].body}</p>
+        </article>
+        <article class="mode">
+          <div class="mock mock-phone" aria-hidden="true">
+            <div class="phone">
+              <div class="mp-half far"><span lang="ko">네, 감사합니다.</span><small lang="ja">はい、ありがとうございます。</small></div>
+              <div class="mp-half"><span lang="ja">はい、ありがとうございます。</span><small lang="ko">네, 감사합니다.</small></div>
+            </div>
+          </div>
+          <h3>{t.modes[1].title}</h3>
+          <p>{t.modes[1].body}</p>
+        </article>
+        <article class="mode">
+          <div class="mock mock-tablet" aria-hidden="true">
+            <div class="mt-line"><small lang="ja">本日はありがとうございます。</small><span lang="ko">오늘 감사합니다.</span></div>
+            <div class="mt-line"><small lang="ko">먼저 소개해 드릴게요.</small><span lang="ja">まずご紹介します。</span></div>
+            <div class="mt-line dim"><small lang="ja">予算について</small><span lang="ko">예산에 대해</span></div>
+          </div>
+          <h3>{t.modes[2].title}</h3>
+          <p>{t.modes[2].body}</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="how" class="wrap section" aria-labelledby="how-title">
+      <div class="section-head">
+        <h2 id="how-title">{t.stepsTitle}</h2>
+      </div>
+      <ol class="steps">
+        {t.steps.map((s) => (
+          <li>
+            <h3>{s.title}</h3>
+            <p>{s.body}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+
+    <section class="wrap section" aria-labelledby="why-title">
+      <div class="section-head">
+        <h2 id="why-title">{t.whyTitle}</h2>
+      </div>
+      <dl class="why">
+        {t.why.map((w) => (
+          <div>
+            <dt>{w.title}</dt>
+            <dd>{w.body}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+
+    <section id="pricing" class="wrap section" aria-labelledby="pricing-title">
+      <div class="section-head">
+        <h2 id="pricing-title">{t.pricingTitle}</h2>
+        <p>{t.pricingLead}</p>
+      </div>
+      <div class="plans">
+        {t.plans.map((p, i) => (
+          <div class={`plan${i === 1 ? ' plan-main' : ''}`}>
+            <h3>{p.name}</h3>
+            <p class="plan-price"><span>{p.price}</span><small>{p.unit}</small></p>
+            <p class="plan-hours">{p.hours}</p>
+            <p class="plan-note">{p.note}</p>
+            <a class={`btn ${i === 1 ? 'btn-ink' : 'btn-outline'}`} href={TRIAL_URL}>{p.cta}</a>
+          </div>
+        ))}
+      </div>
+      <p class="plans-extra">{t.pricingExtra}</p>
+      <p class="plans-fine">{t.pricingFine}</p>
+    </section>
+
+    <section id="faq" class="wrap section faq-section" aria-labelledby="faq-title">
+      <div class="section-head">
+        <h2 id="faq-title">{t.faqTitle}</h2>
+      </div>
+      <div class="faq">
+        {t.faq.map((f) => (
+          <details>
+            <summary>{f.q}</summary>
+            <p>{f.a}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href={t.path} aria-label="Tolkmeet"><Mark size={26} /><span>tolkmeet</span></a>
+        <p>{t.footerCopyright}</p>
+      </div>
+      <nav aria-label={t.footerProduct}>
+        <h2>{t.footerProduct}</h2>
+        <a href="#how">{t.navHow}</a>
+        <a href="#pricing">{t.navPricing}</a>
+        <a href="#faq">{t.navFaq}</a>
+        <a href={SIGN_IN_URL}>{t.signIn}</a>
+      </nav>
+      <nav aria-label={t.languageLabel}>
+        <h2>{t.languageLabel}</h2>
+        {LOCALES.map((l) => (
+          <a href={l.path} hreflang={l.lang} lang={l.lang} aria-current={l.lang === t.lang ? 'page' : undefined}>{l.langName}</a>
+        ))}
+      </nav>
+      <div class="foot-source">
+        <h2>{t.footerOpenSource}</h2>
+        <a href={GITHUB_URL} rel="noopener">
+          <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          {t.footerGithub}
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <script is:inline>
+    // 히어로 자막 재생: 원문을 두 글자씩 찍고, 진행률에 맞춰 회색 중간 번역을 보여 주다가 확정 번역으로 바꾼다.
+    // 움직임 줄이기 설정이면 처음 문장을 정지 화면으로 둔다(서버에서 이미 그려 둔 상태).
+    ;(() => {
+      const root = document.querySelector('.pair')
+      if (!root || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+      const lines = JSON.parse(root.dataset.lines)
+      const $ = (k) => root.querySelector(`[data-${k}]`)
+      const [name, lang, src, tgt] = [$('name'), $('lang'), $('src'), $('tgt-text')]
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+      let i = 0
+      async function play() {
+        const [who, code, langName, orig, drafts, final] = lines[i]
+        root.classList.add('pending')
+        name.textContent = who
+        for (const el of [name, lang, src]) el.lang = code
+        lang.textContent = langName
+        tgt.textContent = '…'
+        const chars = [...orig]
+        for (let k = 2; k <= chars.length + 1; k += 2) {
+          src.textContent = chars.slice(0, k).join('')
+          const progress = Math.min(1, k / chars.length)
+          const draft = drafts[Math.min(drafts.length, Math.floor(progress * (drafts.length + 1))) - 1]
+          if (draft) tgt.textContent = draft
+          await wait(85)
+        }
+        await wait(500)
+        tgt.textContent = final
+        root.classList.remove('pending')
+        await wait(3200)
+        root.classList.add('leaving')
+        await wait(260)
+        root.classList.remove('leaving')
+        i = (i + 1) % lines.length
+        play()
+      }
+      // 첫 장면은 이미 확정된 상태로 그려져 있다. 잠깐 읽게 둔 뒤 다음 문장부터 재생한다.
+      setTimeout(() => { root.classList.add('leaving'); setTimeout(() => { root.classList.remove('leaving'); i = 1; play() }, 260) }, 2600)
+    })()
+  </script>
+</Base>

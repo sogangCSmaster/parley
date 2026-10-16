@@ -1,0 +1,14 @@
+---
+import Base from '../layouts/Base.astro'
+import Mark from '../components/Mark.astro'
+import { en } from '../i18n/en'
+import { LOCALES } from '../site'
+---
+<Base t={{ ...en, metaTitle: 'Page not found | Tolkmeet' }} noindex>
+  <main class="wrap notfound">
+    <a class="brand" href="/" aria-label="Tolkmeet"><Mark size={30} /><span>tolkmeet</span></a>
+    <h1>This page doesn’t exist.</h1>
+    <p>Meeting links start with meet.tolkmeet.com. Check the link, or go to the home page.</p>
+    <p class="notfound-links">{LOCALES.map((l) => <a class="btn btn-outline" href={l.path} hreflang={l.lang} lang={l.lang}>{l.langName}</a>)}</p>
+  </main>
+</Base>

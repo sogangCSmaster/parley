@@ -38,7 +38,7 @@ design/   토큰·워드마크(공용)   → web·site가 함께 가져다 씀
 docs/
 ```
 
-- 루트에 `pnpm-workspace.yaml`(`web`, `site`)을 두어 의존성 설치를 한 번에 한다. 공용 디자인은 지금처럼 `design/tokens.css`를 두 앱이 가져다 쓴다(별도 패키지로 만들 만큼 크지 않음).
+- `web/`과 `site/`는 각자 `package.json`·잠금 파일을 가진 독립 프로젝트로 둔다(작업 공간으로 묶으면 지금의 `pnpm --dir web` 명령·스크립트가 바뀌는데 얻는 것이 적다). 공용 디자인은 `design/tokens.css`를 두 곳이 가져다 쓴다(`site/`는 CSS `@import`로). 브랜드 마크와 데모 얼굴은 작은 SVG라 각 프로젝트에 같은 그림을 두고, 바꿀 때 둘 다 고친다.
 - GitHub Actions는 경로로 나눈다: `site/**` → Pages 배포, `server/**`·`web/**` → 테스트·EC2 배포.
 
 ## 2. 회원가입·로그인

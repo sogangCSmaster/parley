@@ -28,6 +28,7 @@ The Gemini key belongs in the server environment or the repository root `.env`. 
 |---|---|
 | `server/` | Rust (axum) — rooms, WebRTC signaling, translation pipeline |
 | `web/` | React + Vite + TypeScript — home, lobby, meeting room, caption panel |
+| `site/` | Astro — the landing page (tolkmeet.com), static HTML in English, Korean and Japanese, for GitHub Pages |
 | `design/` | Design tokens (`tokens.css`), rules, static preview |
 | `docs/ARCHITECTURE.md` | Architecture and deployment (EC2) plan |
 
@@ -45,6 +46,12 @@ To capture screens headlessly (for cloud sessions or AI checks):
 
 ```bash
 pnpm --dir web shot --login / @meeting
+```
+
+The landing page is a separate static site:
+
+```bash
+pnpm --dir site install && pnpm --dir site dev
 ```
 
 Run the server and web separately:
