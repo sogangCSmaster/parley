@@ -23,10 +23,24 @@ The Gemini key belongs in the server environment or the repository root `.env`. 
 
 ## Local development
 
-Requires Rust (stable) and Node 20+ / pnpm.
+Requires Rust (stable) and Node 20+ / pnpm. The quickest way:
 
 ```bash
-cargo run --manifest-path server/Cargo.toml
+scripts/dev.sh
+```
+
+Starts the server in `dev` mode and the web app together (http://localhost:5173). In `dev` mode the server creates a test host account `dev` on first run, with its password saved in `server/.dev-host-password` (excluded from git). It only runs when bound to localhost.
+
+To capture screens headlessly (for cloud sessions or AI checks):
+
+```bash
+pnpm --dir web shot --login / @meeting
+```
+
+Run the server and web separately:
+
+```bash
+cargo run --manifest-path server/Cargo.toml -- dev
 ```
 
 ```bash

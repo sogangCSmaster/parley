@@ -1,4 +1,5 @@
 mod auth;
+mod dev;
 mod pipeline;
 mod protocol;
 mod providers;
@@ -84,6 +85,9 @@ async fn run() {
         return;
     }
 
+    // `parley-server dev` : 개발용(테스트 계정 자동 생성, http 쿠키). loopback 바인딩에서만 허용.
+    let dev_mode = std::env::args().nth(1).as_deref() == Some("dev");
+
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
@@ -92,6 +96,10 @@ async fn run() {
         .unwrap_or_else(|_| "127.0.0.1:8080".into())
         .parse()
         .expect("BIND_ADDR must be host:port");
+    assert!(
+        !dev_mode || dev::allowed_bind(&addr),
+        "dev mode only binds to loopback (BIND_ADDR={addr}); never run it on a public address"
+    );
 
     // TURN을 붙이면 ICE_SERVERS에 JSON 배열로 넣는다. 기본값은 개발용 공개 STUN.
     let ice_servers: Value = match std::env::var("ICE_SERVERS") {
@@ -107,15 +115,25 @@ async fn run() {
         );
     }
 
-    let accounts = auth::parse_accounts(&std::env::var("HOST_ACCOUNTS").unwrap_or_default())
+    let mut accounts = auth::parse_accounts(&std::env::var("HOST_ACCOUNTS").unwrap_or_default())
         .unwrap_or_else(|e| panic!("HOST_ACCOUNTS: {e}"));
+    if dev_mode && accounts.is_empty() {
+        let path = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/.dev-host-password"));
+        let creds = dev::ensure_credentials(path)
+            .unwrap_or_else(|e| panic!("dev account file {}: {e}", path.display()));
+        let hash = auth::hash_password(&creds.password).expect("hashing failed");
+        // 비밀번호는 로그에 남기지 않고 파일 위치만 알린다.
+        tracing::warn!(user = %creds.username, file = %path.display(), "dev mode: test host account ready");
+        accounts.insert(creds.username, hash);
+    }
     let auth = Arc::new(Auth::new(accounts));
     if !auth.has_accounts() {
         tracing::warn!("HOST_ACCOUNTS is empty: nobody can log in or create meetings");
     }
+    // dev 모드는 http://localhost 이므로 기본 false. 그 외에는 명시하지 않으면 항상 Secure.
     let cookie_secure = std::env::var("COOKIE_SECURE")
         .map(|v| v != "false")
-        .unwrap_or(true);
+        .unwrap_or(!dev_mode);
     let trusted_proxy = std::env::var("TRUSTED_PROXY").is_ok_and(|v| v == "1");
 
     // 번역 키는 서버에만 둔다. 없으면 자막은 원문만 확정된다.

@@ -45,7 +45,7 @@ export function Header() {
               <Icon name="account_circle" />
               {auth.username}
             </span>
-            <button className="btn btn-text" onClick={() => void handleLogout()} disabled={loggingOut}>
+            <button className="btn btn-quiet" onClick={() => void handleLogout()} disabled={loggingOut}>
               {t('auth.logout')}
             </button>
             {logoutFailed && <span className="header-error form-error" role="alert">{t('auth.logoutFailed')}</span>}

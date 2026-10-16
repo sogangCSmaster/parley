@@ -3,6 +3,9 @@
 **/node_modules/
 web/dist/
 web/.vite/
+# scripts/dev.sh 상태·로그, 화면 캡처 결과
+.dev/
+shots/
 
 # ── 비밀정보·로컬 설정 (예시 파일만 커밋) ──
 .env
