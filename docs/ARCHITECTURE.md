@@ -191,17 +191,16 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 | 비밀정보 | 서버 운영 키는 SSM Parameter Store / Secrets Manager. 로그에 키·음성·자막 원문 남기지 않음 |
 | 배포 | GitHub Actions에서 바이너리 빌드 → systemd 서비스 재시작 (컨테이너는 선택) |
 
-coturn 필수 설정(서버의 `TURN_URLS`·`TURN_SECRET`과 짝). 자격은 12시간 동안 회수할 수 없으므로, 새어도 내부망에 닿지 못하고, 한 사람이 쓸 수 있는 할당 수와 세션 대역폭에 상한을 둔다:
+coturn 필수 설정(4.18 기준, 서버의 `TURN_URLS`·`TURN_SECRET`과 짝). 자격은 12시간 동안 회수할 수 없으므로, 새어도 내부망에 닿지 못하고, 한 사람이 쓸 수 있는 할당 수와 세션 대역폭에 상한을 둔다:
 
 ```ini
 use-auth-secret
 static-auth-secret=<TURN_SECRET과 같은 값>
 realm=<도메인>
 fingerprint
-no-cli
 no-tcp-relay
 # 릴레이로 인스턴스 자신·VPC·메타데이터(169.254.169.254, fd00:ec2::254)에 닿지 못하게 막는다.
-no-loopback-peers
+# loopback(127.x, ::1)과 CLI는 기본으로 막혀 있다(allow-loopback-peers·cli를 켜지 않는다).
 no-multicast-peers
 denied-peer-ip=0.0.0.0-0.255.255.255
 denied-peer-ip=10.0.0.0-10.255.255.255
@@ -218,8 +217,7 @@ denied-peer-ip=<Elastic IP>
 # IPv6를 켠 VPC면 인스턴스·VPC IPv6는 NAT 없는 공인 주소라 위 사설 대역으로 막히지 않는다. 함께 막는다.
 # denied-peer-ip=<인스턴스 IPv6>
 # denied-peer-ip=<VPC IPv6 CIDR 시작>-<끝>
-denied-peer-ip=::
-denied-peer-ip=::1
+# 주의: denied-peer-ip=:: 는 coturn에서 모든 주소(IPv4 포함)를 막는다(실측). ::1은 기본으로 막혀 있다.
 # IPv4 규칙은 IPv4-mapped IPv6 주소에 적용되지 않는다(이게 없으면 ::ffff:169.254.169.254로 우회).
 denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
 denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
