@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from 'react'
 import type { Caption } from '../lib/captions'
 import { useI18n } from '../lib/i18n'
 import type { Prefs } from '../lib/prefs'
+import type { SttStatus } from '../lib/stt'
 import { Icon } from './Icon'
 import { LanguageSelects } from './LanguageSelects'
 import { Switch } from './Switch'
@@ -11,6 +12,7 @@ type Props = {
   translation: boolean
   isHost: boolean
   captions: Caption[]
+  sttStatus: SttStatus | null
   speakerName: (id: string) => string
   onPrefsChange: (p: Prefs) => void
   onTranslationChange: (on: boolean) => void
@@ -22,6 +24,7 @@ export function CaptionPanel({
   translation,
   isHost,
   captions,
+  sttStatus,
   speakerName,
   onPrefsChange,
   onTranslationChange,
@@ -44,6 +47,12 @@ export function CaptionPanel({
       {translation ? (
         <>
           <LanguageSelects prefs={prefs} onChange={onPrefsChange} />
+          {(sttStatus === 'paused' || sttStatus === 'unavailable') && (
+            <p className="stt-status" role="status">
+              <Icon name="mic_off" />
+              {t(sttStatus === 'paused' ? 'captions.sttPaused' : 'captions.sttUnavailable')}
+            </p>
+          )}
           <Feed captions={captions} speakerName={speakerName} />
         </>
       ) : (

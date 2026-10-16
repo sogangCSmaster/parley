@@ -36,6 +36,11 @@ impl Gemini {
         Gemini { client, key, model }
     }
 
+    /// 같은 호스트로 가는 다른 요청(음성 인식 토큰)이 열린 연결을 재사용하도록 공유한다.
+    pub fn client(&self) -> reqwest::Client {
+        self.client.clone()
+    }
+
     /// 첫 번역 요청이 TLS 수립 시간을 물지 않도록 시작할 때 연결을 미리 열어 둔다.
     pub async fn warm_up(&self) {
         let res = self

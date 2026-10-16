@@ -7,8 +7,8 @@ Parley uses **Google Gemini as its only AI provider**, with one API key configur
 ## Current status
 
 - **Implemented:** host login, meeting links, guest admission, video/audio calls, screen sharing and a multilingual caption panel.
+- **Implemented:** browser microphone → client VAD → Gemini Live transcription (`gemini-3.5-transcribe-live`) with a one-time token issued by the server, so the API key never reaches the browser. Only speech is sent; sessions are opened ahead of time, kept alive and rotated before they expire.
 - **Implemented:** server-side STT text → sentence buffering → Gemini streaming translation → captions, with recent sentence context and one translation per target language. Translated text appears from the first chunk; failed or incomplete translations fall back to the original.
-- **Planned:** browser microphone capture for Gemini live transcription and server-issued ephemeral tokens. Microphone-to-caption translation is not connected yet; setting an API key alone does not enable it.
 
 The Gemini key belongs in the server environment or the repository root `.env`. Participants do not supply individual keys.
 
@@ -66,7 +66,7 @@ For local secrets, put `GEMINI_API_KEY=your-key` in the repository root `.env` (
 The Rust server loads this file before starting its runtime; existing environment variables take precedence.
 The Gemini benchmark also reads the root file, with `bench/gemini/.env` as a legacy fallback.
 `.env` is ignored by Git. Keep this key server-side; never give it a `VITE_` prefix.
-The server translates STT messages with this key; browser microphone-to-STT capture is still planned, so loading the key alone does not enable microphone captions yet.
+The same key issues the browsers' one-time speech recognition tokens and translates the recognized text. Without it, nobody's speech is captioned.
 
 Server environment variables:
 
@@ -79,6 +79,7 @@ Server environment variables:
 | `COOKIE_SECURE` | `true` | Session cookie `Secure` flag. Use `false` only for local http development |
 | `GEMINI_API_KEY` | (none) | Translation API key (server only, never sent to browsers). If empty, captions show the original only |
 | `GEMINI_TRANSLATE_MODEL` | `gemini-3.5-flash-lite` | Translation model |
+| `GEMINI_STT_MODEL` | `gemini-3.5-transcribe-live` | Speech recognition model, locked into each browser token |
 | `TRUSTED_PROXY` | (unset) | Set to `1` only behind a reverse proxy (Caddy) that sets `X-Forwarded-For`; login throttling then uses its last hop as the client IP. Otherwise the socket peer address is used |
 
 Per-step translation latency (first token, total, STT → translation) is logged at debug level: `RUST_LOG=info,parley_server::pipeline=debug`. Caption text is never logged.
@@ -94,5 +95,13 @@ The browser regression script uses an optional existing Playwright installation 
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node web/tests/browser-regressions.mjs
 PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node web/tests/browser-mesh.mjs
 ```
+
+To check the real speech path (fake microphone playing a WAV → Gemini Live → translated captions, with per-step timings), run the app with a Gemini key and:
+
+```bash
+node web/tests/browser-stt.mjs speech.wav --lang ko --partner ja
+```
+
+It calls Gemini for real, so it is not part of CI. `CHROMIUM_PATH` picks a different Chromium build.
 
 These scripts check waiting-room disconnects, failed admissions, mobile caption controls, mute preservation and capture cleanup, plus real WebRTC connections with and without local devices. Signaling and the screen picker are mocked. `TEST_ORIGIN` overrides the default `http://127.0.0.1:5173`.

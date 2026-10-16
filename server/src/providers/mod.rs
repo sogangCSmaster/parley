@@ -1,6 +1,7 @@
 //! 외부 번역 제공자. 파이프라인은 `Translator` trait만 알고, 구현체를 바꿔 끼워 여러 제공자를 지원한다.
 
 pub mod gemini;
+pub mod live;
 
 use std::sync::Arc;
 use std::time::Duration;

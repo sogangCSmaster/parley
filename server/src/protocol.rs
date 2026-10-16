@@ -85,6 +85,11 @@ pub enum ClientMsg {
         #[serde(rename = "final")]
         is_final: bool,
     },
+    /// 음성 인식 세션 하나를 열 1회용 토큰을 요청한다. 입장했고 번역이 켜진 방에서만 발급된다.
+    /// 답은 같은 `id`의 `stt_token` 또는 `stt_token_denied`다(발급은 비동기라 답 순서가 바뀔 수 있다).
+    SttToken {
+        id: u32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -141,6 +146,19 @@ pub enum ServerMsg {
         #[serde(rename = "final")]
         is_final: bool,
         rev: u32,
+    },
+    /// Gemini Live `BidiGenerateContentConstrained`에 `access_token`으로 쓰는 1회용 토큰.
+    /// 모델·전사 언어(요청 시점의 내 `lang`)·수동 활동 모드가 토큰에 잠겨 있다. 받은 즉시(1분 안에) 세션을 열어야 한다.
+    SttToken {
+        id: u32,
+        token: String,
+        model: String,
+    },
+    /// 토큰을 주지 않았다. `retry`가 false면(키 없음·입장 전·번역 꺼짐) 이 연결에서 다시 요청하지 않는다.
+    /// true면 일시적 오류나 요청 과다라서 잠시 뒤 다시 요청한다.
+    SttTokenDenied {
+        id: u32,
+        retry: bool,
     },
     Notice {
         code: NoticeCode,
