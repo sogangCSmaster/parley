@@ -209,6 +209,7 @@ h1 { text-wrap: balance; }
 .spinner { width: 32px; height: 32px; border-radius: var(--radius-full); border: 3px solid var(--divider); border-top-color: var(--brand-accent); animation: spin .9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+.spinner-sm { width: 16px; height: 16px; border-width: 2px; }
 .knocks { position: fixed; top: var(--space-4); right: var(--space-4); z-index: 20; display: flex; flex-direction: column; gap: var(--space-2); width: min(360px, calc(100% - 2 * var(--space-4))); }
 .knock { display: grid; grid-template-columns: auto 1fr; gap: var(--space-3); align-items: center; padding: var(--space-4); border-radius: 12px; background: var(--panel-bg); color: var(--text); box-shadow: 0 8px 24px rgb(0 0 0 / .35); }
 .knock p { margin: 0; font-size: var(--text-md); font-weight: 600; line-height: 1.4; }
@@ -302,7 +303,7 @@ h1 { text-wrap: balance; }
 .ctl.plain.on { background: none; color: var(--control-active-bg); }
 .room :focus-visible { outline-color: var(--brand-accent); }
 
-.banner { position: fixed; top: var(--space-4); left: 50%; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4); background: var(--panel-bg); color: var(--text); border-radius: 4px; box-shadow: 0 2px 8px rgb(0 0 0 / .3); }
+.banner { position: fixed; top: var(--space-4); left: 50%; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--panel-bg); color: var(--text); border-radius: 4px; box-shadow: 0 2px 8px rgb(0 0 0 / .3); }
 .toast { position: fixed; left: var(--space-4); bottom: calc(var(--control-bar-height) + var(--space-2)); z-index: 10; padding: var(--space-3) var(--space-4); background: var(--brand-ink); color: #fff; border-radius: 4px; max-width: calc(100% - 2 * var(--space-4)); word-break: break-all; }
 
 

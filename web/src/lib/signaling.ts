@@ -26,6 +26,11 @@ export class Signaling {
     }
   }
 
+  /** 서버와 연결된 적이 있는지(지금 열려 있는지와는 다르다) */
+  get hasOpened() {
+    return this.opened
+  }
+
   send(msg: ClientMsg) {
     if (this.closedByUs) return
     const raw = JSON.stringify(msg)

@@ -36,6 +36,11 @@ type Status =
   | { kind: 'joined'; selfId: string }
   | { kind: 'error'; message: MessageKey }
 
+/** 다시 연결할 때 WebSocket이 열리기를 기다리는 시간. 넘으면 이 시도를 버리고 다음 시도로 넘어간다. */
+const RECONNECT_TIMEOUT_MS = 5000
+/** 처음 입장할 때는 재시도 없이 오류를 보이므로, 느린 모바일 망의 TLS 연결까지 기다리도록 넉넉히 둔다. */
+const FIRST_CONNECT_TIMEOUT_MS = 10_000
+
 // 입장 전 오류는 화면 전체를 바꾸고, 입장 후 오류(예: 가득 찬 방에 수락)는 토스트로만 알린다.
 const FATAL_ERRORS: Partial<Record<string, MessageKey>> = {
   room_full: 'room.full',
@@ -74,8 +79,23 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const tokenIdRef = useRef(0)
   const onMediaChangeRef = useRef(onMediaChange)
   useEffect(() => { onMediaChangeRef.current = onMediaChange }, [onMediaChange])
-  // 입장 메시지는 마운트 시점 값으로 한 번만 보낸다. 이후 변경은 lang/media 메시지로 보낸다.
-  const joinRef = useRef({ name: prefs.name.trim(), lang: prefs.lang, partnerLang: prefs.partnerLang, media })
+  // 이름은 입장할 때 정한 값으로 고정한다. 언어·미디어 상태는 다시 연결할 때 그때의 값을 보낸다.
+  const nameRef = useRef(prefs.name.trim())
+  const prefsRef = useRef(prefs)
+  useEffect(() => {
+    prefsRef.current = prefs
+  }, [prefs])
+  // 연결이 끊기면 같은 화면에서 다시 연결한다. 한 번 입장했으면 받은 재입장 토큰으로 수락 없이 돌아온다.
+  const [attempt, setAttempt] = useState(0)
+  const resumeRef = useRef<string | null>(null)
+  const everJoinedRef = useRef(false)
+  const retriesRef = useRef(0)
+  // 대기 중인 재시도 타이머. 시도가 진행 중이면 null이다.
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 방이 없어졌거나 거절된 경우처럼 다시 연결해도 소용없을 때 true. 사용자가 직접 다시 시도한다.
+  const stoppedRef = useRef(false)
+  // 다시 연결하면 내 참가자 id가 바뀐다. 지난 id로 남은 내 자막도 "나"로 보이게 모은다.
+  const selfIdsRef = useRef(new Set<string>())
   // 브라우저의 "공유 중지"처럼 나중에 호출되는 콜백이 최신 미디어 상태를 보도록 한다.
   const mediaRef = useRef(media)
   useEffect(() => {
@@ -116,6 +136,11 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             () => setToast({ key: 'room.screenFailed' }),
           )
           joinedRef.current = true
+          everJoinedRef.current = true
+          resumeRef.current = msg.resume
+          selfIdsRef.current.add(msg.you)
+          retriesRef.current = 0
+          setDisconnected(false)
           setStatus({ kind: 'joined', selfId: msg.you })
           setIsHost(msg.host)
           setSettings(msg.settings)
@@ -139,9 +164,14 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           meshRef.current?.handleSignal(msg.from, msg.data)
           break
         case 'waiting':
+          // 토큰이 만료돼 다시 수락을 기다리는 경우: 이제부터는 처음 입장할 때처럼 다룬다.
+          resumeRef.current = null
+          everJoinedRef.current = false
+          setDisconnected(false)
           setStatus({ kind: 'waiting' })
           break
         case 'denied':
+          stoppedRef.current = true
           setStatus({ kind: 'error', message: 'room.denied' })
           break
         case 'knock':
@@ -169,7 +199,11 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           break
         case 'error': {
           const fatal = FATAL_ERRORS[msg.code]
-          if (!joinedRef.current) setStatus({ kind: 'error', message: fatal ?? 'room.cannotJoin' })
+          if (!joinedRef.current) {
+            stoppedRef.current = true
+            resumeRef.current = null
+            setStatus({ kind: 'error', message: fatal ?? 'room.cannotJoin' })
+          }
           else if (msg.code === 'room_full') setToast({ key: 'room.full' })
           else console.warn('server error', msg.code, msg.message)
           break
@@ -180,6 +214,8 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
     const joinedRef = { current: false }
     const sig = new Signaling(onMessage, (opened) => {
       if (disposed) return
+      // 이 시도는 끝났다. 연결 시간 제한이 같은 시도에 재시도를 한 번 더 걸지 않게 한다.
+      clearTimeout(connectTimer)
       screenRef.current?.dispose()
       screenRef.current = null
       setScreenTrack(null)
@@ -187,18 +223,55 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
       meshRef.current?.close()
       meshRef.current = null
       setStreams({})
-      if (joinedRef.current) setDisconnected(true)
-      else setStatus({ kind: 'error', message: opened ? 'room.disconnected' : 'room.serverDown' })
+      if (mediaRef.current.screen) {
+        const next = { ...mediaRef.current, screen: false }
+        mediaRef.current = next
+        onMediaChangeRef.current(next)
+      }
+      if (stoppedRef.current) return
+      if (!everJoinedRef.current) {
+        setStatus({ kind: 'error', message: opened ? 'room.disconnected' : 'room.serverDown' })
+        return
+      }
+      scheduleRetry()
     })
+    // 입장한 적이 있으면 화면을 그대로 두고 1·2·4·8·10초… 간격으로 다시 연결한다.
+    function scheduleRetry() {
+      setDisconnected(true)
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+      const delay = Math.min(10_000, 1000 * 2 ** retriesRef.current++)
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null
+        setAttempt((a) => a + 1)
+      }, delay)
+    }
+    // 응답 없는 망(VPN 전환·캡티브 포털)에서는 연결 시도가 OS 시간 제한(1분 이상)까지 걸려 있을 수 있다.
+    const connectTimer = setTimeout(() => {
+      if (disposed || sig.hasOpened || stoppedRef.current) return
+      sig.close()
+      if (everJoinedRef.current) scheduleRetry()
+      else setStatus({ kind: 'error', message: 'room.serverDown' })
+    }, everJoinedRef.current ? RECONNECT_TIMEOUT_MS : FIRST_CONNECT_TIMEOUT_MS)
     sigRef.current = sig
     segRef.current = { next: 0 }
 
     // ICE 서버(TURN 자격 포함)는 welcome으로 온다. 열리기 전에 보낸 join은 큐에 모였다가 바로 나간다.
-    const j = joinRef.current
-    sig.send({ t: 'join', room: code, name: j.name, lang: j.lang, partner_lang: j.partnerLang, media: j.media })
+    const p = prefsRef.current
+    sig.send({
+      t: 'join',
+      room: code,
+      name: nameRef.current,
+      lang: p.lang,
+      partner_lang: p.partnerLang,
+      media: mediaRef.current,
+      ...(resumeRef.current ? { resume: resumeRef.current } : {}),
+    })
+    // 토큰은 welcome에서 새것으로 바뀔 때까지 지니고 있는다(이 연결이 열리지 못하면 다음 시도에 다시 쓴다).
 
     return () => {
       disposed = true
+      clearTimeout(connectTimer)
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
       sig.close()
       screenRef.current?.dispose()
       screenRef.current = null
@@ -206,7 +279,21 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
       meshRef.current = null
       sigRef.current = null
     }
-  }, [code, local])
+  }, [code, local, attempt])
+
+  // 망이 돌아오면 기다리지 않고 바로 다시 연결한다.
+  useEffect(() => {
+    if (!disconnected) return
+    const retryNow = () => {
+      // 이미 진행 중인 시도는 건드리지 않는다(입장 직전에 끊으면 받은 토큰을 잃는다).
+      if (!retryTimerRef.current) return
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
+      setAttempt((a) => a + 1)
+    }
+    window.addEventListener('online', retryNow)
+    return () => window.removeEventListener('online', retryNow)
+  }, [disconnected])
 
   useEffect(() => {
     if (!toast) return
@@ -372,11 +459,9 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   return (
     <div className="room">
       {disconnected && (
-        <div className="banner" role="alert">
-          {t('room.disconnected')}
-          <button className="btn btn-text" onClick={onRejoin}>
-            {t('room.rejoin')}
-          </button>
+        <div className="banner" role="status">
+          <span className="spinner spinner-sm" aria-hidden="true" />
+          {t('room.reconnecting')}
         </div>
       )}
       <div className="room-main">
@@ -408,7 +493,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             isHost={isHost}
             captions={captions}
             sttStatus={sttStatus}
-            speakerName={(id) => (joined && id === status.selfId ? t('room.you', { name: prefs.name.trim() }) : (names[id] ?? ''))}
+            speakerName={(id) => (selfIdsRef.current.has(id) ? t('room.you', { name: prefs.name.trim() }) : (names[id] ?? ''))}
             onPrefsChange={changePrefs}
             onTranslationChange={changeTranslation}
             onClose={() => setPanelOpen(false)}

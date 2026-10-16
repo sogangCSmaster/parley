@@ -135,6 +135,10 @@ pub enum ClientMsg {
         lang: String,
         partner_lang: String,
         media: MediaState,
+        /// 연결이 끊겼다 다시 들어올 때, 지난 `welcome`에서 받은 값. 맞으면 주최자 수락 없이 바로 입장한다.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        resume: Option<String>,
     },
     Lang {
         lang: String,
@@ -187,6 +191,8 @@ pub enum ServerMsg {
         knocks: Vec<Knock>,
         /// 이 참가자 전용 ICE 서버(TURN 자격 포함). 입장이 확정된 참가자만 받는다.
         ice_servers: Vec<IceServer>,
+        /// 연결이 끊기면 이 값으로 다시 입장한다(1회용, 서버가 끊김을 알아챈 뒤 2분까지). 메모리에만 둔다.
+        resume: String,
     },
     /// 게스트: 주최자 수락을 기다리는 중
     Waiting,

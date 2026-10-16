@@ -15,7 +15,11 @@ knocks: Array<Knock>,
 /**
  * 이 참가자 전용 ICE 서버(TURN 자격 포함). 입장이 확정된 참가자만 받는다.
  */
-ice_servers: Array<IceServer>, } | { "t": "waiting" } | { "t": "denied" } | { "t": "knock", knock: Knock, } | { "t": "knock_resolved", id: string, } | { "t": "settings", settings: RoomSettings, } | { "t": "peer_joined", peer: Peer, } | { "t": "peer_updated", peer: Peer, } | { "t": "peer_left", id: string, } | { "t": "signal", from: string, data: SignalData, } | { "t": "caption", seg: string, speaker: string, src_lang: string, src: string, tgt_lang: string, 
+ice_servers: Array<IceServer>, 
+/**
+ * 연결이 끊기면 이 값으로 다시 입장한다(1회용, 서버가 끊김을 알아챈 뒤 2분까지). 메모리에만 둔다.
+ */
+resume: string, } | { "t": "waiting" } | { "t": "denied" } | { "t": "knock", knock: Knock, } | { "t": "knock_resolved", id: string, } | { "t": "settings", settings: RoomSettings, } | { "t": "peer_joined", peer: Peer, } | { "t": "peer_updated", peer: Peer, } | { "t": "peer_left", id: string, } | { "t": "signal", from: string, data: SignalData, } | { "t": "caption", seg: string, speaker: string, src_lang: string, src: string, tgt_lang: string, 
 /**
  * 번역. 아직 없거나 번역할 필요가 없거나(같은 언어) 실패하면 null이다.
  * 확정 전에는 이전 원문에 대한 번역일 수 있다.

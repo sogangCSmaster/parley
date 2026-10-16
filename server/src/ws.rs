@@ -242,6 +242,7 @@ async fn run(
                     lang,
                     partner_lang,
                     media,
+                    resume,
                 },
                 None,
             ) => match (room::normalize_name(&name), room::is_valid_room_code(&room)) {
@@ -253,6 +254,7 @@ async fn run(
                         lang,
                         partner_lang,
                         media,
+                        resume: resume.filter(|t| room::is_valid_resume(t)),
                     };
                     rooms
                         .join(&room, req, account.as_deref(), tx.clone())
@@ -602,6 +604,7 @@ mod tests {
                 lang: "en".into(),
                 partner_lang: "ko".into(),
                 media: crate::protocol::MediaState::default(),
+                resume: None,
             },
         )
         .await;

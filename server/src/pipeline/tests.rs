@@ -24,6 +24,7 @@ fn join_req(name: &str, lang: &str, partner: &str) -> JoinRequest {
         lang: lang.into(),
         partner_lang: partner.into(),
         media: MediaState::default(),
+        resume: None,
     }
 }
 

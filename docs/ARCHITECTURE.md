@@ -140,7 +140,7 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 // client → server
 { "t": "stt", "seg": 3, "text": "저희 투자팀은", "final": false }   // seg = STT 구간 번호, 중간 결과는 구간 내 누적
 { "t": "join", "room": "abcd-efgh-ijkm", "name": "유승재", "lang": "ko", "partner_lang": "ja",
-  "media": { "mic": true, "cam": true, "screen": false } }
+  "media": { "mic": true, "cam": true, "screen": false }, "resume": "…" }   // resume은 다시 연결할 때만
 { "t": "lang", "lang": "ko", "partner_lang": "ja" }
 { "t": "media", "media": { "mic": false, "cam": true, "screen": false } }
 { "t": "signal", "to": "<peer id>", "data": { "description": { "type", "sdp" } } | { "candidate": { "candidate", "sdpMid", "sdpMLineIndex", "usernameFragment" } } }  // 둘 중 하나만
@@ -148,7 +148,8 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 
 // server → client
 { "t": "welcome", "you": "<peer id>", "host": false, "settings": {…}, "peers": [Peer…], "knocks": [],
-  "ice_servers": [{ "urls": ["stun:…"] }, { "urls": ["turn:…"], "username": "1760000000:<peer id>", "credential": "…" }] }
+  "ice_servers": [{ "urls": ["stun:…"] }, { "urls": ["turn:…"], "username": "1760000000:<peer id>", "credential": "…" }],
+  "resume": "<재입장 토큰>" }
 { "t": "peer_joined" | "peer_updated", "peer": Peer }
 { "t": "peer_left", "id": "<peer id>" }
 { "t": "signal", "from": "<peer id>", "data": {…} }
@@ -250,6 +251,7 @@ max-bps=500000
 | 주최자 인증 | 운영자가 `HOST_ACCOUNTS`에 argon2id 해시로 등록. 세션은 256bit 랜덤 토큰을 HttpOnly·SameSite=Lax·Secure 쿠키로(12시간). 계정별 15분 내 10회 실패 시 잠금, 없는 계정도 같은 시간이 걸리게 비교 |
 | 회의 생성 | 로그인한 주최자만(`POST /api/rooms`), 주최자당 동시 20개. 아무도 없는 방은 30분 뒤 삭제 |
 | 입장 | 방을 만든 계정으로 접속하면 바로 입장, 그 외는 대기열(방당 8명) → 주최자가 수락해야 입장. 수락·거절·번역 설정은 서버가 매 요청 주최자인지 확인. 방당 최대 4명 |
+| 다시 연결 | 입장하면 `welcome`으로 재입장 토큰(120bit, 1회용)을 받는다. 연결이 끊기면 클라이언트가 화면을 유지한 채 1·2·4·8·10초 간격(대기 중인 재시도가 있으면 망이 돌아올 때 즉시)으로 다시 연결하고, 토큰이 맞으면 수락 없이 바로 입장한다. 토큰은 서버가 끊김을 알아챈 뒤 2분까지 유효하고(그 전에는 옛 연결을 밀어내고 입장한다), 메모리에만 둔다(새로 고침하면 다시 수락받는다). 서버가 아직 끊긴 줄 모르는 옛 연결은 밀어낸다. 다시 연결할 때 연결 시도가 5초 안에 열리지 않으면 버리고 다음 시도로 넘어간다(처음 입장할 때는 10초 기다린 뒤 "서버에 연결하지 못했어요"를 보인다). 다시 들어오면 참가자 id가 바뀌어 다른 참가자에게는 나갔다 들어온 것으로 보인다. 한계: 서버가 토큰을 쓴 직후 `welcome`을 받기 전에 또 끊기면 새 토큰을 받지 못해 다시 수락을 기다린다(안전한 쪽으로 실패). 실측: 연결만 끊김 → 1.3초에 복귀, 오프라인 3.5초 → 온라인 25ms 뒤 복귀(둘 다 수락 없이 영상 재연결), 서버 재시작으로 방이 사라지면 안내 화면을 보이고 더 시도하지 않는다 |
 | CSRF·WS 하이재킹 | API는 JSON Content-Type만 받음 + SameSite=Lax. `/ws`는 Origin이 Host와 같아야 업그레이드 |
 | 시그널링 | `signal.to`는 같은 방 참가자에게만 중계 |
 | TURN 자격 | 정적 비밀번호 대신 서버가 발급하는 시간제한 HMAC 자격(coturn `use-auth-secret`, TURN REST API 방식). `username = "<만료>:<참가자 id>"`, `credential = base64(HMAC-SHA1(TURN_SECRET, username))`, 12시간(coturn은 할당 갱신 때도 자격을 검사하므로 회의보다 길게). `welcome`으로만 나가므로 입장이 확정된 참가자만 받는다. 공개 API로는 ICE 설정을 내주지 않는다(구현됨). 한계: 발급한 자격은 만료 전에 회수할 수 없고, 12시간이 넘게 머문 참가자는 자격이 갱신되지 않아 새 릴레이를 열지 못한다(다시 입장하면 새로 받는다) |

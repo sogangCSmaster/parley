@@ -26,6 +26,8 @@ pub const MAX_WAITING: usize = 8;
 pub const MAX_ROOMS_PER_HOST: usize = 20;
 /// 아무도 없는 방(만들고 아무도 안 들어왔거나 모두 나간 방)을 지우기까지의 시간
 pub const ROOM_IDLE_TTL: Duration = Duration::from_secs(30 * 60);
+/// 연결이 끊긴 참가자가 주최자 수락 없이 돌아올 수 있는 시간
+pub const RESUME_TTL: Duration = Duration::from_secs(2 * 60);
 
 /// 혼동하기 쉬운 문자(l, o, 0, 1)를 뺀 32자. 4-4-4 형식이면 60bit.
 const CODE_ALPHABET: &[u8] = b"abcdefghijkmnpqrstuvwxyz23456789";
@@ -39,6 +41,11 @@ pub struct Outbox {
 impl Outbox {
     pub fn new(tx: mpsc::Sender<ServerMsg>, disconnect: Arc<Notify>) -> Self {
         Self { tx, disconnect }
+    }
+
+    /// 이 연결을 닫게 한다(같은 참가자가 새 연결로 돌아와 옛 연결을 밀어낼 때).
+    pub fn close(&self) {
+        self.disconnect.notify_one();
     }
 
     pub fn send(&self, msg: ServerMsg) {
@@ -65,6 +72,31 @@ struct Room {
     waiting: HashMap<PeerId, Member>,
     /// 방이 비게 된 시점(생성 직후 포함). 사람이 있으면 None.
     idle_since: Option<Instant>,
+    /// 재입장 토큰 → 참가자. 입장할 때 하나씩 발급하고, 쓰면 없어진다.
+    resumes: HashMap<String, Resume>,
+}
+
+struct Resume {
+    peer: PeerId,
+    /// 주최자가 수락한 이름. 다시 들어올 때 요청의 이름 대신 쓴다(수락 없이 이름을 바꾸지 못하게).
+    name: String,
+    /// 그 참가자가 나간 시점. 아직 입장해 있으면 None(끊긴 걸 서버가 아직 모르는 경우 포함).
+    left_at: Option<Instant>,
+}
+
+impl Room {
+    fn issue_resume(&mut self, peer: &str, name: &str) -> String {
+        let token = random_token(RESUME_LEN);
+        self.resumes.insert(
+            token.clone(),
+            Resume {
+                peer: peer.to_owned(),
+                name: name.to_owned(),
+                left_at: None,
+            },
+        );
+        token
+    }
 }
 
 impl Room {
@@ -132,6 +164,7 @@ pub struct JoinRequest {
     pub lang: String,
     pub partner_lang: String,
     pub media: MediaState,
+    pub resume: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -173,6 +206,7 @@ impl Rooms {
             caption_changes: watch::channel(0).0,
             members: HashMap::new(),
             waiting: HashMap::new(),
+            resumes: HashMap::new(),
             idle_since: Some(Instant::now()),
         };
         rooms.insert(code.clone(), room);
@@ -196,16 +230,31 @@ impl Rooms {
         let ice_servers = self.ice.servers_for(&id, SystemTime::now());
         let mut rooms = self.rooms.lock().unwrap();
         let room = rooms.get_mut(code).ok_or(ErrorCode::RoomNotFound)?;
+        let now = Instant::now();
+        // 1회용: 맞든 틀리든 쓴 토큰은 지운다.
+        let resumed = req
+            .resume
+            .as_deref()
+            .and_then(|token| room.resumes.remove(token))
+            .filter(|r| r.left_at.is_none_or(|t| now.duration_since(t) < RESUME_TTL));
+        if let Some(r) = &resumed
+            && let Some(old) = room.members.remove(&r.peer)
+        {
+            // 서버가 아직 끊긴 줄 모르는 옛 연결(반쯤 열린 TCP)을 밀어낸다.
+            old.tx.close();
+            room.caption_changes.send_modify(|v| *v += 1);
+            broadcast(&room.members, &r.peer, ServerMsg::PeerLeft { id: r.peer.clone() });
+        }
         if room.members.len() >= MAX_PEERS {
             return Err(ErrorCode::RoomFull);
         }
         let is_host = account == Some(room.host_account.as_str());
-        if !is_host && room.waiting.len() >= MAX_WAITING {
+        if !is_host && resumed.is_none() && room.waiting.len() >= MAX_WAITING {
             return Err(ErrorCode::TooManyWaiting);
         }
         let peer = Peer {
             id: id.clone(),
-            name: req.name,
+            name: resumed.as_ref().map_or(req.name, |r| r.name.clone()),
             lang: req.lang,
             partner_lang: req.partner_lang,
             media: req.media,
@@ -213,14 +262,17 @@ impl Rooms {
         };
         room.idle_since = None;
 
-        if is_host {
+        // 주최자 계정이거나, 수락받은 적 있는 참가자가 재입장 토큰으로 돌아온 경우 바로 입장한다.
+        if is_host || resumed.is_some() {
+            let resume = room.issue_resume(&id, &peer.name);
             let welcome = ServerMsg::Welcome {
                 you: id.clone(),
-                host: true,
+                host: is_host,
                 settings: room.settings,
                 peers: room.members.values().map(|m| m.peer.clone()).collect(),
-                knocks: room.knocks(),
+                knocks: if is_host { room.knocks() } else { Vec::new() },
                 ice_servers,
+                resume,
             };
             send(&tx, welcome);
             broadcast(
@@ -275,6 +327,7 @@ impl Rooms {
             return Err(ErrorCode::RoomFull);
         }
         let member = room.waiting.remove(guest).expect("checked above");
+        let resume = room.issue_resume(guest, &member.peer.name);
         let welcome = ServerMsg::Welcome {
             you: guest.to_owned(),
             host: false,
@@ -282,6 +335,7 @@ impl Rooms {
             peers: room.members.values().map(|m| m.peer.clone()).collect(),
             knocks: Vec::new(),
             ice_servers,
+            resume,
         };
         send(&member.tx, welcome);
         broadcast(
@@ -411,6 +465,10 @@ impl Rooms {
         if room.members.remove(id).is_some() {
             room.caption_changes.send_modify(|v| *v += 1);
             broadcast(&room.members, id, ServerMsg::PeerLeft { id: id.to_owned() });
+            let now = Instant::now();
+            for r in room.resumes.values_mut().filter(|r| r.peer == id) {
+                r.left_at.get_or_insert(now);
+            }
         } else if room.waiting.remove(id).is_some() {
             room.notify_hosts(ServerMsg::KnockResolved { id: id.to_owned() });
         }
@@ -461,10 +519,15 @@ impl Rooms {
 
     /// 오래 빈 방을 지운다(주기 작업).
     pub fn sweep(&self, now: Instant) {
-        self.rooms.lock().unwrap().retain(|_, r| {
+        let mut rooms = self.rooms.lock().unwrap();
+        rooms.retain(|_, r| {
             r.idle_since
                 .is_none_or(|t| now.duration_since(t) < ROOM_IDLE_TTL)
         });
+        for room in rooms.values_mut() {
+            room.resumes
+                .retain(|_, r| r.left_at.is_none_or(|t| now.duration_since(t) < RESUME_TTL));
+        }
     }
 }
 
@@ -479,6 +542,13 @@ fn broadcast(members: &HashMap<PeerId, Member>, except: &str, msg: ServerMsg) {
 pub fn send(tx: &Outbox, msg: ServerMsg) {
     tx.send(msg);
 }
+
+/// 재입장 토큰 모양(`issue_resume`이 만드는 24자). 다르면 찾아보지도 않는다.
+pub fn is_valid_resume(token: &str) -> bool {
+    token.len() == RESUME_LEN && token.bytes().all(|b| CODE_ALPHABET.contains(&b))
+}
+
+const RESUME_LEN: usize = 24;
 
 fn random_token(len: usize) -> String {
     let mut rng = rand::rng();
@@ -532,6 +602,7 @@ mod tests {
             lang: "ko".into(),
             partner_lang: "ja".into(),
             media: MediaState::default(),
+            resume: None,
         }
     }
 
@@ -663,6 +734,77 @@ mod tests {
         assert!(matches!(&guest.drain()[..], [ServerMsg::Waiting]));
         rooms.admit(&code, &host_id, &guest_id).unwrap();
         assert!(turn_user(guest.drain()).ends_with(&format!(":{guest_id}")));
+    }
+
+    fn resume_req(name: &str, token: &str) -> JoinRequest {
+        JoinRequest {
+            resume: Some(token.into()),
+            ..req(name)
+        }
+    }
+
+    /// 주최자 방 + 수락된 게스트. (rooms, code, host_id, host, guest_id, guest, 게스트의 재입장 토큰)
+    fn room_with_admitted_guest() -> (Rooms, String, PeerId, Client, PeerId, Client, String) {
+        let (rooms, code, host_id, mut host) = room_with_host();
+        let mut guest = client();
+        let guest_id = waiting(rooms.join(&code, req("Guest"), None, guest.tx.clone()).unwrap());
+        rooms.admit(&code, &host_id, &guest_id).unwrap();
+        let token = match &guest.drain()[..] {
+            [ServerMsg::Waiting, ServerMsg::Welcome { resume, .. }] => resume.clone(),
+            other => panic!("expected welcome, got {other:?}"),
+        };
+        host.drain();
+        (rooms, code, host_id, host, guest_id, guest, token)
+    }
+
+    #[test]
+    fn admitted_guest_comes_back_without_admission_once() {
+        let (rooms, code, _, mut host, guest_id, _, token) = room_with_admitted_guest();
+        rooms.leave(&code, &guest_id);
+        host.drain();
+
+        let mut back = client();
+        let new_id = joined(rooms.join(&code, resume_req("CEO", &token), None, back.tx.clone()).unwrap());
+        assert!(matches!(&back.drain()[..], [ServerMsg::Welcome { host: false, .. }]));
+        let rejoined = host.drain();
+        assert!(
+            rejoined.iter().any(|m| matches!(m, ServerMsg::PeerJoined { peer } if peer.name == "Guest")),
+            "keeps the name the host admitted"
+        );
+        assert!(rejoined.iter().any(|m| matches!(m, ServerMsg::PeerJoined { peer } if peer.id == new_id)));
+
+        // 1회용: 같은 토큰으로는 다시 대기열로 간다.
+        rooms.leave(&code, &new_id);
+        let again = client();
+        waiting(rooms.join(&code, resume_req("Guest", &token), None, again.tx).unwrap());
+    }
+
+    #[test]
+    fn resume_expires_and_wrong_tokens_wait_for_admission() {
+        let (rooms, code, _, _, guest_id, _, token) = room_with_admitted_guest();
+        let wrong = client();
+        waiting(rooms.join(&code, resume_req("Mallory", "not-a-token"), None, wrong.tx).unwrap());
+
+        rooms.leave(&code, &guest_id);
+        rooms.sweep(Instant::now() + RESUME_TTL + Duration::from_secs(1));
+        let late = client();
+        waiting(rooms.join(&code, resume_req("Guest", &token), None, late.tx).unwrap());
+    }
+
+    #[test]
+    fn resume_replaces_a_half_open_old_connection() {
+        let (rooms, code, host_id, mut host, guest_id, _old, token) = room_with_admitted_guest();
+        // 서버는 옛 연결이 끊긴 걸 아직 모른다(leave 없음).
+        let mut back = client();
+        let new_id = joined(rooms.join(&code, resume_req("Guest", &token), None, back.tx.clone()).unwrap());
+        back.drain();
+        let msgs = host.drain();
+        assert!(msgs.iter().any(|m| matches!(m, ServerMsg::PeerLeft { id } if *id == guest_id)));
+        assert!(msgs.iter().any(|m| matches!(m, ServerMsg::PeerJoined { peer } if peer.id == new_id)));
+        // 옛 연결이 나중에 정리돼도 새 참가자에는 영향이 없다.
+        rooms.leave(&code, &guest_id);
+        assert!(!host.drain().iter().any(|m| matches!(m, ServerMsg::PeerLeft { id } if *id == new_id)));
+        assert!(rooms.relay_signal(&code, &host_id, &new_id, SignalData::candidate("c")).is_ok());
     }
 
     #[test]
