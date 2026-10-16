@@ -3,14 +3,15 @@ import { useI18n, type MessageKey } from '../lib/i18n'
 import { Icon } from './Icon'
 import type { IconName } from './icons'
 
-export type MeetingKind = 'global' | 'standard'
+export type MeetingKind = 'global' | 'standard' | 'inPerson'
 
 const KIND_KEY = 'parley.meetingKind'
 
 /** 지난번 선택을 기본값으로. 저장소가 막혀 있으면 글로벌 미팅. */
 function lastMeetingKind(): MeetingKind {
   try {
-    return localStorage.getItem(KIND_KEY) === 'standard' ? 'standard' : 'global'
+    const saved = localStorage.getItem(KIND_KEY)
+    return saved === 'standard' || saved === 'inPerson' ? saved : 'global'
   } catch {
     return 'global'
   }
@@ -27,6 +28,7 @@ function rememberKind(kind: MeetingKind) {
 const OPTIONS: { kind: MeetingKind; icon: IconName; title: MessageKey; body: MessageKey }[] = [
   { kind: 'global', icon: 'translate', title: 'newMeeting.global', body: 'newMeeting.globalBody' },
   { kind: 'standard', icon: 'video_call', title: 'newMeeting.standard', body: 'newMeeting.standardBody' },
+  { kind: 'inPerson', icon: 'forum', title: 'newMeeting.inPerson', body: 'newMeeting.inPersonBody' },
 ]
 
 type Props = {

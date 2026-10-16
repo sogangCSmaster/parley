@@ -433,3 +433,52 @@ test('paused is not shown while the mic is off and nothing is reconnecting', asy
   h.c.setMic(true)
   assert.equal(h.statuses.at(-1), 'paused')
 })
+
+test('a warm controller opens a session with the mic off and keeps one open through idle rotation', async () => {
+  const h = setup({ mic: false })
+  assert.equal(h.tokens.length, 0, 'cold: nothing opens while the mic is off')
+  h.c.setWarm(true)
+  assert.equal(h.tokens.length, 1, 'warm: opens right away')
+  await h.grant()
+  h.ready()
+  // 마이크가 꺼진 채 10분: 닫지 않고 교체하며 계속 열어 둔다.
+  for (let i = 0; i < 10; i++) {
+    h.advance(60_000)
+    while (h.tokens.length) {
+      await h.grant()
+      h.ready()
+    }
+  }
+  assert.ok(h.sessions.some((s) => !s.closed), 'a session is still open')
+  assert.ok(h.sessions.filter((s) => !s.closed).length <= 2)
+  // 켜자마자 새로 열지 않고 열린 세션으로 바로 보낸다.
+  const opened = h.sessions.length
+  h.c.setMic(true)
+  h.speak(3)
+  assert.equal(h.sessions.length, opened)
+  const live = h.sessions.filter((s) => !s.closed)
+  assert.ok(live.some((s) => s.log.includes('start')), 'speech goes to the already-open session')
+})
+
+test('turning warm off closes idle sessions and the next speech reopens without losing audio', async () => {
+  const h = setup({ mic: false })
+  h.c.setWarm(true)
+  await h.grant()
+  h.ready()
+  h.advance(4 * 60_000)
+  while (h.tokens.length) {
+    await h.grant()
+    h.ready()
+  }
+  h.c.setWarm(false)
+  assert.ok(h.sessions.every((s) => s.closed), 'no idle session is kept once warm is off')
+  // 다시 말하면 새로 연다. 그사이 말은 모았다가 보낸다.
+  h.c.setMic(true)
+  h.speak(3)
+  assert.equal(h.tokens.length, 1)
+  await h.grant()
+  h.ready()
+  const s = h.sessions.at(-1)
+  assert.equal(s.closed, false)
+  assert.ok(s.log[0] === 'start' && s.log.includes('end'), s.log.join(','))
+})

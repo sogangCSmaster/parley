@@ -6,6 +6,7 @@ import { Vad } from './vad'
 
 export type Speech = {
   setMic: (on: boolean) => void
+  setWarm: (on: boolean) => void
   setLang: (lang: string) => void
   close: () => void
 }
@@ -22,6 +23,8 @@ type Options = {
   farEnd: () => RTCRtpReceiver[]
   /** 상대 목소리가 마이크로 계속 들어올 때(1분에 3번 이상 막힘). 여러 번 불릴 수 있다. */
   onEcho: () => void
+  /** 마이크가 꺼져 있어도 음성 인식 세션을 미리 열어 둔다(켜는 순간 토큰·연결 약 0.7초를 아낀다). */
+  warm?: boolean
 }
 
 /** 올린 문턱에 막힌 소리가 1분 안에 이만큼 생기면 헤드폰을 권한다(가끔 작은 맞장구가 막히는 건 정상). */
@@ -76,6 +79,7 @@ export function startSpeech(o: Options): Speech {
     },
   )
   controller.setMic(mic)
+  if (o.warm) controller.setWarm(true)
   const timer = setInterval(() => controller.tick(), 1000)
 
   return {
@@ -89,6 +93,7 @@ export function startSpeech(o: Options): Speech {
       }
       controller.setMic(on)
     },
+    setWarm: (on) => controller.setWarm(on),
     setLang: (lang) => controller.setLang(lang),
     close() {
       closed = true

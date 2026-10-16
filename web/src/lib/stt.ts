@@ -62,6 +62,8 @@ export class SttController {
   private seg: SegCounter
   private lang: string
   private micOn = false
+  /** 마이크가 꺼져 있어도 세션을 열어 둔다(대면 모드: 말할 차례가 오면 바로 보낼 수 있게). */
+  private warm = false
   private micChangedAt = 0
   private disposed = false
   private unavailable = false
@@ -93,6 +95,11 @@ export class SttController {
     this.micOn = on
     this.micChangedAt = this.deps.now()
     if (!on && this.speaking) this.endUtterance()
+    this.update()
+  }
+
+  setWarm(on: boolean) {
+    this.warm = on
     this.update()
   }
 
@@ -150,8 +157,9 @@ export class SttController {
     const now = this.deps.now()
     const cur = this.current
     const quiet = !this.speaking && !this.awaitingFinal && this.sent === ''
+    const wanted = this.micOn || this.warm
 
-    if (!this.micOn && cur && quiet && now - this.micChangedAt >= IDLE_ROTATE_MS) {
+    if (!wanted && cur && quiet && now - this.micChangedAt >= IDLE_ROTATE_MS) {
       // 마이크가 오래 꺼져 있으면 세션을 열어 두지 않는다(다시 켜면 새로 연다).
       this.closeSlot('current')
       this.closeSlot('next')
@@ -162,11 +170,11 @@ export class SttController {
       const stale = cur.goAway || cur.lang !== this.lang || age >= MAX_AGE_MS || idle
       // 더 필요 없거나(언어를 되돌림) 언어가 맞지 않는 대기 세션은 닫는다.
       if (this.next && (!stale || this.next.lang !== this.lang)) this.closeSlot('next')
-      if (stale && this.micOn) {
+      if (stale && wanted) {
         if (!this.next) this.open()
         else if (this.next.ready && (quiet || age >= HARD_AGE_MS)) this.swap()
       }
-    } else if (this.micOn || this.backlog.length) {
+    } else if (wanted || this.backlog.length) {
       this.open()
     }
     this.publishStatus()
@@ -341,7 +349,7 @@ export class SttController {
       ? 'unavailable'
       : this.current?.ready
         ? 'live'
-        : this.failures > 0 && this.micOn
+        : this.failures > 0 && (this.micOn || this.warm)
           ? 'paused'
           : 'starting'
     if (status !== this.status) {

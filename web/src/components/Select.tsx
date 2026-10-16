@@ -13,6 +13,8 @@ type Props<T extends string> = {
   ariaLabel?: string
   icon?: IconName
   variant?: 'field' | 'pill'
+  /** 항상 아래로 펼친다(대면 모드의 180도 돌린 화면처럼 화면 좌표로 위아래를 판단하면 틀리는 곳). */
+  alwaysDown?: boolean
 }
 
 /**
@@ -27,6 +29,7 @@ export function Select<T extends string>({
   ariaLabel,
   icon,
   variant = 'field',
+  alwaysDown = false,
 }: Props<T>) {
   const id = useId()
   const [open, setOpen] = useState(false)
@@ -62,9 +65,9 @@ export function Select<T extends string>({
     if (!open || !buttonRef.current || !listRef.current) return
     const rect = buttonRef.current.getBoundingClientRect()
     const below = innerHeight - rect.bottom
-    setDropUp(below < listRef.current.offsetHeight + 8 && rect.top > below)
+    setDropUp(!alwaysDown && below < listRef.current.offsetHeight + 8 && rect.top > below)
     listRef.current.focus({ preventScroll: true })
-  }, [open])
+  }, [open, alwaysDown])
 
   useEffect(() => {
     if (!open) return

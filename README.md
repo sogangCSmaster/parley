@@ -8,6 +8,7 @@ Parley uses **Google Gemini as its only AI provider**, with one API key configur
 
 - **Implemented:** host login, meeting links, guest admission, video/audio calls, screen sharing and a multilingual caption panel.
 - **Implemented:** browser microphone → client VAD → Gemini Live transcription (`gemini-3.5-transcribe-live`) with a one-time token issued by the server, so the API key never reaches the browser. Only speech is sent; sessions are opened ahead of time, kept alive and rotated before they expire.
+- **Implemented:** in-person mode — two people at one device each speak their own language and read the other's words translated (host only, `New meeting → In-person conversation`).
 - **Implemented:** server-side STT text → sentence buffering → Gemini streaming translation → captions, with recent sentence context and one translation per target language. Translated text appears from the first chunk; failed or incomplete translations fall back to the original.
 
 The Gemini key belongs in the server environment or the repository root `.env`. Participants do not supply individual keys.
