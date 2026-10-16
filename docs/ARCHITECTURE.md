@@ -143,7 +143,7 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
   "media": { "mic": true, "cam": true, "screen": false } }
 { "t": "lang", "lang": "ko", "partner_lang": "ja" }
 { "t": "media", "media": { "mic": false, "cam": true, "screen": false } }
-{ "t": "signal", "to": "<peer id>", "data": { "description": {…} } | { "candidate": {…} } }
+{ "t": "signal", "to": "<peer id>", "data": { "description": { "type", "sdp" } } | { "candidate": { "candidate", "sdpMid", "sdpMLineIndex", "usernameFragment" } } }  // 둘 중 하나만
 { "t": "stt_token", "id": 7 }                                         // 음성 인식 세션 하나용 토큰 요청
 
 // server → client
@@ -255,7 +255,7 @@ max-bps=500000
 | TURN 자격 | 정적 비밀번호 대신 서버가 발급하는 시간제한 HMAC 자격(coturn `use-auth-secret`, TURN REST API 방식). `username = "<만료>:<참가자 id>"`, `credential = base64(HMAC-SHA1(TURN_SECRET, username))`, 12시간(coturn은 할당 갱신 때도 자격을 검사하므로 회의보다 길게). `welcome`으로만 나가므로 입장이 확정된 참가자만 받는다. 공개 API로는 ICE 설정을 내주지 않는다(구현됨). 한계: 발급한 자격은 만료 전에 회수할 수 없고, 12시간이 넘게 머문 참가자는 자격이 갱신되지 않아 새 릴레이를 열지 못한다(다시 입장하면 새로 받는다) |
 | Gemini API 키 | 운영자가 루트 `.env` 또는 서버 환경 변수로 설정. Git·로그·에러 메시지·클라이언트 응답에 키를 노출하지 않음 |
 | 음성·자막 | 기본은 저장하지 않음. 기록 저장 기능은 참가자 전원 고지 후에만 |
-| 입력 제한 | 이름 1~40자·언어 태그·방 코드 형식 검증, WS 메시지 64KB 제한, `stt` 빈도 제한·1000자 제한, STT 토큰 발급 빈도 제한(구현됨). 다른 메시지 빈도 제한, 방당 인원 제한 |
+| 입력 제한 | 이름 1~40자·언어 태그·방 코드 형식 검증, WS 메시지 64KB 제한, `stt` 빈도 제한·1000자 제한, STT 토큰 발급 빈도 제한, 방당 인원 제한(구현됨). 연결당 빈도 제한(구현됨): 모든 프레임 초당 100(버스트 500)을 넘으면 연결을 끊는다. ICE 후보(2KB 이하) 초당 50(버스트 300, 4번째 참가자가 3명과 동시에 연결하는 최악 약 120개 기준), SDP 초당 20(버스트 50), 설정·수락·거절 초당 5(버스트 20)는 넘치면 버리고 `rate_limited`를 한 번 알린다. 마이크 상태·언어는 버리면 다른 참가자가 틀린 상태를 보므로 버리지 않고 상태는 바로 바꾸되, 알림만 미뤘다가 최신 상태를 한 번 보낸다. 시그널은 브라우저 `toJSON()` 모양(문자열 필드)만 받아 중계 큐 메모리를 글자 수로 묶는다 |
 | STT ephemeral token | 서버가 **입장이 확정된 참가자**에게만, 번역이 켜진 방에서만 발급. 1회용(`uses: 1`), 1분 안에 세션을 열어야 하고 세션은 15분까지. `v1alpha/auth_tokens`의 `bidiGenerateContentSetup` + `fieldMask`로 모델·응답 형식(TEXT)·전사 언어·수동 활동 모드를 잠그고, 시스템 지시·도구는 비운 채로 잠근다(실측: 클라이언트가 다른 모델이나 AUDIO를 요청해도 잠긴 값으로 동작하고, 텍스트 질문에는 답하지 않는다). `fieldMask`가 없으면 아무것도 잠기지 않는다(실측). 서버 API 키는 브라우저에 절대 내려가지 않음(구현됨) |
 
 ## 결정 필요

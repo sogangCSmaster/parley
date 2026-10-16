@@ -14,7 +14,9 @@ use rand::RngExt;
 use tokio::sync::{Notify, mpsc, watch};
 
 use crate::ice::Ice;
-use crate::protocol::{ErrorCode, Knock, MediaState, Peer, PeerId, RoomSettings, ServerMsg};
+use crate::protocol::{
+    ErrorCode, Knock, MediaState, Peer, PeerId, RoomSettings, ServerMsg, SignalData,
+};
 
 /// P2P mesh는 인원이 늘면 업링크가 (n-1)배가 되므로 4명으로 제한한다.
 pub const MAX_PEERS: usize = 4;
@@ -335,6 +337,26 @@ impl Rooms {
 
     /// 입장한 참가자만 자기 정보를 바꿀 수 있다(대기 중인 게스트는 무시).
     pub fn update(&self, code: &str, id: &str, f: impl FnOnce(&mut Peer)) {
+        self.apply(code, id, true, f);
+    }
+
+    /// 상태만 바꾸고 다른 참가자에게 알리는 것은 미룬다(빈도 제한 중). 나중에 `announce`로 최신 상태를 한 번 보낸다.
+    pub fn update_quietly(&self, code: &str, id: &str, f: impl FnOnce(&mut Peer)) {
+        self.apply(code, id, false, f);
+    }
+
+    /// 이 참가자의 현재 상태를 다른 참가자에게 알린다.
+    pub fn announce(&self, code: &str, id: &str) {
+        let rooms = self.rooms.lock().unwrap();
+        if let Some(room) = rooms.get(code)
+            && let Some(member) = room.members.get(id)
+        {
+            let peer = member.peer.clone();
+            broadcast(&room.members, id, ServerMsg::PeerUpdated { peer });
+        }
+    }
+
+    fn apply(&self, code: &str, id: &str, announce: bool, f: impl FnOnce(&mut Peer)) {
         let mut rooms = self.rooms.lock().unwrap();
         let Some(room) = rooms.get_mut(code) else {
             return;
@@ -351,8 +373,10 @@ impl Rooms {
         if previous_lang != member.peer.lang || previous_partner != member.peer.partner_lang {
             room.caption_changes.send_modify(|v| *v += 1);
         }
-        let peer = member.peer.clone();
-        broadcast(&room.members, id, ServerMsg::PeerUpdated { peer });
+        if announce {
+            let peer = member.peer.clone();
+            broadcast(&room.members, id, ServerMsg::PeerUpdated { peer });
+        }
     }
 
     /// 입장한 참가자끼리만 시그널을 중계한다. 대기 중인 게스트·다른 방 참가자는 거부한다.
@@ -361,7 +385,7 @@ impl Rooms {
         code: &str,
         from: &str,
         to: &str,
-        data: serde_json::Value,
+        data: SignalData,
     ) -> Result<(), ErrorCode> {
         let rooms = self.rooms.lock().unwrap();
         let room = rooms.get(code).ok_or(ErrorCode::UnknownPeer)?;
@@ -498,7 +522,6 @@ pub fn is_valid_lang(tag: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     const HOST: &str = "alice";
     const ON: RoomSettings = RoomSettings { translation: true };
@@ -673,7 +696,7 @@ mod tests {
 
         // 입장 후에는 시그널을 주고받을 수 있다.
         rooms
-            .relay_signal(&code, &guest_id, &host_id, json!({}))
+            .relay_signal(&code, &guest_id, &host_id, SignalData::candidate("c"))
             .unwrap();
     }
 
@@ -732,13 +755,13 @@ mod tests {
         let g_id = waiting(rooms.join(&code, req("G"), None, g.tx).unwrap());
         assert_eq!(
             rooms
-                .relay_signal(&code, &g_id, &host_id, json!({}))
+                .relay_signal(&code, &g_id, &host_id, SignalData::candidate("c"))
                 .unwrap_err(),
             ErrorCode::UnknownPeer
         );
         assert_eq!(
             rooms
-                .relay_signal(&code, &host_id, &g_id, json!({}))
+                .relay_signal(&code, &host_id, &g_id, SignalData::candidate("c"))
                 .unwrap_err(),
             ErrorCode::UnknownPeer
         );

@@ -19,7 +19,11 @@ use crate::room::{self, JoinOutcome, JoinRequest, Outbox, Rooms};
 
 /// SDP는 수 KB 수준이다. 이보다 큰 메시지는 거부한다.
 const MAX_MESSAGE_BYTES: usize = 64 * 1024;
-const OUTBOX_CAPACITY: usize = 64;
+/// 상대가 허용 한도만큼 ICE 후보를 한꺼번에 보내도(CANDIDATES_BURST) 받는 쪽 큐가 넘치지 않을 만큼.
+/// 넘치면 그 연결을 끊는다(느린 클라이언트). 큐는 찰 때만 메모리를 쓴다. 후보는 수백 바이트지만 SDP는
+/// 메시지 한도(64KB)까지 될 수 있다. 시그널은 문자열 필드만 받으므로 메모리는 글자 수와 비슷하고,
+/// 최악(여러 상대가 읽지 않는 한 명에게 큰 SDP를 계속 보냄)이라도 512 × 64KB ≈ 32MB에서 그 연결이 끊긴다.
+const OUTBOX_CAPACITY: usize = 512;
 const PING_INTERVAL: Duration = Duration::from_secs(20);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const JOIN_TIMEOUT: Duration = Duration::from_secs(15);
@@ -30,6 +34,28 @@ const STT_BURST: f64 = 10.0;
 /// 음성 인식 세션은 3분 넘게 조용하거나 언어가 바뀔 때 새로 연다. 평소 몇 분에 1개면 충분하다.
 const STT_TOKENS_PER_SEC: f64 = 1.0 / 30.0;
 const STT_TOKEN_BURST: f64 = 4.0;
+/// 연결 하나가 보내는 모든 프레임(잘못된 것·ping 포함). 아래 한도를 다 써도 닿지 않는 값이라,
+/// 넘으면 오작동이나 남용으로 보고 연결을 끊는다.
+const MESSAGES_PER_SEC: f64 = 100.0;
+const MESSAGES_BURST: f64 = 500.0;
+/// ICE 후보는 상대에게 그대로 중계된다. 최악의 정상 경우: 4번째로 들어와 3명과 동시에 연결하면서
+/// 인터페이스가 많은 노트북(호스트·srflx·TURN 후보)이면 상대당 30~40개, 합쳐 약 120개가 1~2초에 나온다.
+const CANDIDATES_PER_SEC: f64 = 50.0;
+/// 이보다 큰 시그널은 후보가 아니라 SDP 한도로 센다.
+const MAX_CANDIDATE_BYTES: usize = 2048;
+const CANDIDATES_BURST: f64 = 300.0;
+/// SDP(offer/answer)는 하나만 빠져도 그 연결이 복구되지 않는다. 정상이면 상대당 재협상마다 한두 개라
+/// 아주 넉넉하게 두고, 큰 SDP로 상대 큐를 채우는 것만 막는다.
+const DESCRIPTIONS_PER_SEC: f64 = 20.0;
+const DESCRIPTIONS_BURST: f64 = 50.0;
+/// 설정·수락/거절(주최자 동작)은 방 전원에게 퍼진다. 사람이 누르는 속도면 충분하다.
+const CONTROLS_PER_SEC: f64 = 5.0;
+const CONTROLS_BURST: f64 = 20.0;
+/// 마이크 상태·언어 알림. 버리지 않고 미루며, 주최자 동작의 한도를 써 버리지 않게 따로 센다.
+const STATES_PER_SEC: f64 = 5.0;
+const STATES_BURST: f64 = 20.0;
+/// 한도에 걸려 미룬 마이크 상태·언어 알림을 다시 보내 보는 간격
+const ANNOUNCE_RETRY: Duration = Duration::from_millis(250);
 
 pub async fn handler(
     ws: WebSocketUpgrade,
@@ -109,6 +135,15 @@ async fn run(
     let mut speaker: Option<SpeakerHandle> = None;
     let mut stt_limit = TokenBucket::new(STT_PER_SEC, STT_BURST);
     let mut stt_token_limit = TokenBucket::new(STT_TOKENS_PER_SEC, STT_TOKEN_BURST);
+    let mut message_limit = TokenBucket::new(MESSAGES_PER_SEC, MESSAGES_BURST);
+    let mut candidate_limit = Limit::new(CANDIDATES_PER_SEC, CANDIDATES_BURST);
+    let mut description_limit = Limit::new(DESCRIPTIONS_PER_SEC, DESCRIPTIONS_BURST);
+    let mut control_limit = Limit::new(CONTROLS_PER_SEC, CONTROLS_BURST);
+    let mut state_limit = TokenBucket::new(STATES_PER_SEC, STATES_BURST);
+    // 마이크 상태·언어는 버리면 다른 참가자가 틀린 상태를 계속 보게 된다. 한도에 걸리면 상태는 바로 바꾸고
+    // 알림만 미뤘다가, 여유가 생기면 최신 상태를 한 번 보낸다.
+    // 시점을 고정해 둔다(다른 메시지가 계속 와도 미뤄지지 않게).
+    let mut announce_at: Option<tokio::time::Instant> = None;
     // 연결이 끝나면 진행 중인 발급도 취소한다. 받을 사람이 없는 토큰을 만들지 않게.
     let mut stt_tasks = tokio::task::JoinSet::new();
 
@@ -136,12 +171,28 @@ async fn run(
                 continue;
             }
             _ = tokio::time::sleep_until(deadline) => break,
+            _ = tokio::time::sleep_until(announce_at.unwrap_or(deadline)), if announce_at.is_some() => {
+                match &session {
+                    Some((room, id)) if state_limit.take(Instant::now()) => {
+                        rooms.announce(room, id);
+                        announce_at = None;
+                    }
+                    Some(_) => announce_at = Some(tokio::time::Instant::now() + ANNOUNCE_RETRY),
+                    None => announce_at = None,
+                }
+                continue;
+            }
             msg = stream.next() => match msg {
                 Some(Ok(msg)) => msg,
                 _ => break,
             },
         };
         last_seen = tokio::time::Instant::now();
+        if !message_limit.take(Instant::now()) {
+            let (room, peer) = session.as_ref().map_or(("", ""), |(r, p)| (r.as_str(), p.as_str()));
+            tracing::warn!(room, peer, "closing connection: too many messages");
+            break;
+        }
         // 업그레이드 때의 계정 복사본을 권한으로 쓰지 않는다. 로그아웃·만료가 즉시 반영되어야 한다.
         let account = token.as_ref().and_then(|token| auth.session_user(token));
         if token.is_some() && account.is_none() {
@@ -156,6 +207,32 @@ async fn run(
             reply(&tx, ErrorCode::BadRequest);
             continue;
         };
+
+        let now = Instant::now();
+        let verdict = match &msg {
+            // 진짜 ICE 후보 메시지는 500바이트도 안 된다. 크면 SDP 한도로 센다.
+            ClientMsg::Signal { data, .. }
+                if data.candidate.is_some() && text.len() <= MAX_CANDIDATE_BYTES =>
+            {
+                candidate_limit.check(now)
+            }
+            ClientMsg::Signal { .. } => description_limit.check(now),
+            // 상태 변경은 버리지 않는다(아래에서 알림만 미룬다).
+            ClientMsg::Lang { .. } | ClientMsg::Media { .. } => Verdict::Allow,
+            ClientMsg::Settings { .. } | ClientMsg::Admit { .. } | ClientMsg::Deny { .. } => {
+                control_limit.check(now)
+            }
+            _ => Verdict::Allow,
+        };
+        match verdict {
+            Verdict::Allow => {}
+            Verdict::Drop { notify } => {
+                if notify {
+                    reply(&tx, ErrorCode::RateLimited);
+                }
+                continue;
+            }
+        }
 
         let result = match (msg, &session) {
             (
@@ -191,21 +268,36 @@ async fn run(
             (_, None) => Err(ErrorCode::NotJoined),
             (ClientMsg::Lang { lang, partner_lang }, Some((room, id))) => {
                 if room::is_valid_lang(&lang) && room::is_valid_lang(&partner_lang) {
-                    rooms.update(room, id, |p| {
+                    let f = |p: &mut crate::protocol::Peer| {
                         p.lang = lang;
                         p.partner_lang = partner_lang;
-                    });
+                    };
+                    if announce_at.is_none() && state_limit.take(now) {
+                        rooms.update(room, id, f);
+                    } else {
+                        rooms.update_quietly(room, id, f);
+                        announce_at.get_or_insert(tokio::time::Instant::now() + ANNOUNCE_RETRY);
+                    }
                     Ok(())
                 } else {
                     Err(ErrorCode::BadRequest)
                 }
             }
             (ClientMsg::Media { media }, Some((room, id))) => {
-                rooms.update(room, id, |p| p.media = media);
+                if announce_at.is_none() && state_limit.take(now) {
+                    rooms.update(room, id, |p| p.media = media);
+                } else {
+                    rooms.update_quietly(room, id, |p| p.media = media);
+                    announce_at.get_or_insert(tokio::time::Instant::now() + ANNOUNCE_RETRY);
+                }
                 Ok(())
             }
             (ClientMsg::Signal { to, data }, Some((room, id))) => {
-                rooms.relay_signal(room, id, &to, data)
+                if data.is_valid() {
+                    rooms.relay_signal(room, id, &to, data)
+                } else {
+                    Err(ErrorCode::BadRequest)
+                }
             }
             (ClientMsg::Admit { id: guest }, Some((room, id))) => rooms.admit(room, id, &guest),
             (ClientMsg::Deny { id: guest }, Some((room, id))) => rooms.deny(room, id, &guest),
@@ -299,6 +391,44 @@ impl TokenBucket {
         } else {
             false
         }
+    }
+}
+
+enum Verdict {
+    Allow,
+    /// 버린다. `notify`는 한도에 걸리기 시작한 첫 메시지에만 true(오류 답장이 출력 큐를 넘치게 하지 않도록).
+    Drop { notify: bool },
+}
+
+/// 버리는 한도. 걸려 있는 동안 오류는 한 번만 알린다.
+struct Limit {
+    bucket: TokenBucket,
+    limited: bool,
+}
+
+impl Limit {
+    fn new(rate: f64, burst: f64) -> Self {
+        Limit {
+            bucket: TokenBucket::new(rate, burst),
+            limited: false,
+        }
+    }
+
+    fn allow(&mut self, now: Instant) -> bool {
+        let ok = self.bucket.take(now);
+        if ok {
+            self.limited = false;
+        }
+        ok
+    }
+
+    fn check(&mut self, now: Instant) -> Verdict {
+        if self.allow(now) {
+            return Verdict::Allow;
+        }
+        let notify = !self.limited;
+        self.limited = true;
+        Verdict::Drop { notify }
     }
 }
 
@@ -486,6 +616,168 @@ mod tests {
             Some(ServerMsg::Welcome { .. })
         ));
         socket
+    }
+
+    /// 소켓이 닫히거나 잠시 조용해질 때까지 받은 메시지
+    async fn drain(socket: &mut TestSocket) -> (Vec<ServerMsg>, bool) {
+        drain_for(socket, Duration::from_millis(300)).await
+    }
+
+    async fn drain_for(socket: &mut TestSocket, quiet: Duration) -> (Vec<ServerMsg>, bool) {
+        let mut msgs = Vec::new();
+        loop {
+            match tokio::time::timeout(quiet, socket.next()).await {
+                Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text)))) => {
+                    msgs.push(serde_json::from_str(&text).unwrap())
+                }
+                Ok(Some(Ok(_))) => {}
+                Ok(_) => return (msgs, true),
+                Err(_) => return (msgs, false),
+            }
+        }
+    }
+
+    /// 같은 방에 두 참가자를 넣고 (a, b, b의 id)를 돌려준다.
+    async fn pair(server: &TestServer, room: &str) -> (TestSocket, TestSocket, PeerId) {
+        let mut a = welcomed(server, room).await;
+        let b = welcomed(server, room).await;
+        let Some(ServerMsg::PeerJoined { peer }) = next_message(&mut a).await else {
+            panic!("expected peer_joined");
+        };
+        (a, b, peer.id)
+    }
+
+    fn rate_limited(msgs: &[ServerMsg]) -> usize {
+        msgs.iter()
+            .filter(|m| matches!(m, ServerMsg::Error { code: ErrorCode::RateLimited, .. }))
+            .count()
+    }
+
+    #[tokio::test]
+    async fn media_flood_is_coalesced_and_others_end_with_the_latest_state() {
+        let server = TestServer::start().await;
+        let room = server.room();
+        let (mut a, mut b, _) = pair(&server, &room).await;
+        for i in 0..40 {
+            let media = crate::protocol::MediaState {
+                mic: i % 2 == 1,
+                cam: false,
+                screen: false,
+            };
+            send(&mut a, ClientMsg::Media { media }).await;
+        }
+        // 미룬 알림(ANNOUNCE_RETRY)보다 충분히 오래 기다린다.
+        let (msgs, closed) = drain_for(&mut b, Duration::from_secs(1)).await;
+        let updates: Vec<_> = msgs
+            .iter()
+            .filter_map(|m| match m {
+                ServerMsg::PeerUpdated { peer } => Some(peer.media.mic),
+                _ => None,
+            })
+            .collect();
+        assert!(!closed);
+        assert!(updates.len() < 40, "broadcasts are limited: {}", updates.len());
+        assert_eq!(updates.last(), Some(&true), "the final toggle (mic on) reaches others");
+        let (mine, closed) = drain(&mut a).await;
+        assert!(!closed);
+        assert_eq!(rate_limited(&mine), 0, "state changes are never refused");
+    }
+
+    #[tokio::test]
+    async fn candidates_are_relayed_up_to_a_worst_case_join_and_refused_once_beyond() {
+        let server = TestServer::start().await;
+        let room = server.room();
+        let (mut a, mut b, b_id) = pair(&server, &room).await;
+        // SDP는 세지 않는다.
+        for _ in 0..5 {
+            let data = crate::protocol::SignalData {
+                description: Some(crate::protocol::SessionDescription {
+                    kind: crate::protocol::SdpType::Offer,
+                    sdp: Some("v=0".into()),
+                }),
+                candidate: None,
+            };
+            send(&mut a, ClientMsg::Signal { to: b_id.clone(), data }).await;
+        }
+        for i in 0..400 {
+            let data = crate::protocol::SignalData::candidate(&format!("candidate:{i}"));
+            send(&mut a, ClientMsg::Signal { to: b_id.clone(), data }).await;
+        }
+        let (relayed, b_closed) = drain(&mut b).await;
+        assert!(!b_closed, "the receiver keeps up with a full burst");
+        let relayed = relayed
+            .iter()
+            .filter(|m| matches!(m, ServerMsg::Signal { .. }))
+            .count();
+        // SDP 5개 + 후보 한도 300개는 반드시 지나가고, 그사이 다시 찬 토큰만큼 조금 더 지나갈 수 있다.
+        assert!((305..405).contains(&relayed), "{relayed} relayed");
+        let (mine, closed) = drain(&mut a).await;
+        assert!(!closed);
+        // 걸릴 때마다 한 번만 알린다(토큰이 다시 차서 잠깐 풀렸다 걸리면 다시 한 번).
+        let refusals = rate_limited(&mine);
+        let dropped = 405 - relayed;
+        assert!(refusals >= 1 && refusals <= dropped, "{refusals} refusals for {dropped} dropped");
+    }
+
+    #[tokio::test]
+    async fn large_candidates_count_against_the_sdp_limit() {
+        let server = TestServer::start().await;
+        let room = server.room();
+        let (mut a, mut b, b_id) = pair(&server, &room).await;
+        let padding = "x".repeat(4096);
+        for _ in 0..80 {
+            let data = crate::protocol::SignalData::candidate(&padding);
+            send(&mut a, ClientMsg::Signal { to: b_id.clone(), data }).await;
+        }
+        let (relayed, _) = drain(&mut b).await;
+        let relayed = relayed
+            .iter()
+            .filter(|m| matches!(m, ServerMsg::Signal { .. }))
+            .count();
+        assert!((50..80).contains(&relayed), "{relayed} large signals relayed (SDP limit 50)");
+    }
+
+    #[tokio::test]
+    async fn malformed_signals_are_rejected_not_relayed() {
+        let server = TestServer::start().await;
+        let room = server.room();
+        let (mut a, mut b, b_id) = pair(&server, &room).await;
+        let both = serde_json::json!({ "t": "signal", "to": b_id,
+            "data": { "description": { "type": "offer", "sdp": "v=0" }, "candidate": { "candidate": "c" } } });
+        let neither = serde_json::json!({ "t": "signal", "to": b_id, "data": {} });
+        let arbitrary = serde_json::json!({ "t": "signal", "to": b_id, "data": { "candidate": [0, 0, 0] } });
+        for msg in [both, neither, arbitrary] {
+            a.send(tokio_tungstenite::tungstenite::Message::Text(msg.to_string().into()))
+                .await
+                .unwrap();
+        }
+        let (mine, _) = drain(&mut a).await;
+        let bad = mine
+            .iter()
+            .filter(|m| matches!(m, ServerMsg::Error { code: ErrorCode::BadRequest, .. }))
+            .count();
+        assert_eq!(bad, 3);
+        let (theirs, _) = drain(&mut b).await;
+        assert!(!theirs.iter().any(|m| matches!(m, ServerMsg::Signal { .. })));
+    }
+
+    #[tokio::test]
+    async fn message_flood_closes_the_connection() {
+        let server = TestServer::start().await;
+        let room = server.room();
+        let mut socket = welcomed(&server, &room).await;
+        // 답장이 없는 프레임만 보낸다: 출력 큐가 넘쳐서가 아니라 한도 때문에 끊겨야 한다.
+        for _ in 0..3000 {
+            if socket
+                .send(tokio_tungstenite::tungstenite::Message::Binary(vec![0u8].into()))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+        let (_, closed) = drain(&mut socket).await;
+        assert!(closed);
     }
 
     #[tokio::test]

@@ -4,10 +4,10 @@ import type { MediaState } from '../protocol/MediaState'
 import type { Peer } from '../protocol/Peer'
 import type { RoomSettings } from '../protocol/RoomSettings'
 import type { ServerMsg } from '../protocol/ServerMsg'
-import type { JsonValue } from '../protocol/serde_json/JsonValue'
+import type { SignalData as WireSignal } from '../protocol/SignalData'
 import { applyCaption, type Caption } from '../lib/captions'
 import { useI18n, type Locale, type MessageKey } from '../lib/i18n'
-import { Mesh, type SignalData } from '../lib/mesh'
+import { Mesh } from '../lib/mesh'
 import type { Prefs } from '../lib/prefs'
 import { Signaling } from '../lib/signaling'
 import { ScreenShare } from '../lib/screen'
@@ -97,7 +97,8 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             msg.you,
             local,
             msg.ice_servers,
-            (to, data) => sig.send({ t: 'signal', to, data: data as unknown as JsonValue }),
+            // 브라우저 toJSON() 형식과 같다(DOM 타입만 candidate를 선택 항목으로 둔다).
+            (to, data) => sig.send({ t: 'signal', to, data: data as WireSignal }),
             (id, stream) => setStreams((s) => ({ ...s, [id]: stream })),
           )
           meshRef.current = mesh
@@ -135,7 +136,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           setStreams((s) => without(s, msg.id))
           break
         case 'signal':
-          meshRef.current?.handleSignal(msg.from, msg.data as unknown as SignalData)
+          meshRef.current?.handleSignal(msg.from, msg.data)
           break
         case 'waiting':
           setStatus({ kind: 'waiting' })

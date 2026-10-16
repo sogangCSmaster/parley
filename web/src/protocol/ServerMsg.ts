@@ -5,7 +5,7 @@ import type { Knock } from "./Knock";
 import type { NoticeCode } from "./NoticeCode";
 import type { Peer } from "./Peer";
 import type { RoomSettings } from "./RoomSettings";
-import type { JsonValue } from "./serde_json/JsonValue";
+import type { SignalData } from "./SignalData";
 
 export type ServerMsg = { "t": "welcome", you: string, host: boolean, settings: RoomSettings, peers: Array<Peer>, 
 /**
@@ -15,7 +15,7 @@ knocks: Array<Knock>,
 /**
  * 이 참가자 전용 ICE 서버(TURN 자격 포함). 입장이 확정된 참가자만 받는다.
  */
-ice_servers: Array<IceServer>, } | { "t": "waiting" } | { "t": "denied" } | { "t": "knock", knock: Knock, } | { "t": "knock_resolved", id: string, } | { "t": "settings", settings: RoomSettings, } | { "t": "peer_joined", peer: Peer, } | { "t": "peer_updated", peer: Peer, } | { "t": "peer_left", id: string, } | { "t": "signal", from: string, data: JsonValue, } | { "t": "caption", seg: string, speaker: string, src_lang: string, src: string, tgt_lang: string, 
+ice_servers: Array<IceServer>, } | { "t": "waiting" } | { "t": "denied" } | { "t": "knock", knock: Knock, } | { "t": "knock_resolved", id: string, } | { "t": "settings", settings: RoomSettings, } | { "t": "peer_joined", peer: Peer, } | { "t": "peer_updated", peer: Peer, } | { "t": "peer_left", id: string, } | { "t": "signal", from: string, data: SignalData, } | { "t": "caption", seg: string, speaker: string, src_lang: string, src: string, tgt_lang: string, 
 /**
  * 번역. 아직 없거나 번역할 필요가 없거나(같은 언어) 실패하면 null이다.
  * 확정 전에는 이전 원문에 대한 번역일 수 있다.

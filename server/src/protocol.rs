@@ -56,6 +56,75 @@ pub struct IceServer {
     pub credential: Option<String>,
 }
 
+/// SDP offer/answer 또는 ICE 후보 중 하나(브라우저 `toJSON()` 형식). 서버는 모양만 검증해 같은 방 상대에게
+/// 중계한다. 임의 JSON을 받지 않는 것은 중계 큐에 쌓이는 메모리를 글자 수만큼으로 묶기 위해서다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SignalData {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub description: Option<SessionDescription>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub candidate: Option<IceCandidate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SessionDescription {
+    #[serde(rename = "type")]
+    pub kind: SdpType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sdp: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum SdpType {
+    Offer,
+    Answer,
+    Pranswer,
+    Rollback,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct IceCandidate {
+    pub candidate: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional = nullable)]
+    pub sdp_mid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional = nullable)]
+    pub sdp_m_line_index: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional = nullable)]
+    pub username_fragment: Option<String>,
+}
+
+impl SignalData {
+    #[cfg(test)]
+    pub fn candidate(candidate: &str) -> Self {
+        SignalData {
+            description: None,
+            candidate: Some(IceCandidate {
+                candidate: candidate.into(),
+                sdp_mid: None,
+                sdp_m_line_index: None,
+                username_fragment: None,
+            }),
+        }
+    }
+
+    /// 둘 중 정확히 하나만 있어야 한다.
+    pub fn is_valid(&self) -> bool {
+        self.description.is_some() != self.candidate.is_some()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "t", rename_all = "snake_case")]
 #[ts(export)]
@@ -74,10 +143,10 @@ pub enum ClientMsg {
     Media {
         media: MediaState,
     },
-    /// SDP offer/answer 또는 ICE candidate. 서버는 내용을 해석하지 않고 같은 방 상대에게만 중계한다.
+    /// SDP offer/answer 또는 ICE candidate. 같은 방 상대에게만 중계한다.
     Signal {
         to: PeerId,
-        data: serde_json::Value,
+        data: SignalData,
     },
     /// 주최자 전용: 대기 중인 게스트 입장 수락/거절
     Admit {
@@ -145,7 +214,7 @@ pub enum ServerMsg {
     },
     Signal {
         from: PeerId,
-        data: serde_json::Value,
+        data: SignalData,
     },
     /// 자막 한 줄(한 문장). 같은 `seg`는 같은 줄이고, 더 큰 `rev`만 반영한다.
     /// A final caption with an empty `src` retracts the previous revision of that segment.
@@ -195,6 +264,8 @@ pub enum ErrorCode {
     RoomNotFound,
     Forbidden,
     TooManyWaiting,
+    /// 같은 종류의 메시지를 너무 자주 보내 버렸다.
+    RateLimited,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -203,4 +274,26 @@ pub enum ErrorCode {
 pub enum NoticeCode {
     /// 번역에 실패해 원문만 확정했다.
     TranslationFailed,
+}
+
+#[cfg(test)]
+mod signal_tests {
+    use super::*;
+
+    /// 브라우저 `toJSON()`이 실제로 보내는 모양(Firefox·Safari는 null 필드를 그대로 보낸다).
+    #[test]
+    fn browser_signal_shapes_parse() {
+        for raw in [
+            r#"{"t":"signal","to":"p","data":{"candidate":{"candidate":"candidate:1 1 udp 2122260223 192.168.0.2 5000 typ host","sdpMid":"0","sdpMLineIndex":0,"usernameFragment":"abcd"}}}"#,
+            r#"{"t":"signal","to":"p","data":{"candidate":{"candidate":"","sdpMid":null,"sdpMLineIndex":null,"usernameFragment":null}}}"#,
+            r#"{"t":"signal","to":"p","data":{"description":{"type":"offer","sdp":"v=0\r\n"}}}"#,
+            r#"{"t":"signal","to":"p","data":{"description":{"type":"rollback"}}}"#,
+        ] {
+            let msg: ClientMsg = serde_json::from_str(raw).unwrap_or_else(|e| panic!("{raw}: {e}"));
+            let ClientMsg::Signal { data, .. } = msg else {
+                panic!("expected signal")
+            };
+            assert!(data.is_valid(), "{raw}");
+        }
+    }
 }
