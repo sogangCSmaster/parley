@@ -5,6 +5,8 @@
  * - 바닥의 `RATIO`배(그리고 `MIN_RMS`)를 `START_FRAMES` 연속 넘으면 말 시작
  * - 시작 시 직전 `PREROLL_MS`를 함께 내보낸다(첫 음절 잘림 방지)
  * - 조용해져도 `HANGOVER_MS`는 더 보낸 뒤 끝(문장 중간 쉼에서 끊기지 않게)
+ * - 상대 음성이 스피커로 나오는 중(`farEnd`)이면 문턱을 `ECHO_RATIO`배 올린다. 에코 제거 뒤에도 남는
+ *   상대 목소리(잔향)를 내 말로 보내지 않기 위해서다. 가까이서 말하는 내 목소리는 이보다 충분히 크다.
  */
 
 export const SAMPLE_RATE = 16000
@@ -28,6 +30,8 @@ const FLOOR_MIN = 10
 const FLOOR_DOWN = 0.2
 const FLOOR_UP = 0.01
 const FLOOR_UP_SPEAKING = 0.002
+/** 상대가 말하는 중의 추가 문턱(약 10dB). 잔여 에코는 보통 에코 제거 뒤 원래보다 20dB 이상 작다. */
+const ECHO_RATIO = 3.2
 /** 처음 100ms는 바닥만 잰다(입장 직후 방 소음을 말로 보지 않게). */
 const WARMUP_FRAMES = 5
 
@@ -50,9 +54,12 @@ export class Vad {
   private loud = 0
   private quiet = 0
   private preroll: Int16Array[] = []
+  /** 상대 음성 때문에 올린 문턱에 막혀 말로 시작하지 못한 소리 덩어리 수(에코일 가능성이 크다) */
+  echoBlocked = 0
+  private blockedLoud = 0
 
-  /** 프레임 하나를 넣고, 말하는 중이면 내보낼 프레임을 돌려준다. */
-  push(frame: Int16Array): VadResult {
+  /** 프레임 하나를 넣고, 말하는 중이면 내보낼 프레임을 돌려준다. `farEnd`: 상대 음성이 나오는 중 */
+  push(frame: Int16Array, farEnd = false): VadResult {
     const energy = rms(frame)
     if (this.frames < WARMUP_FRAMES) {
       this.floor = this.frames++ === 0 ? energy : this.floor + (energy - this.floor) * 0.5
@@ -60,7 +67,9 @@ export class Vad {
       this.preroll.push(frame)
       return null
     }
-    const isLoud = energy > Math.max(MIN_RMS, this.floor * RATIO)
+    const threshold = Math.max(MIN_RMS, this.floor * RATIO)
+    const plainLoud = energy > threshold
+    const isLoud = farEnd ? energy > threshold * ECHO_RATIO : plainLoud
     const up = this.speaking ? FLOOR_UP_SPEAKING : FLOOR_UP
     this.floor = Math.max(FLOOR_MIN, this.floor + (energy - this.floor) * (energy < this.floor ? FLOOR_DOWN : up))
     if (this.speaking) {
@@ -76,6 +85,12 @@ export class Vad {
     this.preroll.push(frame)
     if (this.preroll.length > PREROLL_MS / FRAME_MS) this.preroll.shift()
     this.loud = isLoud ? this.loud + 1 : 0
+    // 올린 문턱 때문에 말로 시작하지 못하고 끝난 소리 덩어리를 센다. 내 말이 서서히 커지다 결국 시작한 경우는 세지 않는다.
+    if (plainLoud && !isLoud) this.blockedLoud++
+    else {
+      if (!isLoud && this.blockedLoud >= START_FRAMES) this.echoBlocked++
+      this.blockedLoud = 0
+    }
     if (this.loud >= START_FRAMES) {
       this.speaking = true
       this.quiet = 0
@@ -91,6 +106,7 @@ export class Vad {
     this.speaking = false
     this.loud = 0
     this.quiet = 0
+    this.blockedLoud = 0
     this.preroll = []
   }
 }

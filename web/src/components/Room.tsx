@@ -52,7 +52,9 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const [screenBusy, setScreenBusy] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
   const [disconnected, setDisconnected] = useState(false)
-  const [toast, setToast] = useState<{ key: MessageKey; params?: Record<string, string> } | null>(null)
+  const [toast, setToast] = useState<{ key: MessageKey; params?: Record<string, string>; ms?: number } | null>(null)
+  // 헤드폰 안내는 회의에 한 번만(재연결·번역 토글로 음성 인식이 다시 시작돼도).
+  const echoHintedRef = useRef(false)
   const [isHost, setIsHost] = useState(false)
   const [settings, setSettings] = useState<RoomSettings>({ translation: true })
   const [knocks, setKnocks] = useState<Knock[]>([])
@@ -207,7 +209,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
 
   useEffect(() => {
     if (!toast) return
-    const id = setTimeout(() => setToast(null), 3000)
+    const id = setTimeout(() => setToast(null), toast.ms ?? 3000)
     return () => clearTimeout(id)
   }, [toast])
 
@@ -237,6 +239,13 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
         }),
       sendStt: (seg, text, final) => sig.send({ t: 'stt', seg, text, final }),
       onStatus: setSttStatus,
+      farEnd: () => meshRef.current?.audioReceivers() ?? [],
+      onEcho: () => {
+        if (echoHintedRef.current) return
+        echoHintedRef.current = true
+        // 두 문장짜리 안내라 다른 알림보다 오래 보여 준다.
+        setToast({ key: 'captions.echo', ms: 6000 })
+      },
     })
     speechRef.current = speech
     return () => {

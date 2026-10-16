@@ -74,6 +74,17 @@ export class Mesh {
     if (failed?.status === 'rejected') throw failed.reason
   }
 
+  /** 상대 음성을 받는 오디오 수신기. 에코 판단(`FarEnd`)이 오디오 레벨을 읽는다. */
+  audioReceivers(): RTCRtpReceiver[] {
+    // 연결마다 오디오 구간이 둘이다(내가 보내는 것, 상대가 보내는 것). 받는 쪽만 고른다.
+    return [...this.links.values()].flatMap((link) =>
+      link.pc
+        .getTransceivers()
+        .filter((t) => t.receiver.track.kind === 'audio' && (t.currentDirection === 'recvonly' || t.currentDirection === 'sendrecv'))
+        .map((t) => t.receiver),
+    )
+  }
+
   remove(peerId: string) {
     this.links.get(peerId)?.pc.close()
     this.links.delete(peerId)

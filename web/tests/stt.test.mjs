@@ -57,6 +57,90 @@ test('vad does not treat the room noise at join as speech', () => {
   assert.ok(kinds.every((k) => k === null))
 })
 
+test('vad ignores residual echo while the other side talks, but not my own voice', () => {
+  const vad = new Vad()
+  for (let i = 0; i < 50; i++) vad.push(silence())
+  // 상대가 말하는 동안 마이크에 들어온 잔여 에코(평소라면 말로 시작할 크기)
+  const echo = []
+  for (let i = 0; i < 20; i++) echo.push(vad.push(frame(400), true)?.kind ?? null)
+  assert.ok(echo.every((k) => k === null), 'echo is not sent')
+  for (let i = 0; i < 5; i++) vad.push(silence())
+  assert.equal(vad.echoBlocked, 1, 'one blocked burst, counted when it ends')
+  // 같은 크기라도 상대가 조용하면 내 말이다.
+  assert.equal(vad.push(frame(400)), null)
+  assert.equal(vad.push(frame(400)).kind, 'start')
+  for (let i = 0; i < 40; i++) vad.push(silence())
+  // 상대와 동시에 말해도 가까이서 말하는 내 목소리는 잡힌다.
+  assert.equal(vad.push(speech(), true), null)
+  assert.equal(vad.push(speech(), true).kind, 'start')
+})
+
+test('vad ends my turn when only echo keeps the mic busy', () => {
+  const vad = new Vad()
+  for (let i = 0; i < 50; i++) vad.push(silence())
+  vad.push(speech())
+  assert.equal(vad.push(speech()).kind, 'start')
+  // 내가 말을 멈춘 뒤 상대 목소리의 에코만 들어온다: 에코가 내 구간을 늘이지 않는다.
+  const kinds = []
+  for (let i = 0; i < 40; i++) kinds.push(vad.push(frame(400), true)?.kind ?? null)
+  assert.equal(kinds.indexOf('end'), 29)
+})
+
+test('vad does not count my own speech rising through the raised threshold as echo', () => {
+  const vad = new Vad()
+  for (let i = 0; i < 50; i++) vad.push(silence())
+  vad.push(frame(400), true)
+  vad.push(frame(400), true)
+  vad.push(speech(), true)
+  assert.equal(vad.push(speech(), true).kind, 'start')
+  assert.equal(vad.echoBlocked, 0)
+})
+
+const farEndModule = () =>
+  loadModule('lib/farend.ts', {}, { WeakMap, RTCRtpReceiver: class { getSynchronizationSources() {} } })
+
+test('far end is active while a receiver reports speech level, with a hold and stale packets ignored', () => {
+  const { FarEnd } = farEndModule()
+  const source = { audioLevel: 0, timestamp: 0 }
+  const receiver = { getSynchronizationSources: () => [{ ...source }] }
+  const far = new FarEnd(() => [receiver])
+  assert.equal(far.active(0), false)
+  Object.assign(source, { audioLevel: 0.3, timestamp: 1 })
+  assert.equal(far.active(100), true)
+  Object.assign(source, { audioLevel: 0.001, timestamp: 2 })
+  assert.equal(far.active(300), true, 'held right after the other side stops')
+  assert.equal(far.active(600), false)
+  // 패킷이 끊겨 마지막(큰) 레벨이 남아 있어도 오래되면 무시한다.
+  Object.assign(source, { audioLevel: 0.3, timestamp: 3 })
+  assert.equal(far.active(1000), true)
+  assert.equal(far.active(1200), true)
+  assert.equal(far.active(1700), false)
+  assert.equal(new FarEnd(() => []).active(0), false)
+})
+
+test('far end reads every receiver at most every 100ms and ignores nonstop noise', () => {
+  const { FarEnd } = farEndModule()
+  const empty = { getSynchronizationSources: () => [] }
+  const noLevel = { getSynchronizationSources: () => [{ timestamp: 1 }] }
+  let ts = 0
+  const noisy = { getSynchronizationSources: () => [{ audioLevel: 0.1, timestamp: ++ts }] }
+  let polls = 0
+  const far = new FarEnd(() => (polls++, [empty, noLevel, noisy]))
+  assert.equal(far.active(0), true)
+  far.active(20)
+  far.active(40)
+  assert.equal(polls, 1, 'not polled on every 20ms frame')
+  // 10초 넘게 한 번도 조용해지지 않으면 말이 아니라 잡음이다.
+  for (let t = 100; t <= 10_000; t += 100) far.active(t)
+  assert.equal(far.active(10_500), false)
+})
+
+test('far end stays off when the browser has no synchronization sources API', () => {
+  const { FarEnd } = loadModule('lib/farend.ts', {}, { WeakMap })
+  const receiver = { getSynchronizationSources: () => { throw new Error('unsupported') } }
+  assert.equal(new FarEnd(() => [receiver]).active(0), false)
+})
+
 function setup({ lang = 'ko', mic = true, seg = { next: 0 } } = {}) {
   const clock = { t: 0 }
   const sessions = []
