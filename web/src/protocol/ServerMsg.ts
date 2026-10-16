@@ -15,4 +15,4 @@ knocks: Array<Knock>, } | { "t": "waiting" } | { "t": "denied" } | { "t": "knock
  * 번역. 아직 없거나 번역할 필요가 없거나(같은 언어) 실패하면 null이다.
  * 확정 전에는 이전 원문에 대한 번역일 수 있다.
  */
-text: string | null, final: boolean, rev: number, } | { "t": "stt_token", token: string, model: string, lang: string, } | { "t": "notice", code: NoticeCode, } | { "t": "error", code: ErrorCode, message: string, };
+text: string | null, final: boolean, rev: number, } | { "t": "stt_token", id: number, token: string, model: string, } | { "t": "stt_token_denied", id: number, retry: boolean, } | { "t": "notice", code: NoticeCode, } | { "t": "error", code: ErrorCode, message: string, };

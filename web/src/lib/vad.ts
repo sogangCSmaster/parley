@@ -51,10 +51,6 @@ export class Vad {
   private quiet = 0
   private preroll: Int16Array[] = []
 
-  get active() {
-    return this.speaking
-  }
-
   /** 프레임 하나를 넣고, 말하는 중이면 내보낼 프레임을 돌려준다. */
   push(frame: Int16Array): VadResult {
     const energy = rms(frame)
@@ -90,13 +86,11 @@ export class Vad {
     return null
   }
 
-  /** 마이크를 끌 때: 말하는 중이었으면 true(호출한 쪽이 즉시 끝을 알린다). */
-  reset(): boolean {
-    const was = this.speaking
+  /** 마이크를 끌 때. 말하던 중이었으면 끝은 호출한 쪽이 알린다. */
+  reset() {
     this.speaking = false
     this.loud = 0
     this.quiet = 0
     this.preroll = []
-    return was
   }
 }

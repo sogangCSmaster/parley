@@ -3,6 +3,7 @@
 //! 브라우저는 서버 API 키 대신 이 토큰으로 `BidiGenerateContentConstrained`에 직접 연결한다.
 //! 토큰은 1회용이고, 모델·전사 설정·수동 활동 모드를 `fieldMask`로 잠가서 클라이언트가 setup으로
 //! 다른 모델이나 출력(오디오 생성 등)을 고를 수 없다(실측: 다른 모델·AUDIO를 요청해도 잠긴 값으로 동작).
+//! 시스템 지시·도구도 비운 채로 잠근다. transcribe 모델은 텍스트 요청에 답하지 않지만(실측), 겹으로 막는다.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -17,8 +18,8 @@ const NEW_SESSION_WITHIN: Duration = Duration::from_secs(60);
 /// 세션이 메시지를 보낼 수 있는 기간. 오디오 세션 상한(15분)과 같게 두고, 클라이언트는 그 전에 교체한다.
 const SESSION_LIFETIME: Duration = Duration::from_secs(15 * 60);
 /// 토큰의 setup에서 클라이언트가 바꿀 수 없게 잠그는 필드
-const LOCKED_FIELDS: &str =
-    "model,generationConfig.responseModalities,inputAudioTranscription,realtimeInputConfig";
+const LOCKED_FIELDS: &str = "model,generationConfig.responseModalities,inputAudioTranscription,\
+realtimeInputConfig,systemInstruction,tools";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SttGrant {
@@ -195,9 +196,23 @@ mod tests {
             setup["realtimeInputConfig"]["automaticActivityDetection"]["disabled"],
             true
         );
-        for field in body["fieldMask"].as_str().unwrap().split(',') {
+        let locked: Vec<&str> = body["fieldMask"].as_str().unwrap().split(',').collect();
+        for field in [
+            "model",
+            "inputAudioTranscription",
+            "realtimeInputConfig",
+            "systemInstruction",
+            "tools",
+        ] {
+            assert!(locked.contains(&field), "{field} must be locked");
+        }
+        // 잠그는 필드 중 값을 주는 것은 모두 setup에 있어야 한다(시스템 지시·도구는 비운 채로 잠금).
+        for field in &locked {
             let top = field.split('.').next().unwrap();
-            assert!(setup.get(top).is_some(), "{field} is locked but not set");
+            assert!(
+                setup.get(top).is_some() || ["systemInstruction", "tools"].contains(&top),
+                "{field} is locked but not set"
+            );
         }
     }
 }

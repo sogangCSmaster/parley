@@ -67,7 +67,9 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const speechRef = useRef<Speech | null>(null)
   // STT 구간 번호는 서버 연결 하나에서 계속 늘어나야 한다(음성 인식이 꺼졌다 켜져도).
   const segRef = useRef<SegCounter>({ next: 0 })
-  const tokenRef = useRef<{ resolve: (g: Grant) => void; reject: (e: TokenError) => void } | null>(null)
+  // 발급은 비동기라 답 순서가 바뀔 수 있어 요청 id로 짝을 맞춘다. 남은 요청은 정리할 때 실패로 끝낸다.
+  const tokensRef = useRef(new Map<number, { resolve: (g: Grant) => void; reject: (e: TokenError) => void }>())
+  const tokenIdRef = useRef(0)
   const onMediaChangeRef = useRef(onMediaChange)
   useEffect(() => { onMediaChangeRef.current = onMediaChange }, [onMediaChange])
   // 입장 메시지는 마운트 시점 값으로 한 번만 보낸다. 이후 변경은 lang/media 메시지로 보낸다.
@@ -153,15 +155,15 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           setCaptions((list) => applyCaption(list, msg, Date.now()))
           break
         case 'stt_token':
-          tokenRef.current?.resolve(msg)
-          tokenRef.current = null
+          tokensRef.current.get(msg.id)?.resolve({ token: msg.token, model: msg.model })
+          tokensRef.current.delete(msg.id)
+          break
+        case 'stt_token_denied':
+          tokensRef.current.get(msg.id)?.reject(msg.retry ? 'failed' : 'unavailable')
+          tokensRef.current.delete(msg.id)
           break
         case 'notice':
           if (msg.code === 'translation_failed') setToast({ key: 'captions.failed' })
-          else {
-            tokenRef.current?.reject(msg.code === 'stt_unavailable' ? 'unavailable' : 'failed')
-            tokenRef.current = null
-          }
           break
         case 'error': {
           const fatal = FATAL_ERRORS[msg.code]
@@ -227,6 +229,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   useEffect(() => {
     const sig = sigRef.current
     if (!sttEnabled || !micTrack || !sig) return
+    const tokens = tokensRef.current
     const speech = startSpeech({
       track: micTrack,
       lang: langRef.current,
@@ -234,13 +237,11 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
       seg: segRef.current,
       requestToken: () =>
         new Promise<Grant>((resolve, reject) => {
-          tokenRef.current?.reject('failed')
-          const waiter = { resolve, reject }
-          tokenRef.current = waiter
-          sig.send({ t: 'stt_token' })
+          const id = ++tokenIdRef.current
+          tokens.set(id, { resolve, reject })
+          sig.send({ t: 'stt_token', id })
           setTimeout(() => {
-            if (tokenRef.current !== waiter) return
-            tokenRef.current = null
+            if (!tokens.delete(id)) return
             reject('failed')
           }, 10_000)
         }),
@@ -251,7 +252,9 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
     return () => {
       speech.close()
       speechRef.current = null
-      tokenRef.current = null
+      // 늦게 온 답은 위에서 id를 못 찾아 버려진다.
+      for (const waiter of tokens.values()) waiter.reject('failed')
+      tokens.clear()
       setSttStatus(null)
     }
   }, [sttEnabled, micTrack])

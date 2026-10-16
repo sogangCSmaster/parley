@@ -15,7 +15,7 @@ import type { Session, LiveEvents } from './live'
 import type { VadResult } from './vad'
 
 export type SttStatus = 'starting' | 'live' | 'paused' | 'unavailable'
-export type Grant = { token: string; model: string; lang: string }
+export type Grant = { token: string; model: string }
 /** `unavailable`이면 이 연결에서는 다시 요청하지 않는다. */
 export type TokenError = 'unavailable' | 'failed'
 
@@ -117,10 +117,6 @@ export class SttController {
     else this.lastActivityAt = this.deps.now()
   }
 
-  get isSpeaking() {
-    return this.speaking
-  }
-
   tick() {
     if (this.disposed) return
     const now = this.deps.now()
@@ -140,6 +136,8 @@ export class SttController {
   dispose() {
     if (this.disposed) return
     if (this.speaking) this.endUtterance()
+    // 세션을 바로 닫으므로 확정 결과는 오지 않는다. 받은 데까지 확정하고 구간 번호를 넘긴다.
+    this.finalizeLocally()
     this.disposed = true
     this.current?.session.close()
     this.next?.session.close()
@@ -162,6 +160,8 @@ export class SttController {
       // 침묵은 이 세션이 열린 뒤부터 센다(교체 직후 다시 교체하지 않게). keepalive는 말이 아니다.
       const idle = now - Math.max(this.lastActivityAt, cur.openedAt) >= IDLE_ROTATE_MS
       const stale = cur.goAway || cur.lang !== this.lang || age >= MAX_AGE_MS || idle
+      // 더 필요 없거나(언어를 되돌림) 언어가 맞지 않는 대기 세션은 닫는다.
+      if (this.next && (!stale || this.next.lang !== this.lang)) this.closeSlot('next')
       if (stale && this.micOn) {
         if (!this.next) this.open()
         else if (this.next.ready && (quiet || age >= HARD_AGE_MS)) this.swap()
@@ -175,11 +175,13 @@ export class SttController {
   private open() {
     if (this.unavailable || this.tokenPending || this.deps.now() < this.retryAt) return
     this.tokenPending = true
+    // 서버는 요청을 받은 시점의 내 언어로 토큰을 만든다(`lang` 메시지가 같은 연결에서 먼저 간다).
+    const lang = this.lang
     this.deps.requestToken().then(
       (grant) => {
         this.tokenPending = false
         if (this.disposed) return
-        this.attach(grant)
+        this.attach(grant, lang)
         this.update()
       },
       (err: TokenError) => {
@@ -194,7 +196,7 @@ export class SttController {
     )
   }
 
-  private attach(grant: Grant) {
+  private attach(grant: Grant, lang: string) {
     const now = this.deps.now()
     let slot: Slot | null = null
     const session = this.deps.openSession(grant, {
@@ -212,7 +214,7 @@ export class SttController {
       },
       onClose: () => slot && this.onSlotClosed(slot),
     })
-    slot = { session, lang: grant.lang, openedAt: now, lastSentAt: now, ready: false, goAway: false }
+    slot = { session, lang, openedAt: now, lastSentAt: now, ready: false, goAway: false }
     if (!this.current) {
       this.current = slot
       for (const msg of this.backlog) this.deliver(slot, msg)
@@ -248,10 +250,15 @@ export class SttController {
     if (slot === this.next) {
       this.next = null
     } else if (slot === this.current) {
-      this.current = null
       // 말하던 중이었으면 받은 데까지만 확정한다. 이어지는 말은 새 세션의 새 구간이 된다.
       this.finalizeLocally()
-      if (this.speaking) this.backlog = [{ kind: 'start' }]
+      // 교체용으로 열어 둔 세션이 있으면 토큰을 새로 받지 않고 바로 쓴다.
+      this.current = this.next
+      this.next = null
+      if (this.speaking) {
+        if (this.current) this.deliver(this.current, { kind: 'start' })
+        else this.backlog = [{ kind: 'start' }]
+      }
     } else {
       return
     }
@@ -265,6 +272,9 @@ export class SttController {
   }
 
   private onTranscript(text: string, final: boolean) {
+    // 기다리는 결과가 없으면 버린다: 로컬 확정 뒤에 늦게 온 확정, 확정 뒤 덧붙은 중간 결과.
+    // 받으면 같은 말이 새 구간으로 한 번 더 확정된다.
+    if (!this.speaking && !this.awaitingFinal) return
     if (final) {
       this.awaitingFinal = false
       if (text !== '' || this.sent !== '') {
@@ -331,7 +341,7 @@ export class SttController {
       ? 'unavailable'
       : this.current?.ready
         ? 'live'
-        : this.failures > 0
+        : this.failures > 0 && this.micOn
           ? 'paused'
           : 'starting'
     if (status !== this.status) {

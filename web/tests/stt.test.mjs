@@ -85,8 +85,8 @@ function setup({ lang = 'ko', mic = true, seg = { next: 0 } } = {}) {
   }
   const c = new SttController(deps, seg, lang)
   c.setMic(mic)
-  const grant = async (l = lang) => {
-    tokens.shift().resolve({ token: `t${sessions.length}`, model: 'models/m', lang: l })
+  const grant = async () => {
+    tokens.shift().resolve({ token: `t${sessions.length}`, model: 'models/m' })
     await Promise.resolve()
   }
   const ready = (i = sessions.length - 1) => sessions[i].events.onReady()
@@ -118,6 +118,7 @@ test('opens a session up front, streams one utterance in 100ms chunks and forwar
   ev.onInterim('안녕')
   ev.onInterim('안녕하세요')
   ev.onFinal('안녕하세요.')
+  h.c.vad({ kind: 'start', frames: [speech()] })
   ev.onInterim('다음')
   assert.deepEqual(h.sent, [
     [0, '안녕', false],
@@ -187,7 +188,7 @@ test('language change rotates the session, but never in the middle of an utteran
   h.ready()
   h.c.vad({ kind: 'start', frames: [speech()] })
   h.c.setLang('ja')
-  await h.grant('ja')
+  await h.grant()
   h.ready(1)
   assert.equal(h.sessions[0].closed, false, 'still speaking')
   h.c.vad({ kind: 'end', frames: [] })
@@ -261,4 +262,90 @@ test('dispose ends speech and closes every session', async () => {
   assert.equal(h.sessions[0].closed, true)
   h.advance(60_000)
   assert.equal(h.tokens.length, 0)
+})
+
+test('a final arriving after the local finalize, or a trailing interim, is not committed twice', async () => {
+  const h = setup()
+  await h.grant()
+  h.ready()
+  h.speak()
+  const ev = h.sessions[0].events
+  ev.onInterim('hello world')
+  h.advance(3000)
+  ev.onFinal('Hello world.')
+  ev.onInterim('world')
+  h.advance(5000)
+  assert.deepEqual(h.sent, [[0, 'hello world', false], [0, 'hello world', true]])
+  h.speak()
+  ev.onFinal('Next.')
+  ev.onInterim('Next')
+  h.advance(5000)
+  assert.deepEqual(h.sent.slice(2), [[1, 'Next.', true]])
+})
+
+test('when the current session drops, a standby session is promoted without a new token', async () => {
+  const h = setup()
+  await h.grant()
+  h.ready()
+  h.sessions[0].events.onGoAway()
+  h.c.vad({ kind: 'start', frames: [speech()] })
+  await h.grant()
+  h.ready(1)
+  h.c.tick()
+  assert.equal(h.sessions[0].closed, false, 'no swap mid-utterance')
+  h.sessions[0].close()
+  assert.equal(h.tokens.length, 0)
+  assert.deepEqual(h.sessions[1].log, ['start'])
+  h.c.vad({ kind: 'end', frames: [] })
+  assert.equal(h.sessions[1].log.at(-1), 'end')
+})
+
+test('a standby session that is no longer needed is closed', async () => {
+  const h = setup()
+  await h.grant()
+  h.ready()
+  h.c.setLang('ja')
+  h.c.setLang('ko')
+  await h.grant()
+  h.c.tick()
+  assert.equal(h.sessions[1].closed, true)
+  assert.equal(h.sessions[0].closed, false)
+  // 반대로 대기 세션의 언어가 또 바뀌면 새로 연다.
+  h.c.setLang('ja')
+  await h.grant()
+  h.c.setLang('en')
+  assert.equal(h.sessions[2].closed, true)
+  assert.equal(h.tokens.length, 1)
+})
+
+test('rotation uses the language that was requested, so a server-side mismatch cannot loop', async () => {
+  const h = setup({ lang: 'ko' })
+  await h.grant()
+  h.ready()
+  h.advance(600_000)
+  // 교체는 9분 상한 한 번뿐이다.
+  assert.equal(h.sessions.length + h.tokens.length, 2)
+})
+
+test('dispose mid-utterance commits what was heard and advances the shared counter', async () => {
+  const seg = { next: 0 }
+  const h = setup({ seg })
+  await h.grant()
+  h.ready()
+  h.c.vad({ kind: 'start', frames: [speech()] })
+  h.sessions[0].events.onInterim('we should ship on')
+  h.c.dispose()
+  assert.deepEqual(h.sent, [[0, 'we should ship on', false], [0, 'we should ship on', true]])
+  assert.equal(seg.next, 1)
+})
+
+test('paused is not shown while the mic is off and nothing is reconnecting', async () => {
+  const h = setup()
+  await h.grant()
+  h.ready()
+  h.c.setMic(false)
+  h.sessions[0].close()
+  assert.notEqual(h.statuses.at(-1), 'paused')
+  h.c.setMic(true)
+  assert.equal(h.statuses.at(-1), 'paused')
 })

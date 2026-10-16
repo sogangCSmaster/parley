@@ -13,7 +13,7 @@ use tokio::sync::{Notify, mpsc};
 
 use crate::auth::{self, Auth};
 use crate::pipeline::{self, Pipeline, SpeakerHandle};
-use crate::protocol::{ClientMsg, ErrorCode, NoticeCode, PeerId, ServerMsg};
+use crate::protocol::{ClientMsg, ErrorCode, PeerId, ServerMsg};
 use crate::providers::live::SttTokens;
 use crate::room::{self, JoinOutcome, JoinRequest, Outbox, Rooms};
 
@@ -104,6 +104,8 @@ async fn run(
     let mut speaker: Option<SpeakerHandle> = None;
     let mut stt_limit = TokenBucket::new(STT_PER_SEC, STT_BURST);
     let mut stt_token_limit = TokenBucket::new(STT_TOKENS_PER_SEC, STT_TOKEN_BURST);
+    // 연결이 끝나면 진행 중인 발급도 취소한다. 받을 사람이 없는 토큰을 만들지 않게.
+    let mut stt_tasks = tokio::task::JoinSet::new();
 
     let connected_at = tokio::time::Instant::now();
     let mut last_seen = connected_at;
@@ -218,34 +220,31 @@ async fn run(
                     Ok(())
                 }
             }
-            (ClientMsg::SttToken, Some((room, id))) => {
+            (ClientMsg::SttToken { id: req }, Some((room, id))) => {
+                while stt_tasks.try_join_next().is_some() {}
                 match (&stt, rooms.stt_lang(room, id)) {
                     (Some(issuer), Some(lang)) if stt_token_limit.take(Instant::now()) => {
                         // 발급은 Gemini 왕복(수백 ms)이라 연결 루프를 막지 않도록 따로 돌린다.
                         let issue = issuer.issue(&lang);
                         let tx = tx.clone();
-                        tokio::spawn(async move {
+                        stt_tasks.spawn(async move {
                             let msg = match issue.await {
                                 Ok(grant) => ServerMsg::SttToken {
+                                    id: req,
                                     token: grant.token,
                                     model: grant.model,
-                                    lang,
                                 },
                                 Err(err) => {
                                     tracing::warn!(%err, "stt token failed");
-                                    ServerMsg::Notice { code: NoticeCode::SttFailed }
+                                    ServerMsg::SttTokenDenied { id: req, retry: true }
                                 }
                             };
                             tx.send(msg);
                         });
                     }
-                    (Some(_), Some(_)) => tx.send(ServerMsg::Notice {
-                        code: NoticeCode::SttFailed,
-                    }),
+                    (Some(_), Some(_)) => tx.send(ServerMsg::SttTokenDenied { id: req, retry: true }),
                     // 키가 없거나, 입장 전이거나, 번역이 꺼진 방
-                    _ => tx.send(ServerMsg::Notice {
-                        code: NoticeCode::SttUnavailable,
-                    }),
+                    _ => tx.send(ServerMsg::SttTokenDenied { id: req, retry: false }),
                 }
                 Ok(())
             }
@@ -259,6 +258,7 @@ async fn run(
         tracing::info!(room = %room, peer = %id, "left");
         rooms.leave(&room, &id);
     }
+    stt_tasks.abort_all();
     drop(tx);
     writer.abort();
     if !writer_finished {
@@ -489,12 +489,12 @@ mod tests {
         let server = TestServer::start().await;
         let room = server.room();
         let mut host = welcomed(&server, &room).await;
-        send(&mut host, ClientMsg::SttToken).await;
+        send(&mut host, ClientMsg::SttToken { id: 1 }).await;
         match next_message(&mut host).await {
-            Some(ServerMsg::SttToken { token, model, lang }) => {
-                assert_eq!(token, "auth_tokens/fake-en");
+            Some(ServerMsg::SttToken { id, token, model }) => {
+                assert_eq!(id, 1);
+                assert_eq!(token, "auth_tokens/fake-en", "issued for the participant's language");
                 assert_eq!(model, "models/gemini-3.5-transcribe-live");
-                assert_eq!(lang, "en");
             }
             other => panic!("expected stt_token, got {other:?}"),
         }
@@ -503,10 +503,10 @@ mod tests {
         let mut guest = server.connect("no-session").await;
         join(&mut guest, &room).await;
         assert!(matches!(next_message(&mut guest).await, Some(ServerMsg::Waiting)));
-        send(&mut guest, ClientMsg::SttToken).await;
+        send(&mut guest, ClientMsg::SttToken { id: 2 }).await;
         assert!(matches!(
             next_message(&mut guest).await,
-            Some(ServerMsg::Notice { code: NoticeCode::SttUnavailable })
+            Some(ServerMsg::SttTokenDenied { retry: false, .. })
         ));
 
         // 번역을 끄면 주최자도 받지 못한다.
@@ -524,10 +524,10 @@ mod tests {
                 None => panic!("closed"),
             }
         }
-        send(&mut host, ClientMsg::SttToken).await;
+        send(&mut host, ClientMsg::SttToken { id: 1 }).await;
         assert!(matches!(
             next_message(&mut host).await,
-            Some(ServerMsg::Notice { code: NoticeCode::SttUnavailable })
+            Some(ServerMsg::SttTokenDenied { retry: false, .. })
         ));
     }
 
@@ -537,16 +537,16 @@ mod tests {
         let room = server.room();
         let mut socket = welcomed(&server, &room).await;
         for _ in 0..STT_TOKEN_BURST as usize {
-            send(&mut socket, ClientMsg::SttToken).await;
+            send(&mut socket, ClientMsg::SttToken { id: 3 }).await;
             assert!(matches!(
                 next_message(&mut socket).await,
                 Some(ServerMsg::SttToken { .. })
             ));
         }
-        send(&mut socket, ClientMsg::SttToken).await;
+        send(&mut socket, ClientMsg::SttToken { id: 3 }).await;
         assert!(matches!(
             next_message(&mut socket).await,
-            Some(ServerMsg::Notice { code: NoticeCode::SttFailed })
+            Some(ServerMsg::SttTokenDenied { retry: true, .. })
         ));
 
         let failing = crate::providers::live::testing::FakeTokens {
@@ -556,19 +556,19 @@ mod tests {
         let server = TestServer::start_with(Some(Arc::new(failing))).await;
         let room = server.room();
         let mut socket = welcomed(&server, &room).await;
-        send(&mut socket, ClientMsg::SttToken).await;
+        send(&mut socket, ClientMsg::SttToken { id: 3 }).await;
         assert!(matches!(
             next_message(&mut socket).await,
-            Some(ServerMsg::Notice { code: NoticeCode::SttFailed })
+            Some(ServerMsg::SttTokenDenied { retry: true, .. })
         ));
 
         let server = TestServer::start_with(None).await;
         let room = server.room();
         let mut socket = welcomed(&server, &room).await;
-        send(&mut socket, ClientMsg::SttToken).await;
+        send(&mut socket, ClientMsg::SttToken { id: 3 }).await;
         assert!(matches!(
             next_message(&mut socket).await,
-            Some(ServerMsg::Notice { code: NoticeCode::SttUnavailable })
+            Some(ServerMsg::SttTokenDenied { retry: false, .. })
         ));
     }
 
