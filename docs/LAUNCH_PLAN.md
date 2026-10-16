@@ -4,11 +4,11 @@
 
 ## 1. 도메인 구조
 
-| 주소 | 내용 | 색인 |
-|---|---|---|
-| `tolkmeet.com` | 소개 페이지(SEO), 요금, 약관, FAQ. 정적 HTML | 색인함 |
-| `www.tolkmeet.com` | `tolkmeet.com`으로 301 | — |
-| `meet.tolkmeet.com` | 지금 앱 그대로(로그인·회의·대면·자막 화면). 회의 링크는 `meet.tolkmeet.com/abcd-efgh-ijkm` | `noindex` + `robots.txt` 전부 막음 |
+| 주소 | 내용 | 호스팅 | 색인 |
+|---|---|---|---|
+| `tolkmeet.com` | 소개 페이지(SEO), 요금, 약관, FAQ. 정적 HTML | **GitHub Pages**(무료, HTTPS 자동) | 색인함 |
+| `www.tolkmeet.com` | `tolkmeet.com`으로 이동(Pages가 자동 처리) | GitHub Pages | — |
+| `meet.tolkmeet.com` | 지금 앱 그대로(로그인·회의·대면·자막 화면). 회의 링크는 `meet.tolkmeet.com/abcd-efgh-ijkm` | **AWS EC2**(Caddy + Rust 서버 + coturn) | `noindex` + `robots.txt` 전부 막음 |
 
 **나누는 이유**
 - 소개 페이지는 검색 엔진이 읽을 수 있는 정적 HTML이어야 한다. 지금 앱은 React SPA라 첫 응답이 빈 `<div id="root">`다. 소개 페이지를 앱 안에 두면 SSR·프리렌더를 앱에 붙여야 하고, 그만큼 앱이 무거워진다.
@@ -18,7 +18,28 @@
 
 **apex(`tolkmeet.com`)와 `www` 중 하나**는 정해서 다른 쪽을 301로 보내면 둘 다 SEO에 문제없다. 짧은 apex를 권장한다. `www`를 대표로 해도 된다.
 
-**속도**: 소개 페이지는 JS 없는 정적 HTML이라 첫 화면이 가장 빠르다. 앱에는 영향이 없다.
+**속도**: 소개 페이지는 JS 없는 정적 HTML이라 첫 화면이 가장 빠르다(Pages는 Fastly CDN). 앱에는 영향이 없다.
+
+**GitHub Pages로 두는 것**(결정, 2026-10-17)
+- 서버비 0, 소개 페이지 트래픽이 몰려도 EC2에 부담이 없다. 레포가 공개(AGPL)라 무료로 쓸 수 있다.
+- 배포: `site/`가 바뀌면 GitHub Actions가 빌드해 Pages에 올린다. 사용자 지정 도메인은 DNS에 GitHub Pages IP(A·AAAA)와 `www` CNAME, 레포 설정에서 HTTPS 강제.
+- 한계: 응답 헤더(CSP·캐시 기간)를 직접 정할 수 없다. 정적 소개 페이지라 큰 문제는 아니다(CSP는 `<meta>`로). 월 대역폭 약 100GB(권장치)라 이미지는 가볍게.
+- 앱(`meet.`)과 주소가 달라 쿠키·로그인이 섞이지 않는다. "로그인"·"7일 체험 시작" 버튼은 `meet.tolkmeet.com/login`, `/signup`으로 보낸다.
+
+## 1-1. 레포 구성(모노레포)
+
+한 레포에 세 부분을 둔다. 배포 대상이 다르므로 빌드도 따로 한다.
+
+```
+server/   Rust 서버            → AWS (meet.tolkmeet.com)
+web/      React 앱             → AWS (Caddy가 정적 파일로 서빙)
+site/     Astro 소개 페이지     → GitHub Pages (tolkmeet.com)
+design/   토큰·워드마크(공용)   → web·site가 함께 가져다 씀
+docs/
+```
+
+- 루트에 `pnpm-workspace.yaml`(`web`, `site`)을 두어 의존성 설치를 한 번에 한다. 공용 디자인은 지금처럼 `design/tokens.css`를 두 앱이 가져다 쓴다(별도 패키지로 만들 만큼 크지 않음).
+- GitHub Actions는 경로로 나눈다: `site/**` → Pages 배포, `server/**`·`web/**` → 테스트·EC2 배포.
 
 ## 2. 회원가입·로그인
 
@@ -29,10 +50,15 @@
   - 백업: 한 대에 모든 데이터가 있으므로 **Litestream으로 S3에 연속 복제**한다(초 단위 지연, 인스턴스가 사라져도 복구). 앱 성능에는 영향이 없다.
 - **로그인 방식**
   1. **Google 로그인(OIDC)**: B2B 사용자에게 가장 마찰이 적다. 처음 받는 정보는 이메일·이름뿐.
-  2. **이메일 + 비밀번호**: argon2id(지금 쓰는 것), 이메일 인증 필수, 비밀번호 재설정 링크(1회용, 30분). 메일 발송은 AWS SES(EC2와 같은 계정).
+  2. **이메일 + 비밀번호**: argon2id(지금 쓰는 것), 이메일 인증 필수, 비밀번호 재설정 링크(1회용, 30분). 메일 발송은 **Resend**(아래).
   - 잠금·지연 비교 같은 지금의 로그인 보호는 그대로 둔다.
 - **게스트는 계속 가입 없이** 링크로 들어온다(가장 큰 장점). 계정은 회의를 만드는 사람만 필요하다.
 - `HOST_ACCOUNTS`는 운영자 계정용으로 남긴다(관리 화면, 사용량 확인).
+- **메일 발송: Resend** (HTTP API 하나, Rust에서 `reqwest`로 호출, SDK 불필요)
+  - 무료: 월 3,000통, 하루 100통. Pro: 월 $20에 50,000통(초과 1,000통당 $0.90). 가입 인증·비밀번호 재설정만 보내므로 초기에는 무료로 충분하다. 하루 100통을 넘기 시작하면 Pro로.
+  - 대안 AWS SES는 1,000통당 $0.10으로 가장 싸지만, 처음에 발송 제한 해제 심사가 있고 설정이 번거롭다. 규모가 커지면 그때 옮긴다(발송 코드는 함수 하나로 감싸 둔다).
+  - 도메인 인증: DNS에 SPF·DKIM(Resend가 주는 값)과 DMARC를 넣어야 스팸함에 안 간다. 보내는 주소는 `no-reply@mail.tolkmeet.com` 같은 하위 도메인으로(본 도메인 평판 보호).
+  - 메일 속 링크는 1회용 토큰(32바이트 랜덤, DB에는 해시만), 30분 만료. 같은 주소로 1분에 1통, 하루 5통으로 제한해 메일 폭탄·비용 남용을 막는다.
 - 계정 삭제(셀프)와 데이터 내보내기: 개인정보 처리방침에 넣어야 하므로 처음부터 만든다.
 
 **속도**: 로그인 화면만 바뀐다. 회의 입장·자막 경로에는 DB 조회가 들어가지 않는다(세션 확인은 메모리 캐시).
@@ -154,7 +180,7 @@ Paddle은 **판매 대행자(Merchant of Record)**다. 나라별 부가세·영�
 
 ## 7. 순서
 
-1. 도메인 구입, DNS(Route 53 또는 Cloudflare), Caddy에 두 사이트(`tolkmeet.com` 정적, `meet.` 앱) 설정.
+1. 도메인 구입, DNS(Route 53 또는 Cloudflare): apex·`www` → GitHub Pages, `meet.` → EC2 Elastic IP, 메일용 SPF·DKIM·DMARC.
 2. SQLite + 회원가입·로그인(Google, 이메일).
 3. 사용량 측정(번역 시간·Gemini 토큰)과 요금제 한도.
 4. 소개 페이지 + 요금·약관·환불 페이지(영·한·일).
