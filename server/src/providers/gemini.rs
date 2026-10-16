@@ -81,7 +81,7 @@ impl Gemini {
             "contents": [{ "role": "user", "parts": [{ "text": user }] }],
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 256,
+                "maxOutputTokens": 2048,
                 "thinkingConfig": { "thinkingLevel": "minimal" },
             },
         })
@@ -92,8 +92,7 @@ enum State {
     Start(reqwest::RequestBuilder),
     Body {
         bytes: BoxStream<'static, reqwest::Result<bytes::Bytes>>,
-        buf: Vec<u8>,
-        ready: VecDeque<String>,
+        decoder: SseDecoder,
     },
     Done,
 }
@@ -128,26 +127,27 @@ impl Translator for Gemini {
                         }
                         state = State::Body {
                             bytes: res.bytes_stream().boxed(),
-                            buf: Vec::new(),
-                            ready: VecDeque::new(),
+                            decoder: SseDecoder::default(),
                         };
                     }
                     State::Body {
                         mut bytes,
-                        mut buf,
-                        mut ready,
+                        mut decoder,
                     } => {
-                        if let Some(text) = ready.pop_front() {
-                            return Some((Ok(text), State::Body { bytes, buf, ready }));
+                        if let Some(text) = decoder.ready.pop_front() {
+                            return Some((Ok(text), State::Body { bytes, decoder }));
                         }
                         match bytes.next().await {
                             Some(Ok(chunk)) => {
-                                buf.extend_from_slice(&chunk);
-                                drain_events(&mut buf, &mut ready);
-                                state = State::Body { bytes, buf, ready };
+                                if let Err(err) = decoder.push(&chunk) {
+                                    return Some((Err(err), State::Done));
+                                }
+                                state = State::Body { bytes, decoder };
                             }
                             Some(Err(err)) => return Some((Err(error(err)), State::Done)),
-                            None => state = State::Done,
+                            None => {
+                                return decoder.finish().err().map(|err| (Err(err), State::Done));
+                            }
                         }
                     }
                 }
@@ -162,34 +162,73 @@ fn error(err: reqwest::Error) -> TranslateError {
     TranslateError(err.without_url().to_string())
 }
 
-/// 완성된 SSE 이벤트(`\n\n`으로 끝남)에서 번역 텍스트를 꺼낸다. 생각(thought) 조각은 버린다.
-fn drain_events(buf: &mut Vec<u8>, ready: &mut VecDeque<String>) {
-    while let Some((end, sep)) = find_event_end(buf) {
-        let event: Vec<u8> = buf.drain(..end + sep).collect();
-        let event = String::from_utf8_lossy(&event[..end]);
-        for line in event.lines() {
-            let Some(data) = line.strip_prefix("data:") else {
+/// STOP을 확인하기 전까지는 HTTP EOF만으로 번역 성공을 판단하지 않는다.
+#[derive(Default)]
+struct SseDecoder {
+    buf: Vec<u8>,
+    ready: VecDeque<String>,
+    finished: bool,
+}
+
+impl SseDecoder {
+    fn push(&mut self, chunk: &[u8]) -> Result<(), TranslateError> {
+        self.buf.extend_from_slice(chunk);
+        while let Some((end, sep)) = find_event_end(&self.buf) {
+            let event: Vec<u8> = self.buf.drain(..end + sep).collect();
+            let event = std::str::from_utf8(&event[..end])
+                .map_err(|_| TranslateError("invalid translation event encoding".into()))?;
+            let data = event
+                .lines()
+                .filter_map(|line| line.strip_prefix("data:"))
+                .map(|line| line.strip_prefix(' ').unwrap_or(line))
+                .collect::<Vec<_>>()
+                .join("\n");
+            if data.is_empty() {
                 continue;
-            };
-            let Ok(v) = serde_json::from_str::<Value>(data.trim()) else {
-                continue;
-            };
-            let parts = v
-                .pointer("/candidates/0/content/parts")
+            }
+            let value: Value = serde_json::from_str(&data)
+                .map_err(|_| TranslateError("invalid translation event JSON".into()))?;
+            if value.get("error").is_some()
+                || value.pointer("/promptFeedback/blockReason").is_some()
+            {
+                return Err(TranslateError(
+                    "translation provider rejected the request".into(),
+                ));
+            }
+            let candidate = value.pointer("/candidates/0");
+            if let Some(reason) = candidate.and_then(|c| c.get("finishReason")) {
+                if reason.as_str() != Some("STOP") {
+                    // 공급자 메시지는 원문을 포함할 수 있어 오류에 넣지 않는다.
+                    return Err(TranslateError(
+                        "translation ended without completing".into(),
+                    ));
+                }
+                self.finished = true;
+            }
+            let parts = candidate
+                .and_then(|c| c.pointer("/content/parts"))
                 .and_then(Value::as_array);
-            for p in parts.into_iter().flatten() {
-                if p.get("thought").and_then(Value::as_bool) == Some(true) {
+            for part in parts.into_iter().flatten() {
+                if part.get("thought").and_then(Value::as_bool) == Some(true) {
                     continue;
                 }
-                if let Some(t) = p
+                if let Some(text) = part
                     .get("text")
                     .and_then(Value::as_str)
                     .filter(|t| !t.is_empty())
                 {
-                    ready.push_back(t.to_owned());
+                    self.ready.push_back(text.to_owned());
                 }
             }
         }
+        Ok(())
+    }
+
+    fn finish(&self) -> Result<(), TranslateError> {
+        if !self.finished || self.buf.iter().any(|b| !b.is_ascii_whitespace()) {
+            return Err(TranslateError("incomplete translation stream".into()));
+        }
+        Ok(())
     }
 }
 
@@ -211,8 +250,7 @@ mod tests {
 
     #[test]
     fn parses_sse_events_across_chunks() {
-        let mut buf = Vec::new();
-        let mut ready = VecDeque::new();
+        let mut decoder = SseDecoder::default();
         let event = |t: &str| {
             format!(r#"data: {{"candidates":[{{"content":{{"parts":[{{"text":"{t}"}}]}}}}]}}"#)
         };
@@ -224,13 +262,53 @@ mod tests {
         let bytes = raw.as_bytes();
         // 멀티바이트 문자 중간에서 잘린 조각도 이어 붙여 해석해야 한다.
         let cut = bytes.iter().position(|&b| b >= 0x80).unwrap() + 1;
-        buf.extend_from_slice(&bytes[..cut]);
-        drain_events(&mut buf, &mut ready);
-        assert!(ready.is_empty());
-        buf.extend_from_slice(&bytes[cut..]);
-        drain_events(&mut buf, &mut ready);
-        assert_eq!(ready, ["저희 ", "투자팀은"]);
-        assert!(buf.is_empty());
+        decoder.push(&bytes[..cut]).unwrap();
+        assert!(decoder.ready.is_empty());
+        decoder.push(&bytes[cut..]).unwrap();
+        assert_eq!(decoder.ready, ["저희 ", "투자팀은"]);
+        assert!(decoder.buf.is_empty());
+    }
+
+    fn event(value: Value) -> Vec<u8> {
+        format!("data: {value}\n\n").into_bytes()
+    }
+
+    #[test]
+    fn only_a_complete_stop_is_successful() {
+        let mut decoder = SseDecoder::default();
+        decoder
+            .push(&event(
+                json!({"candidates": [{"content": {"parts": [{"text": "Hello"}]}}]}),
+            ))
+            .unwrap();
+        assert!(decoder.finish().is_err());
+        decoder
+            .push(&event(json!({"candidates": [{"finishReason": "STOP"}]})))
+            .unwrap();
+        decoder.finish().unwrap();
+        assert_eq!(decoder.ready, ["Hello"]);
+        decoder.push(b"data: {\"candidates\":").unwrap();
+        assert!(decoder.finish().is_err());
+    }
+
+    #[test]
+    fn partial_text_cannot_hide_provider_or_event_failures() {
+        for tail in [
+            event(json!({"candidates": [{"finishReason": "MAX_TOKENS"}]})),
+            event(json!({"candidates": [{"finishReason": "SAFETY"}]})),
+            event(json!({"error": {"message": "private source text"}})),
+            event(json!({"promptFeedback": {"blockReason": "SAFETY"}})),
+            b"data: not JSON\n\n".to_vec(),
+        ] {
+            let mut decoder = SseDecoder::default();
+            decoder
+                .push(&event(
+                    json!({"candidates": [{"content": {"parts": [{"text": "partial"}]}}]}),
+                ))
+                .unwrap();
+            let err = decoder.push(&tail).unwrap_err();
+            assert!(!err.0.contains("private source text"));
+        }
     }
 
     #[test]

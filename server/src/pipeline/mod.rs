@@ -19,14 +19,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::task::AbortHandle;
 
 use crate::protocol::{NoticeCode, PeerId, ServerMsg};
 use crate::providers::{
     TranslateError, TranslateRequest, Translation, Translator, translate_hedged,
 };
-use crate::room::{self, Audience, Rooms};
+use crate::room::{self, Audience, CaptionEpoch, Rooms};
 
 /// 이 시간 안에 첫 토큰이 없으면 같은 요청을 한 번 더 보낸다.
 const HEDGE_AFTER: Duration = Duration::from_millis(1500);
@@ -38,6 +38,8 @@ pub const MAX_STT_CHARS: usize = 1000;
 const MAX_OPEN_CHARS: usize = 400;
 /// 번역을 기다리는 문장 수 상한(번역이 꺼진 사이 쌓이는 것 방지)
 const MAX_SENTENCES: usize = 16;
+/// Bound fanout from punctuation-heavy STT frames while preserving every word.
+const MAX_SENTENCES_PER_UPDATE: usize = 4;
 /// 번역 문맥으로 넘길 직전 확정 문장 쌍
 const CONTEXT_PAIRS: usize = 3;
 const NOTICE_INTERVAL: Duration = Duration::from_secs(30);
@@ -57,11 +59,18 @@ impl Pipeline {
     /// 화자 한 명의 워커를 띄운다. 핸들을 버리면 워커와 진행 중인 번역 요청이 모두 멈춘다.
     pub fn speaker(self: &Arc<Self>, room: String, speaker: PeerId) -> SpeakerHandle {
         let (tx, rx) = mpsc::channel(INBOX_CAPACITY);
-        let (done_tx, done_rx) = mpsc::unbounded_channel();
+        let (done_tx, done_rx) = mpsc::channel(INBOX_CAPACITY);
+        let changes = self.rooms.caption_changes(&room);
+        let epoch = self
+            .rooms
+            .caption_audience(&room, &speaker)
+            .map(|a| a.epoch);
         let worker = Worker {
+            last_audience: None,
+            epoch,
             pipeline: self.clone(),
-            room,
-            speaker,
+            room: room.clone(),
+            speaker: speaker.clone(),
             seg: 0,
             committed: String::new(),
             interim: String::new(),
@@ -73,18 +82,35 @@ impl Pipeline {
             flush_at: None,
             last_notice: None,
         };
-        tokio::spawn(worker.run(rx, done_rx));
-        SpeakerHandle { tx }
+        tokio::spawn(worker.run(rx, done_rx, changes));
+        SpeakerHandle {
+            tx,
+            pipeline: self.clone(),
+            room,
+            speaker,
+        }
     }
 }
 
 pub struct SpeakerHandle {
+    pipeline: Arc<Pipeline>,
+    room: String,
+    speaker: PeerId,
     tx: mpsc::Sender<Stt>,
 }
 
 impl SpeakerHandle {
     pub fn push(&self, seg: u32, text: String, is_final: bool) {
+        // Capture consent/language at receipt, before the worker can be delayed.
+        let Some(audience) = self
+            .pipeline
+            .rooms
+            .caption_audience(&self.room, &self.speaker)
+        else {
+            return;
+        };
         let stt = Stt {
+            epoch: audience.epoch,
             seg,
             text,
             is_final,
@@ -98,6 +124,7 @@ impl SpeakerHandle {
 }
 
 struct Stt {
+    epoch: CaptionEpoch,
     seg: u32,
     text: String,
     is_final: bool,
@@ -106,6 +133,7 @@ struct Stt {
 
 /// 번역 태스크가 워커에게 돌려주는 결과
 struct Done {
+    finished: bool,
     sentence: u64,
     lang: String,
     version: u32,
@@ -115,6 +143,7 @@ struct Done {
 }
 
 struct Sentence {
+    finalized_readers: BTreeSet<PeerId>,
     src: String,
     /// `src`가 바뀔 때마다 1씩 오른다(1부터).
     version: u32,
@@ -144,7 +173,15 @@ struct Inflight {
     task: AbortHandle,
 }
 
+impl Drop for Inflight {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
 struct Worker {
+    last_audience: Option<Audience>,
+    epoch: Option<CaptionEpoch>,
     pipeline: Arc<Pipeline>,
     room: String,
     speaker: PeerId,
@@ -160,20 +197,14 @@ struct Worker {
     sentences: BTreeMap<u64, Sentence>,
     /// 목표 언어별 직전 확정 문장 쌍
     context: HashMap<String, VecDeque<(String, String)>>,
-    done_tx: mpsc::UnboundedSender<Done>,
+    done_tx: mpsc::Sender<Done>,
     flush_at: Option<tokio::time::Instant>,
     last_notice: Option<Instant>,
 }
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        for s in self.sentences.values() {
-            for tr in s.tr.values() {
-                if let Some(f) = &tr.inflight {
-                    f.task.abort();
-                }
-            }
-        }
+        self.retract_pending();
     }
 }
 
@@ -181,7 +212,8 @@ impl Worker {
     async fn run(
         mut self,
         mut rx: mpsc::Receiver<Stt>,
-        mut done_rx: mpsc::UnboundedReceiver<Done>,
+        mut done_rx: mpsc::Receiver<Done>,
+        mut changes: Option<watch::Receiver<u64>>,
     ) {
         loop {
             let flush_at = self.flush_at;
@@ -192,6 +224,16 @@ impl Worker {
                 }
             };
             tokio::select! {
+                changed = async {
+                    match changes.as_mut() {
+                        Some(rx) => rx.changed().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    if changed.is_err() { break; }
+                    self.sync_audience();
+                    for id in self.sentences.keys().copied().collect::<Vec<_>>() { self.refresh(id); }
+                },
                 stt = rx.recv() => match stt {
                     Some(stt) => self.on_stt(stt),
                     None => break,
@@ -199,24 +241,35 @@ impl Worker {
                 Some(done) = done_rx.recv() => self.on_done(done),
                 () = flush => self.on_flush(),
             }
+            // Give socket writers a turn even when STT/progress queues stay ready.
+            tokio::task::yield_now().await;
         }
     }
 
-    fn on_stt(&mut self, stt: Stt) {
-        // 입장 전(대기 중)이거나 번역이 꺼진 동안의 말은 버퍼에 남기지 않는다. 남기면 나중에 자막으로 나간다.
-        if self
+    fn sync_audience(&mut self) -> Option<Audience> {
+        let audience = self
             .pipeline
             .rooms
-            .caption_audience(&self.room, &self.speaker)
-            .is_none()
-        {
+            .caption_audience(&self.room, &self.speaker);
+        let epoch = audience.as_ref().map(|a| a.epoch);
+        if self.epoch != epoch {
             self.committed.clear();
             self.interim.clear();
             self.open = None;
             self.flush_at = None;
-            self.seg = self
-                .seg
-                .max(stt.seg.saturating_add(u32::from(stt.is_final)));
+            self.retract_pending();
+            self.context.clear();
+            self.epoch = epoch;
+        }
+        self.last_audience = audience.clone();
+        audience
+    }
+
+    fn on_stt(&mut self, stt: Stt) {
+        let Some(audience) = self.sync_audience() else {
+            return;
+        };
+        if stt.epoch != audience.epoch {
             return;
         }
         if stt.seg < self.seg {
@@ -241,6 +294,9 @@ impl Worker {
     }
 
     fn on_flush(&mut self) {
+        if self.sync_audience().is_none() {
+            return;
+        }
         self.flush_at = None;
         if self.interim.is_empty() && !self.committed.is_empty() {
             let text = std::mem::take(&mut self.committed);
@@ -251,7 +307,9 @@ impl Worker {
     fn update(&mut self, at: Instant) {
         let (finished, rest) = text::split_sentences(&self.committed);
         self.committed = rest;
-        for sentence in finished {
+        let group_size = finished.len().div_ceil(MAX_SENTENCES_PER_UPDATE).max(1);
+        for group in finished.chunks(group_size) {
+            let sentence = group.iter().fold(String::new(), |a, b| text::join(&a, b));
             self.lock(sentence, at);
         }
         if self.committed.chars().count() > MAX_OPEN_CHARS {
@@ -260,7 +318,14 @@ impl Worker {
         }
 
         let open_text = text::join(&self.committed, &self.interim);
-        if !open_text.is_empty() {
+        if open_text.is_empty() {
+            if let Some(id) = self.open.take()
+                && let Some(mut sentence) = self.sentences.remove(&id)
+            {
+                sentence.src.clear();
+                self.finish_original(id, sentence);
+            }
+        } else {
             let id = match self.open {
                 Some(id) => id,
                 None => {
@@ -288,6 +353,7 @@ impl Worker {
         self.sentences.insert(
             id,
             Sentence {
+                finalized_readers: BTreeSet::new(),
                 src: String::new(),
                 version: 0,
                 locked: false,
@@ -297,12 +363,54 @@ impl Worker {
             },
         );
         while self.sentences.len() > MAX_SENTENCES {
-            let (_, old) = self.sentences.pop_first().expect("not empty");
-            for f in old.tr.values().filter_map(|t| t.inflight.as_ref()) {
-                f.task.abort();
-            }
+            let (old_id, old) = self.sentences.pop_first().expect("not empty");
+            self.finish_original(old_id, old);
         }
         id
+    }
+
+    fn retract_pending(&mut self) {
+        let pending = std::mem::take(&mut self.sentences);
+        if let Some(audience) = &self.last_audience {
+            for (id, mut sentence) in pending {
+                sentence.src.clear();
+                self.send_original(audience, id, &sentence);
+            }
+        }
+    }
+
+    fn send_original(&self, audience: &Audience, id: u64, s: &Sentence) {
+        for reader in &audience.readers {
+            if s.finalized_readers.contains(&reader.id) {
+                continue;
+            }
+            room::send(
+                &reader.tx,
+                ServerMsg::Caption {
+                    seg: format!("{}-{id}", self.speaker),
+                    speaker: self.speaker.clone(),
+                    src_lang: audience.src_lang.clone(),
+                    src: s.src.clone(),
+                    tgt_lang: audience
+                        .target_for(&reader.lang)
+                        .unwrap_or(&audience.src_lang)
+                        .to_owned(),
+                    text: None,
+                    is_final: true,
+                    rev: s.rev + 1,
+                },
+            );
+        }
+    }
+
+    fn finish_original(&self, id: u64, s: Sentence) {
+        if let Some(audience) = self
+            .pipeline
+            .rooms
+            .caption_audience(&self.room, &self.speaker)
+        {
+            self.send_original(&audience, id, &s);
+        }
     }
 
     /// 문장을 확정한다. 말하는 중이던 문장이 있으면 그 줄을 이어서 쓴다.
@@ -323,11 +431,7 @@ impl Worker {
 
     /// 필요한 번역을 시작하고, 모든 참가자에게 이 문장의 현재 상태를 보낸다.
     fn refresh(&mut self, id: u64) {
-        let Some(audience) = self
-            .pipeline
-            .rooms
-            .caption_audience(&self.room, &self.speaker)
-        else {
+        let Some(audience) = self.sync_audience() else {
             return;
         };
         let targets: BTreeSet<String> = audience
@@ -336,6 +440,10 @@ impl Worker {
             .filter_map(|r| audience.target_for(&r.lang))
             .map(str::to_owned)
             .collect();
+        self.context.retain(|lang, _| targets.contains(lang));
+        if let Some(s) = self.sentences.get_mut(&id) {
+            s.tr.retain(|lang, _| targets.contains(lang));
+        }
         for lang in &targets {
             self.schedule(id, lang, &audience.src_lang);
         }
@@ -348,6 +456,11 @@ impl Worker {
             let tgt = audience.target_for(&reader.lang);
             let tr = tgt.and_then(|l| s.tr.get(l));
             let is_final = s.locked && (tgt.is_none() || tr.is_some_and(|t| t.done));
+            if is_final {
+                s.finalized_readers.insert(reader.id.clone());
+            } else {
+                s.finalized_readers.remove(&reader.id);
+            }
             let msg = ServerMsg::Caption {
                 seg: format!("{}-{id}", self.speaker),
                 speaker: self.speaker.clone(),
@@ -415,17 +528,38 @@ impl Worker {
         let (lang, stt_at) = (lang.to_owned(), s.stt_at);
         let task = tokio::spawn(async move {
             let result = match translator {
-                Some(t) => translate_hedged(t, req, HEDGE_AFTER).await,
+                Some(t) => {
+                    translate_hedged(t, req, HEDGE_AFTER, |text| {
+                        let _ = done_tx.try_send(Done {
+                            finished: false,
+                            sentence: id,
+                            lang: lang.clone(),
+                            version,
+                            complete,
+                            stt_at,
+                            result: Ok(Translation {
+                                text: text.to_owned(),
+                                first_token: Duration::ZERO,
+                                total: Duration::ZERO,
+                                hedged: false,
+                            }),
+                        });
+                    })
+                    .await
+                }
                 None => Err(TranslateError("no translator configured".into())),
             };
-            let _ = done_tx.send(Done {
-                sentence: id,
-                lang,
-                version,
-                complete,
-                stt_at,
-                result,
-            });
+            let _ = done_tx
+                .send(Done {
+                    finished: true,
+                    sentence: id,
+                    lang,
+                    version,
+                    complete,
+                    stt_at,
+                    result,
+                })
+                .await;
         });
         tr.inflight = Some(Inflight {
             version,
@@ -435,6 +569,9 @@ impl Worker {
     }
 
     fn on_done(&mut self, done: Done) {
+        if self.sync_audience().is_none() {
+            return;
+        }
         let Some(s) = self.sentences.get_mut(&done.sentence) else {
             return;
         };
@@ -447,6 +584,16 @@ impl Worker {
             .as_ref()
             .is_some_and(|f| f.version == done.version && f.complete == done.complete)
         {
+            return;
+        }
+        if !done.finished {
+            if let Ok(t) = done.result
+                && done.version >= tr.version
+            {
+                tr.text = Some(t.text);
+                tr.version = done.version;
+            }
+            self.refresh(done.sentence);
             return;
         }
         tr.inflight = None;
@@ -495,11 +642,7 @@ impl Worker {
         {
             return;
         }
-        let Some(audience) = self
-            .pipeline
-            .rooms
-            .caption_audience(&self.room, &self.speaker)
-        else {
+        let Some(audience) = self.sync_audience() else {
             return;
         };
         self.last_notice = Some(Instant::now());

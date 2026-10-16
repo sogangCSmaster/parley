@@ -68,6 +68,8 @@ function Feed({ captions, speakerName }: { captions: Caption[]; speakerName: (id
   const { t, locale } = useI18n()
   const ref = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
+  // 취소 기록은 낮은 rev로 되살아나지 않도록 상태에 남기고 화면에서만 숨긴다.
+  const visible = captions.filter((c) => !(c.final && c.src === ''))
 
   useLayoutEffect(() => {
     const el = ref.current
@@ -81,8 +83,8 @@ function Feed({ captions, speakerName }: { captions: Caption[]; speakerName: (id
 
   return (
     <div className="feed" role="log" aria-live="polite" ref={ref} onScroll={onScroll}>
-      {captions.length === 0 && <p className="feed-empty">{t('captions.empty')}</p>}
-      {captions.map((c) => (
+      {visible.length === 0 && <p className="feed-empty">{t('captions.empty')}</p>}
+      {visible.map((c) => (
         // 확정 전 줄은 계속 바뀌므로 화면 낭독기에는 확정된 줄만 읽힌다.
         <div key={c.seg} className={c.final ? 'entry' : 'entry pending'} aria-hidden={!c.final}>
           <div className="meta">

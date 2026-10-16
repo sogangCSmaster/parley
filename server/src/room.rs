@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rand::RngExt;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{Notify, mpsc, watch};
 
 use crate::protocol::{ErrorCode, Knock, MediaState, Peer, PeerId, RoomSettings, ServerMsg};
 
@@ -48,6 +48,7 @@ impl Outbox {
 }
 
 struct Member {
+    caption_epoch: u64,
     peer: Peer,
     tx: Outbox,
 }
@@ -55,6 +56,8 @@ struct Member {
 struct Room {
     host_account: String,
     settings: RoomSettings,
+    caption_epoch: u64,
+    caption_changes: watch::Sender<u64>,
     members: HashMap<PeerId, Member>,
     waiting: HashMap<PeerId, Member>,
     /// 방이 비게 된 시점(생성 직후 포함). 사람이 있으면 None.
@@ -83,14 +86,21 @@ impl Room {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CaptionEpoch(pub u64, pub u64);
+
+#[derive(Clone)]
 pub struct Audience {
+    pub epoch: CaptionEpoch,
     pub src_lang: String,
     pub partner_lang: String,
     /// 화자 자신을 포함한 입장한 참가자 전원
     pub readers: Vec<Reader>,
 }
 
+#[derive(Clone)]
 pub struct Reader {
+    pub id: PeerId,
     pub lang: String,
     pub tx: Outbox,
 }
@@ -148,6 +158,8 @@ impl Rooms {
         let room = Room {
             host_account: host_account.to_owned(),
             settings,
+            caption_epoch: 0,
+            caption_changes: watch::channel(0).0,
             members: HashMap::new(),
             waiting: HashMap::new(),
             idle_since: Some(Instant::now()),
@@ -202,7 +214,15 @@ impl Rooms {
                 &id,
                 ServerMsg::PeerJoined { peer: peer.clone() },
             );
-            room.members.insert(id.clone(), Member { peer, tx });
+            room.members.insert(
+                id.clone(),
+                Member {
+                    caption_epoch: 0,
+                    peer,
+                    tx,
+                },
+            );
+            room.caption_changes.send_modify(|v| *v += 1);
             return Ok(JoinOutcome::Joined(id));
         }
 
@@ -213,7 +233,14 @@ impl Rooms {
                 name: peer.name.clone(),
             },
         });
-        room.waiting.insert(id.clone(), Member { peer, tx });
+        room.waiting.insert(
+            id.clone(),
+            Member {
+                caption_epoch: 0,
+                peer,
+                tx,
+            },
+        );
         Ok(JoinOutcome::Waiting(id))
     }
 
@@ -247,6 +274,7 @@ impl Rooms {
             },
         );
         room.members.insert(guest.to_owned(), member);
+        room.caption_changes.send_modify(|v| *v += 1);
         room.notify_hosts(ServerMsg::KnockResolved {
             id: guest.to_owned(),
         });
@@ -278,6 +306,10 @@ impl Rooms {
         if !room.is_host_member(by) {
             return Err(ErrorCode::Forbidden);
         }
+        if room.settings.translation != settings.translation {
+            room.caption_epoch += 1;
+            room.caption_changes.send_modify(|v| *v += 1);
+        }
         room.settings = settings;
         for m in room.members.values() {
             send(&m.tx, ServerMsg::Settings { settings });
@@ -294,7 +326,15 @@ impl Rooms {
         let Some(member) = room.members.get_mut(id) else {
             return;
         };
+        let previous_lang = member.peer.lang.clone();
+        let previous_partner = member.peer.partner_lang.clone();
         f(&mut member.peer);
+        if previous_lang != member.peer.lang {
+            member.caption_epoch += 1;
+        }
+        if previous_lang != member.peer.lang || previous_partner != member.peer.partner_lang {
+            room.caption_changes.send_modify(|v| *v += 1);
+        }
         let peer = member.peer.clone();
         broadcast(&room.members, id, ServerMsg::PeerUpdated { peer });
     }
@@ -329,6 +369,7 @@ impl Rooms {
             return;
         };
         if room.members.remove(id).is_some() {
+            room.caption_changes.send_modify(|v| *v += 1);
             broadcast(&room.members, id, ServerMsg::PeerLeft { id: id.to_owned() });
         } else if room.waiting.remove(id).is_some() {
             room.notify_hosts(ServerMsg::KnockResolved { id: id.to_owned() });
@@ -336,6 +377,14 @@ impl Rooms {
         if room.members.is_empty() && room.waiting.is_empty() {
             room.idle_since = Some(Instant::now());
         }
+    }
+
+    pub fn caption_changes(&self, code: &str) -> Option<watch::Receiver<u64>> {
+        self.rooms
+            .lock()
+            .unwrap()
+            .get(code)
+            .map(|r| r.caption_changes.subscribe())
     }
 
     /// 화자의 자막을 받을 사람들. 번역이 꺼진 방이거나 화자가 입장한 참가자가 아니면 None.
@@ -348,12 +397,14 @@ impl Rooms {
         }
         let me = room.members.get(speaker)?;
         Some(Audience {
+            epoch: CaptionEpoch(room.caption_epoch, me.caption_epoch),
             src_lang: me.peer.lang.clone(),
             partner_lang: me.peer.partner_lang.clone(),
             readers: room
                 .members
                 .values()
                 .map(|m| Reader {
+                    id: m.peer.id.clone(),
                     lang: m.peer.lang.clone(),
                     tx: m.tx.clone(),
                 })

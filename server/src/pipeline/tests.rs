@@ -376,3 +376,340 @@ async fn speech_while_waiting_is_never_captioned() {
     wait(200).await;
     assert!(captions(&mut guest_rx).last().unwrap().is_final);
 }
+
+#[tokio::test(start_paused = true)]
+async fn disable_enable_must_not_mix_old_buffer_into_new_speech() {
+    let (room, _host_rx, mut guests) = room(&["ja"]);
+    let (p, _fake) = pipeline(&room, Fake::new(vec![ms(100)]));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "old words".into(), true);
+    wait(200).await;
+    room.rooms
+        .set_settings(&room.code, &room.host, RoomSettings { translation: false })
+        .unwrap();
+    wait(100).await;
+    room.rooms
+        .set_settings(&room.code, &room.host, RoomSettings { translation: true })
+        .unwrap();
+    captions(&mut guests[0]);
+    speaker.push(1, "new words.".into(), true);
+    wait(200).await;
+    let caps = captions(&mut guests[0]);
+    assert_eq!(caps.last().unwrap().src, "new words.");
+}
+
+#[tokio::test(start_paused = true)]
+async fn language_change_must_not_mix_source_languages() {
+    let (room, _host_rx, mut guests) = room(&["ja"]);
+    let (p, fake) = pipeline(&room, Fake::new(vec![ms(100)]));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "이전 한국어".into(), true);
+    wait(200).await;
+    room.rooms
+        .update(&room.code, &room.host, |peer| peer.lang = "en".into());
+    captions(&mut guests[0]);
+    speaker.push(1, "English now.".into(), true);
+    wait(200).await;
+    let caps = captions(&mut guests[0]);
+    assert_eq!(caps.last().unwrap().src, "English now.");
+    assert_eq!(fake.requests.lock().unwrap().last().unwrap().src_lang, "en");
+}
+
+#[tokio::test(start_paused = true)]
+async fn disabling_translation_must_cancel_inflight() {
+    let (room, _host_rx, mut guests) = room(&["ja"]);
+    let (p, _fake) = pipeline(&room, Fake::new(vec![ms(1000)]));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "before off.".into(), true);
+    wait(100).await;
+    room.rooms
+        .set_settings(&room.code, &room.host, RoomSettings { translation: false })
+        .unwrap();
+    wait(100).await;
+    room.rooms
+        .set_settings(&room.code, &room.host, RoomSettings { translation: true })
+        .unwrap();
+    captions(&mut guests[0]);
+    wait(1000).await;
+    assert!(captions(&mut guests[0]).is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn target_removed_must_cancel_obsolete_translation() {
+    use futures_util::StreamExt;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct Track(Arc<AtomicUsize>);
+    impl Translator for Track {
+        fn translate(
+            &self,
+            _req: TranslateRequest,
+        ) -> futures_util::stream::BoxStream<'static, Result<String, TranslateError>> {
+            let finished = self.0.clone();
+            futures_util::stream::once(async move {
+                tokio::time::sleep(ms(1000)).await;
+                finished.fetch_add(1, Ordering::SeqCst);
+                Ok("done".into())
+            })
+            .boxed()
+        }
+    }
+    let (room, _host_rx, _guests) = room(&["ko"]);
+    let finished = Arc::new(AtomicUsize::new(0));
+    let p = Arc::new(Pipeline::new(
+        room.rooms.clone(),
+        Some(Arc::new(Track(finished.clone()))),
+    ));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "before".into(), false);
+    wait(100).await;
+    room.rooms.update(&room.code, &room.host, |peer| {
+        peer.partner_lang = "ko".into()
+    });
+    speaker.push(0, "before.".into(), true);
+    wait(100).await;
+    drop(speaker);
+    wait(1100).await;
+    assert_eq!(
+        finished.load(Ordering::SeqCst),
+        0,
+        "obsolete request was cancelled"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn queued_speech_cannot_cross_a_disable_enable_boundary() {
+    let (room, _host_rx, mut guests) = room(&["ja"]);
+    let (p, fake) = pipeline(&room, Fake::new(vec![ms(100)]));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "queued before off.".into(), true);
+    room.rooms
+        .set_settings(&room.code, &room.host, RoomSettings { translation: false })
+        .unwrap();
+    speaker.push(1, "disabled.".into(), true);
+    room.rooms
+        .set_settings(&room.code, &room.host, RoomSettings { translation: true })
+        .unwrap();
+    wait(200).await;
+    assert!(captions(&mut guests[0]).is_empty());
+    assert_eq!(fake.calls(), 0);
+    speaker.push(2, "current.".into(), true);
+    wait(200).await;
+    assert_eq!(captions(&mut guests[0]).last().unwrap().src, "current.");
+}
+
+#[tokio::test(start_paused = true)]
+async fn queued_speech_cannot_cross_a_source_language_change() {
+    let (room, _host_rx, mut guests) = room(&["ja"]);
+    let (p, fake) = pipeline(&room, Fake::new(vec![ms(100)]));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "이전 한국어.".into(), true);
+    room.rooms
+        .update(&room.code, &room.host, |peer| peer.lang = "en".into());
+    wait(200).await;
+    assert!(captions(&mut guests[0]).is_empty());
+    assert_eq!(fake.calls(), 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn evicted_sentences_finish_with_original_instead_of_staying_pending() {
+    let (room, _host_rx, mut guests) = room(&["ja"]);
+    let (p, _fake) = pipeline(&room, Fake::new(vec![Duration::from_secs(30)]));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    for seg in 0..=MAX_SENTENCES as u32 {
+        speaker.push(seg, format!("Sentence {seg}."), true);
+        wait(10).await;
+    }
+    let caps = captions(&mut guests[0]);
+    let first = caps.iter().rfind(|c| c.src == "Sentence 0.").unwrap();
+    assert!(first.is_final);
+    assert_eq!(first.text, None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn translated_chunks_are_visible_before_stream_completion() {
+    use futures_util::{StreamExt, stream};
+    struct Streaming;
+    impl Translator for Streaming {
+        fn translate(
+            &self,
+            _req: TranslateRequest,
+        ) -> futures_util::stream::BoxStream<'static, Result<String, TranslateError>> {
+            stream::once(async {
+                tokio::time::sleep(ms(100)).await;
+                Ok("first".into())
+            })
+            .chain(stream::once(async {
+                tokio::time::sleep(ms(1000)).await;
+                Ok(" second".into())
+            }))
+            .boxed()
+        }
+    }
+    let (room, _host_rx, mut guests) = room(&["ja"]);
+    let p = Arc::new(Pipeline::new(room.rooms.clone(), Some(Arc::new(Streaming))));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "한 문장.".into(), true);
+    wait(200).await;
+    let caps = captions(&mut guests[0]);
+    let first = caps.last().unwrap();
+    assert_eq!(first.text.as_deref(), Some("first"));
+    assert!(!first.is_final);
+    wait(1000).await;
+    let caps = captions(&mut guests[0]);
+    let last = caps.last().unwrap();
+    assert_eq!(last.text.as_deref(), Some("first second"));
+    assert!(last.is_final);
+}
+
+#[tokio::test(start_paused = true)]
+async fn empty_final_retracts_interim_and_next_segment_starts_a_new_line() {
+    let (room, _host_rx, mut guests) = room(&["ja"]);
+    let (p, _fake) = pipeline(&room, Fake::new(vec![ms(1000)]));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "discard this interim".into(), false);
+    wait(10).await;
+    let old = captions(&mut guests[0]).pop().unwrap();
+    speaker.push(0, "   ".into(), true);
+    wait(10).await;
+    let retracted = captions(&mut guests[0]).pop().unwrap();
+    assert_eq!(retracted.seg, old.seg);
+    assert!(retracted.src.is_empty());
+    assert!(retracted.is_final);
+    speaker.push(1, "new sentence.".into(), true);
+    wait(10).await;
+    let next = captions(&mut guests[0]).pop().unwrap();
+    assert_ne!(next.seg, old.seg);
+    assert_eq!(next.src, "new sentence.");
+}
+
+#[tokio::test(start_paused = true)]
+async fn disabling_translation_retracts_pending_captions() {
+    let (room, _host_rx, mut guests) = room(&["ja"]);
+    let (p, _fake) = pipeline(&room, Fake::new(vec![ms(1000)]));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "pending.".into(), true);
+    wait(10).await;
+    let first = captions(&mut guests[0]).pop().unwrap();
+    room.rooms
+        .set_settings(&room.code, &room.host, RoomSettings { translation: false })
+        .unwrap();
+    wait(10).await;
+    let retracted = captions(&mut guests[0]).pop().unwrap();
+    assert_eq!(first.seg, retracted.seg);
+    assert!(retracted.is_final && retracted.src.is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn departing_speaker_retracts_pending_captions() {
+    let (room, _host_rx, mut guests) = room(&["ja"]);
+    let (p, _fake) = pipeline(&room, Fake::new(vec![ms(1000)]));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "pending.".into(), true);
+    wait(10).await;
+    let first = captions(&mut guests[0]).pop().unwrap();
+    room.rooms.leave(&room.code, &room.host);
+    drop(speaker);
+    wait(10).await;
+    let retracted = captions(&mut guests[0]).pop().unwrap();
+    assert_eq!(first.seg, retracted.seg);
+    assert!(retracted.is_final && retracted.src.is_empty());
+}
+
+fn bounded_room() -> (Room, Inbox, Arc<Notify>) {
+    let rooms = Arc::new(Rooms::default());
+    let code = rooms
+        .create(HOST, RoomSettings { translation: true })
+        .unwrap();
+    let disconnect = Arc::new(Notify::new());
+    let (tx, mut rx) = mpsc::channel(64);
+    let JoinOutcome::Joined(host) = rooms
+        .join(
+            &code,
+            join_req("A", "ko", "ja"),
+            Some(HOST),
+            Outbox::new(tx, disconnect.clone()),
+        )
+        .unwrap()
+    else {
+        panic!("host joins")
+    };
+    while rx.try_recv().is_ok() {}
+    (Room { rooms, code, host }, rx, disconnect)
+}
+
+#[tokio::test(start_paused = true)]
+async fn punctuation_heavy_frame_has_bounded_fanout_without_losing_text() {
+    let (room, mut rx, disconnect) = bounded_room();
+    let p = Arc::new(Pipeline::new(room.rooms.clone(), None));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    let text = "a. ".repeat(300);
+    speaker.push(0, text.clone(), true);
+    wait(10).await;
+    assert!(
+        tokio::time::timeout(ms(1), disconnect.notified())
+            .await
+            .is_err()
+    );
+    let finals: Vec<_> = captions(&mut rx)
+        .into_iter()
+        .filter(|c| c.is_final)
+        .collect();
+    assert_eq!(finals.len(), MAX_SENTENCES_PER_UPDATE);
+    assert_eq!(
+        finals
+            .iter()
+            .map(|c| c.src.as_str())
+            .collect::<Vec<_>>()
+            .join(" "),
+        text.trim()
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn buffered_stream_burst_does_not_overflow_caption_outbox() {
+    use futures_util::{StreamExt, stream};
+    struct Burst;
+    impl Translator for Burst {
+        fn translate(
+            &self,
+            _req: TranslateRequest,
+        ) -> futures_util::stream::BoxStream<'static, Result<String, TranslateError>> {
+            stream::iter((0..1000).map(|_| Ok("a".to_owned()))).boxed()
+        }
+    }
+    let (room, mut rx, disconnect) = bounded_room();
+    let p = Arc::new(Pipeline::new(room.rooms.clone(), Some(Arc::new(Burst))));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "sentence.".into(), true);
+    wait(10).await;
+    assert!(
+        tokio::time::timeout(ms(1), disconnect.notified())
+            .await
+            .is_err()
+    );
+    let last = captions(&mut rx).pop().unwrap();
+    assert!(last.is_final);
+    assert_eq!(last.text, Some("a".repeat(1000)));
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancelling_pending_languages_preserves_already_finalized_readers() {
+    let (room, _host_rx, mut guests) = room(&["ja", "en"]);
+    // Target scheduling is sorted: English is slow, Japanese finishes first.
+    let (p, _fake) = pipeline(&room, Fake::new(vec![Duration::from_secs(30), ms(100)]));
+    let speaker = p.speaker(room.code.clone(), room.host.clone());
+    speaker.push(0, "완료된 번역.".into(), true);
+    wait(200).await;
+    assert!(captions(&mut guests[0]).last().unwrap().is_final);
+    assert!(!captions(&mut guests[1]).last().unwrap().is_final);
+    room.rooms
+        .set_settings(&room.code, &room.host, RoomSettings { translation: false })
+        .unwrap();
+    wait(10).await;
+    assert!(
+        captions(&mut guests[0]).is_empty(),
+        "finished Japanese caption must remain intact"
+    );
+    let cancelled = captions(&mut guests[1]).pop().unwrap();
+    assert!(cancelled.is_final && cancelled.src.is_empty());
+}

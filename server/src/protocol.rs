@@ -128,6 +128,7 @@ pub enum ServerMsg {
         data: serde_json::Value,
     },
     /// 자막 한 줄(한 문장). 같은 `seg`는 같은 줄이고, 더 큰 `rev`만 반영한다.
+    /// A final caption with an empty `src` retracts the previous revision of that segment.
     Caption {
         seg: String,
         speaker: PeerId,

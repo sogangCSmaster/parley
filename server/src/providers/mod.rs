@@ -52,27 +52,48 @@ pub async fn translate_hedged(
     translator: Arc<dyn Translator>,
     req: TranslateRequest,
     hedge_after: Duration,
+    mut on_chunk: impl FnMut(&str),
 ) -> Result<Translation, TranslateError> {
     let started = Instant::now();
     let mut first = translator.translate(req.clone());
-    let (head, rest, hedged) = match tokio::time::timeout(hedge_after, first.next()).await {
-        Ok(head) => (head, first, false),
-        Err(_) => {
-            let mut second = translator.translate(req);
-            tokio::select! {
-                head = first.next() => (head, first, true),
-                head = second.next() => (head, second, true),
+    let (head, mut rest, hedged) =
+        match tokio::time::timeout(hedge_after, first_chunk(&mut first)).await {
+            Ok(head) => (head?, first, false),
+            Err(_) => {
+                let mut second = translator.translate(req);
+                tokio::select! {
+                    head = first_chunk(&mut first) => match head {
+                        Ok(head) => {
+                            drop(second);
+                            (head, first, true)
+                        }
+                        Err(_) => {
+                            drop(first);
+                            (first_chunk(&mut second).await?, second, true)
+                        }
+                    },
+                    head = first_chunk(&mut second) => match head {
+                        Ok(head) => {
+                            drop(first);
+                            (head, second, true)
+                        }
+                        Err(_) => {
+                            drop(second);
+                            (first_chunk(&mut first).await?, first, true)
+                        }
+                    },
+                }
             }
-        }
-    };
+        };
     let first_token = started.elapsed();
-    let mut text = match head {
-        Some(chunk) => chunk?,
-        None => String::new(),
-    };
-    let mut rest = rest;
+    let mut text = head;
+    on_chunk(text.trim());
     while let Some(chunk) = rest.next().await {
-        text.push_str(&chunk?);
+        let chunk = chunk?;
+        if !chunk.is_empty() {
+            text.push_str(&chunk);
+            on_chunk(text.trim());
+        }
     }
     let text = text.trim().to_owned();
     if text.is_empty() {
@@ -84,6 +105,18 @@ pub async fn translate_hedged(
         total: started.elapsed(),
         hedged,
     })
+}
+
+async fn first_chunk(
+    stream: &mut BoxStream<'static, Result<String, TranslateError>>,
+) -> Result<String, TranslateError> {
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        if !chunk.is_empty() {
+            return Ok(chunk);
+        }
+    }
+    Err(TranslateError("empty translation".into()))
 }
 
 /// 프롬프트에 넣을 영어 언어 이름. 모르는 태그는 그대로 쓴다(모델이 BCP-47도 이해한다).
@@ -182,7 +215,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn fast_first_request_is_not_hedged() {
         let fake = Arc::new(Fake::new(vec![Duration::from_millis(900)]));
-        let t = translate_hedged(fake.clone(), req(), Duration::from_millis(1500))
+        let t = translate_hedged(fake.clone(), req(), Duration::from_millis(1500), |_| {})
             .await
             .unwrap();
         assert_eq!(t.text, "[ja] 안녕");
@@ -196,7 +229,7 @@ mod tests {
             Duration::from_secs(20),
             Duration::from_millis(800),
         ]));
-        let t = translate_hedged(fake.clone(), req(), Duration::from_millis(1500))
+        let t = translate_hedged(fake.clone(), req(), Duration::from_millis(1500), |_| {})
             .await
             .unwrap();
         assert!(t.hedged);
@@ -209,10 +242,112 @@ mod tests {
         let mut fake = Fake::new(vec![Duration::ZERO]);
         fake.fail = true;
         assert!(
-            translate_hedged(Arc::new(fake), req(), Duration::from_millis(1500))
+            translate_hedged(Arc::new(fake), req(), Duration::from_millis(1500), |_| {})
                 .await
                 .is_err()
         );
+    }
+
+    struct Scripted {
+        streams: std::sync::Mutex<
+            std::collections::VecDeque<BoxStream<'static, Result<String, TranslateError>>>,
+        >,
+    }
+
+    impl Translator for Scripted {
+        fn translate(
+            &self,
+            _: TranslateRequest,
+        ) -> BoxStream<'static, Result<String, TranslateError>> {
+            self.streams.lock().unwrap().pop_front().unwrap()
+        }
+    }
+
+    struct DropMark(Arc<std::sync::atomic::AtomicUsize>);
+
+    impl Drop for DropMark {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    fn scripted(
+        chunks: Vec<(u64, Result<&str, &str>)>,
+        drops: Arc<std::sync::atomic::AtomicUsize>,
+    ) -> BoxStream<'static, Result<String, TranslateError>> {
+        let chunks: std::collections::VecDeque<_> = chunks
+            .into_iter()
+            .map(|(ms, text)| {
+                (
+                    ms,
+                    text.map(str::to_owned)
+                        .map_err(|e| TranslateError(e.into())),
+                )
+            })
+            .collect();
+        futures_util::stream::unfold(
+            (chunks, DropMark(drops)),
+            |(mut chunks, marker)| async move {
+                let (ms, chunk) = chunks.pop_front()?;
+                tokio::time::sleep(Duration::from_millis(ms)).await;
+                Some((chunk, (chunks, marker)))
+            },
+        )
+        .boxed()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn either_hedged_failure_preserves_the_other_success() {
+        for (first, second) in [
+            ((2000, Ok("success")), (10, Err("HTTP 429"))),
+            ((1550, Err("HTTP 500")), (100, Ok("success"))),
+        ] {
+            let drops = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let translator = Arc::new(Scripted {
+                streams: std::sync::Mutex::new(
+                    [
+                        scripted(vec![first], drops.clone()),
+                        scripted(vec![second], drops),
+                    ]
+                    .into(),
+                ),
+            });
+            let result = translate_hedged(translator, req(), Duration::from_millis(1500), |_| {})
+                .await
+                .unwrap();
+            assert_eq!(result.text, "success");
+            assert!(result.hedged);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn streamed_winner_is_visible_before_completion_and_loser_is_cancelled() {
+        let drops = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let translator = Arc::new(Scripted {
+            streams: std::sync::Mutex::new(
+                [
+                    scripted(vec![(20_000, Ok("loser"))], drops.clone()),
+                    scripted(vec![(10, Ok("a")), (1000, Ok("b"))], drops.clone()),
+                ]
+                .into(),
+            ),
+        });
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let task = tokio::spawn(async move {
+            translate_hedged(translator, req(), Duration::from_millis(1500), |text| {
+                tx.send(text.to_owned()).unwrap();
+            })
+            .await
+            .unwrap()
+        });
+        assert_eq!(rx.recv().await.as_deref(), Some("a"));
+        assert!(!task.is_finished());
+        assert_eq!(drops.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(rx.recv().await.as_deref(), Some("ab"));
+        let result = task.await.unwrap();
+        assert_eq!(result.text, "ab");
+        assert_eq!(result.first_token, Duration::from_millis(1510));
+        assert_eq!(drops.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 
     #[test]
