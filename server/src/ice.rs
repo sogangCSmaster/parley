@@ -20,7 +20,6 @@ pub const TURN_TTL: Duration = Duration::from_secs(12 * 60 * 60);
 /// coturn `static-auth-secret`. 짧으면 HMAC 키를 추측당할 수 있다.
 const MIN_SECRET_LEN: usize = 32;
 
-#[derive(Default)]
 pub struct Ice {
     stun: Vec<IceServer>,
     turn: Option<Turn>,
@@ -31,8 +30,15 @@ struct Turn {
     secret: String,
 }
 
+/// 환경 변수를 하나도 설정하지 않았을 때와 같다(공개 STUN).
+impl Default for Ice {
+    fn default() -> Self {
+        Self::new(None, None, None).expect("defaults are valid")
+    }
+}
+
 impl Ice {
-    /// `ICE_SERVERS`(자격 없는 STUN 등, JSON 배열), `TURN_URLS`(공백 구분), `TURN_SECRET`.
+    /// `ICE_SERVERS`(자격 없는 STUN, JSON 배열), `TURN_URLS`(공백 구분), `TURN_SECRET`.
     pub fn new(
         ice_servers: Option<&str>,
         turn_urls: Option<&str>,
@@ -93,8 +99,7 @@ impl Ice {
         if let Some(turn) = &self.turn {
             let expiry = (now + TURN_TTL)
                 .duration_since(UNIX_EPOCH)
-                .expect("clock before 1970")
-                .as_secs();
+                .map_or(0, |d| d.as_secs());
             let username = format!("{expiry}:{peer}");
             let credential = sign(&turn.secret, &username);
             servers.push(IceServer {
@@ -136,6 +141,15 @@ impl StaticServer {
             Urls::One(u) => vec![u],
             Urls::Many(us) => us,
         };
+        // 자격 없는 turn: 항목은 브라우저가 RTCPeerConnection 생성 때 거절해 모든 연결이 실패한다.
+        if let Some(bad) = urls
+            .iter()
+            .find(|u| !(u.starts_with("stun:") || u.starts_with("stuns:")))
+        {
+            return Err(format!(
+                "ICE_SERVERS is for stun:/stuns: only ({bad}); use TURN_URLS for TURN"
+            ));
+        }
         Ok(IceServer {
             urls,
             username: None,
@@ -210,6 +224,7 @@ mod tests {
             (None, None, Some(SECRET)),
             (None, Some("turn:t:3478"), Some("short")),
             (None, Some("stun:t:3478"), Some(SECRET)),
+            (Some(r#"[{"urls":["stun:s:3478","turn:t:3478"]}]"#), None, None),
         ] {
             assert!(
                 Ice::new(servers, urls, secret).is_err(),

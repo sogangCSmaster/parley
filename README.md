@@ -73,7 +73,7 @@ Server environment variables:
 | Variable | Default | Description |
 |---|---|---|
 | `BIND_ADDR` | `127.0.0.1:8080` | Listen address |
-| `ICE_SERVERS` | Google public STUN | JSON array of STUN servers (`[{"urls": "stun:…"}]`), sent to each participant on join. Static `username`/`credential` fields are refused at startup; use `TURN_*` instead |
+| `ICE_SERVERS` | Google public STUN | JSON array of STUN servers (`[{"urls": "stun:…"}]`), sent to each admitted participant in `welcome`. Only `stun:`/`stuns:` URLs without `username`/`credential` are accepted; use `TURN_*` for TURN |
 | `TURN_URLS` | (none) | Space-separated `turn:`/`turns:` URLs of your coturn server. Set together with `TURN_SECRET` |
 | `TURN_SECRET` | (none) | coturn `static-auth-secret` (32+ characters). Each admitted participant gets their own 12-hour TURN credential; without TURN, some participants behind strict NATs can't connect |
 | `RUST_LOG` | `info` | Log filter |

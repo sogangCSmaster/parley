@@ -190,6 +190,8 @@ impl Rooms {
         tx: Outbox,
     ) -> Result<JoinOutcome, ErrorCode> {
         let id = random_token(12);
+        // 자격은 잠금 밖에서 만든다. 주최자가 아니면 수락 때 다시 만들므로 여기 것은 버려진다(수 μs).
+        let ice_servers = self.ice.servers_for(&id, SystemTime::now());
         let mut rooms = self.rooms.lock().unwrap();
         let room = rooms.get_mut(code).ok_or(ErrorCode::RoomNotFound)?;
         if room.members.len() >= MAX_PEERS {
@@ -216,7 +218,7 @@ impl Rooms {
                 settings: room.settings,
                 peers: room.members.values().map(|m| m.peer.clone()).collect(),
                 knocks: room.knocks(),
-                ice_servers: self.ice.servers_for(&id, SystemTime::now()),
+                ice_servers,
             };
             send(&tx, welcome);
             broadcast(
@@ -256,6 +258,7 @@ impl Rooms {
 
     pub fn admit(&self, code: &str, by: &str, guest: &str) -> Result<(), ErrorCode> {
         // 자격은 잠금 밖에서 만든다. 수락이 거절되면 버려진다.
+        // 권한 확인 전이라 아무 문자열에나 계산될 수 있지만 HMAC 한 번이고 Welcome으로만 나간다.
         let ice_servers = self.ice.servers_for(guest, SystemTime::now());
         let mut rooms = self.rooms.lock().unwrap();
         let room = rooms.get_mut(code).ok_or(ErrorCode::RoomNotFound)?;

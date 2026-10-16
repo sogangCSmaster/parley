@@ -191,7 +191,7 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 | 비밀정보 | 서버 운영 키는 SSM Parameter Store / Secrets Manager. 로그에 키·음성·자막 원문 남기지 않음 |
 | 배포 | GitHub Actions에서 바이너리 빌드 → systemd 서비스 재시작 (컨테이너는 선택) |
 
-coturn 필수 설정(서버의 `TURN_URLS`·`TURN_SECRET`과 짝):
+coturn 필수 설정(서버의 `TURN_URLS`·`TURN_SECRET`과 짝). 자격은 12시간 동안 회수할 수 없으므로, 새어도 내부망에 닿지 못하고, 한 사람이 쓸 수 있는 할당 수와 세션 대역폭에 상한을 둔다:
 
 ```ini
 use-auth-secret
@@ -199,13 +199,39 @@ static-auth-secret=<TURN_SECRET과 같은 값>
 realm=<도메인>
 fingerprint
 no-cli
-# 릴레이로 인스턴스 내부·VPC·메타데이터(169.254.169.254)에 닿지 못하게 막는다.
+no-tcp-relay
+# 릴레이로 인스턴스 자신·VPC·메타데이터(169.254.169.254, fd00:ec2::254)에 닿지 못하게 막는다.
 no-loopback-peers
 no-multicast-peers
+denied-peer-ip=0.0.0.0-0.255.255.255
 denied-peer-ip=10.0.0.0-10.255.255.255
-denied-peer-ip=172.16.0.0-172.31.255.255
-denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=100.64.0.0-100.127.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
 denied-peer-ip=169.254.0.0-169.254.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.0.0.0-192.0.0.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=198.18.0.0-198.19.255.255
+denied-peer-ip=240.0.0.0-255.255.255.255
+# 인스턴스 자신의 공인 IP(Elastic IP)로 되돌아오는 릴레이(TURN 루프·할당 한도 우회)를 막는다.
+denied-peer-ip=<Elastic IP>
+# IPv6를 켠 VPC면 인스턴스·VPC IPv6는 NAT 없는 공인 주소라 위 사설 대역으로 막히지 않는다. 함께 막는다.
+# denied-peer-ip=<인스턴스 IPv6>
+# denied-peer-ip=<VPC IPv6 CIDR 시작>-<끝>
+denied-peer-ip=::
+denied-peer-ip=::1
+# IPv4 규칙은 IPv4-mapped IPv6 주소에 적용되지 않는다(이게 없으면 ::ffff:169.254.169.254로 우회).
+denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
+denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
+denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+# user-quota: 자격 하나(=참가자 한 명)의 동시 할당 수. 4인 mesh면 연결 3개 × TURN_URLS 수 × 2(ICE 재시작·재입장 여유).
+#   TURN_URLS가 3개면 18 → 넉넉히 24.
+# max-bps: 세션당 바이트/초(500000 ≈ 4Mbps, 720p 영상 1개 + 음성).
+# bps-capacity는 쓰지 않는다: 실제 사용량이 아니라 할당마다 max-bps를 미리 떼어 두는 방식이라 동시 할당 수를 크게 줄인다.
+user-quota=24
+total-quota=1200
+max-bps=500000
 ```
 
 주의: ALB는 UDP를 다루지 못하므로 TURN·(나중의) SFU 트래픽은 로드밸런서 없이 인스턴스 직접 또는 NLB로 받는다.
@@ -225,7 +251,7 @@ denied-peer-ip=169.254.0.0-169.254.255.255
 | 입장 | 방을 만든 계정으로 접속하면 바로 입장, 그 외는 대기열(방당 8명) → 주최자가 수락해야 입장. 수락·거절·번역 설정은 서버가 매 요청 주최자인지 확인. 방당 최대 4명 |
 | CSRF·WS 하이재킹 | API는 JSON Content-Type만 받음 + SameSite=Lax. `/ws`는 Origin이 Host와 같아야 업그레이드 |
 | 시그널링 | `signal.to`는 같은 방 참가자에게만 중계 |
-| TURN 자격 | 정적 비밀번호 대신 서버가 발급하는 시간제한 HMAC 자격(coturn `use-auth-secret`, TURN REST API 방식). `username = "<만료>:<참가자 id>"`, `credential = base64(HMAC-SHA1(TURN_SECRET, username))`, 12시간(coturn은 할당 갱신 때도 자격을 검사하므로 회의보다 길게). `welcome`으로만 나가므로 입장이 확정된 참가자만 받는다. 공개 API로는 ICE 설정을 내주지 않는다(구현됨) |
+| TURN 자격 | 정적 비밀번호 대신 서버가 발급하는 시간제한 HMAC 자격(coturn `use-auth-secret`, TURN REST API 방식). `username = "<만료>:<참가자 id>"`, `credential = base64(HMAC-SHA1(TURN_SECRET, username))`, 12시간(coturn은 할당 갱신 때도 자격을 검사하므로 회의보다 길게). `welcome`으로만 나가므로 입장이 확정된 참가자만 받는다. 공개 API로는 ICE 설정을 내주지 않는다(구현됨). 한계: 발급한 자격은 만료 전에 회수할 수 없고, 12시간이 넘게 머문 참가자는 자격이 갱신되지 않아 새 릴레이를 열지 못한다(다시 입장하면 새로 받는다) |
 | Gemini API 키 | 운영자가 루트 `.env` 또는 서버 환경 변수로 설정. Git·로그·에러 메시지·클라이언트 응답에 키를 노출하지 않음 |
 | 음성·자막 | 기본은 저장하지 않음. 기록 저장 기능은 참가자 전원 고지 후에만 |
 | 입력 제한 | 이름 1~40자·언어 태그·방 코드 형식 검증, WS 메시지 64KB 제한, `stt` 빈도 제한·1000자 제한, STT 토큰 발급 빈도 제한(구현됨). 다른 메시지 빈도 제한, 방당 인원 제한 |
