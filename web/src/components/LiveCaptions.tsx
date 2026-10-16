@@ -266,7 +266,7 @@ function LiveFeed({ captions }: { captions: Caption[] }) {
                     {meta}
                     <span lang={c.src_lang}>{c.src}</span>
                   </p>
-                  <p className="live-tgt" lang={c.text != null ? c.tgt_lang : undefined}>
+                  <p className="live-tgt tr-mark" lang={c.text != null ? c.tgt_lang : undefined}>
                     {c.text ?? t('captions.translating')}
                   </p>
                 </>

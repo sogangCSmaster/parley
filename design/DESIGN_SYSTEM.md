@@ -49,11 +49,11 @@ One utterance = one entry. Entries are separated by a 1px `--divider` line.
 ```
 Speaker name  time                 ← 12px, name in --text / time in --text-tertiary
 Original (speaker's language)      ← --caption-size, --text
-Translation (other language)       ← --caption-size, --text, 4px gap
+▬ Translation (other language)     ← --caption-size, --text, 4px gap, small red-orange pill + indent
 ```
 
 - If I speak Korean → Korean, then Japanese below. If the other person speaks Japanese → Japanese, then Korean below. **The original always comes first.**
-- Original and translation use the same size and color (as in the reference photo). The order is the only distinction.
+- Original and translation use the same size and color (as in the reference photo). The translation line carries the brand touch: a short red-orange pill before it and a slight indent (`.tr-mark`), the lower bar of the "Pair" mark in miniature. The pill scales with the text (em/lh), so it looks the same in the caption panel, the live captions screen, in-person mode and the demos. While pending, the pill fades to 45%.
 - **Still being recognized/translated**: the whole entry turns `--text-secondary`, and the translation slot shows "번역 중…" ("Translating…"). Once finalized it returns to normal color. No other animation.
 - New entries appear at the bottom; the panel auto-scrolls if the user is already at the bottom. If they scrolled up, it stops.
 - Accessibility: the feed is `role="log"`. Only finalized entries are announced by screen readers; in-progress entries are `aria-hidden`.

@@ -114,9 +114,11 @@ function Feed({ captions, speakerName }: { captions: Caption[]; speakerName: (id
           </div>
           <p lang={c.src_lang}>{c.src}</p>
           {c.text != null ? (
-            <p lang={c.tgt_lang}>{c.text}</p>
+            <p className="tr-mark" lang={c.tgt_lang}>
+              {c.text}
+            </p>
           ) : (
-            !c.final && c.tgt_lang !== c.src_lang && <p>{t('captions.translating')}</p>
+            !c.final && c.tgt_lang !== c.src_lang && <p className="tr-mark">{t('captions.translating')}</p>
           )}
         </div>
       ))}

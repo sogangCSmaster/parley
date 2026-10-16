@@ -52,12 +52,12 @@ function Global() {
         <div className="kp-entry">
           <small>さくら</small>
           <p lang="ja">私たちの投資チームは4人です。</p>
-          <p lang="ko">저희 투자팀은 4명이에요.</p>
+          <p className="tr-mark" lang="ko">저희 투자팀은 4명이에요.</p>
         </div>
         <div className="kp-entry">
           <small>{t('room.you', { name: '민준' })}</small>
           <p lang="ko">어떤 분야에 투자하세요?</p>
-          <p lang="ja">どの分野に投資していますか？</p>
+          <p className="tr-mark" lang="ja">どの分野に投資していますか？</p>
         </div>
       </div>
     </div>
@@ -82,17 +82,17 @@ function InPersonMock() {
   return (
     <div className="kp-device kp-talk">
       <div className="kp-half far">
-        <p className="big">네, 감사합니다.</p>
+        <p className="big tr-mark">네, 감사합니다.</p>
         <p className="small">はい、ありがとうございます。</p>
         <p className="big mine">예산에 대해 확인하고 싶어요.</p>
-        <p className="small">予算について確認したいです。</p>
+        <p className="small tr-mark">予算について確認したいです。</p>
         <span className="kp-btn">누르고 말하세요</span>
       </div>
       <div className="kp-bar" />
       <div className="kp-half">
         <p className="big mine">はい、ありがとうございます。</p>
-        <p className="small">네, 감사합니다.</p>
-        <p className="big">予算について確認したいです。</p>
+        <p className="small tr-mark">네, 감사합니다.</p>
+        <p className="big tr-mark">予算について確認したいです。</p>
         <p className="small">예산에 대해 확인하고 싶어요.</p>
         <span className="kp-btn on">聞き取り中…</span>
       </div>
@@ -121,7 +121,7 @@ function LiveMock() {
           <small>
             <b>{lang}</b> {src}
           </small>
-          <p>{tgt}</p>
+          <p className="tr-mark">{tgt}</p>
         </div>
       ))}
     </div>

@@ -182,7 +182,9 @@ export function HeroDemo() {
                 {e.orig}
                 {e.typing && <span className="demo-caret" />}
               </p>
-              <p lang={e.tr ? LANGS[e.who][1] : undefined}>{e.tr || t('captions.translating')}</p>
+              <p className="tr-mark" lang={e.tr ? LANGS[e.who][1] : undefined}>
+                {e.tr || t('captions.translating')}
+              </p>
             </div>
           ))}
         </div>

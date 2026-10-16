@@ -122,6 +122,14 @@ h1 { text-wrap: balance; }
   .select-list, .feed, .panel, .demo-feed { scrollbar-width: thin; scrollbar-color: #CFCCC4 transparent; }
 }
 
+/*
+ * 번역 줄 표시: 로고("Pair")의 아래 주황 막대를 작게 옮긴 것. 번역 줄 앞에 짧은 막대를 두고 글자를 살짝 비켜 세운다.
+ * 크기는 글자 크기(em)와 줄 높이(lh)를 따라가서 자막 패널·자막 화면·대면 모드·예시 어디서나 같은 비율로 보인다.
+ */
+.tr-mark { position: relative; padding-left: .8em; }
+.tr-mark::before { content: ""; position: absolute; left: 0; top: calc(.5lh - .08em); width: .46em; height: max(2px, .16em); border-radius: 1em; background: var(--brand-accent); }
+.pending .tr-mark::before { opacity: .45; }
+
 /* 자막 항목 (패널·데모 공통) */
 .entry { padding: var(--space-3) 0; border-bottom: 1px solid var(--divider); }
 .entry:last-child { border-bottom: 0; }

@@ -280,11 +280,11 @@ function TalkHalf({ side, lang, selfId, captions, speaking, ready, micError, stt
           const sub = mine ? c.text : c.src
           return (
             <div key={c.seg} className={`talk-line${mine ? ' mine' : ''}${c.final ? '' : ' pending'}`} aria-hidden={!c.final}>
-              <p className="talk-main" lang={mine ? c.src_lang : c.tgt_lang}>
+              <p className={`talk-main${!mine && (c.text != null || !c.final) ? ' tr-mark' : ''}`} lang={mine ? c.src_lang : c.tgt_lang}>
                 {main ?? t('captions.translating')}
               </p>
               {sub && sub !== main && (
-                <p className="talk-sub" lang={mine ? c.tgt_lang : c.src_lang}>
+                <p className={`talk-sub${mine ? ' tr-mark' : ''}`} lang={mine ? c.tgt_lang : c.src_lang}>
                   {sub}
                 </p>
               )}
