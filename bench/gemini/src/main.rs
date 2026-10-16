@@ -7,6 +7,8 @@
 //!
 //! API 키는 `GEMINI_API_KEY` 환경변수 또는 이 폴더의 `.env`(git 제외)에서만 읽고, 출력하지 않는다.
 
+mod gap;
+
 use std::time::{Duration, Instant};
 
 use base64::Engine;
@@ -31,10 +33,40 @@ async fn main() {
         Some("translate") => {
             let model = flag("--model", "gemini-3.5-flash-lite");
             let thinking = flag("--thinking", "minimal");
+            // standard(기본) | priority(Tier 2·3 유료 계정만) | flex
+            let tier = flag("--service-tier", "standard");
             let runs: usize = flag("--runs", "1")
                 .parse()
                 .expect("--runs must be a number");
-            translate(&key, &model, &thinking, runs).await;
+            translate(&key, &model, &thinking, &tier, runs).await;
+        }
+        Some("gap") => {
+            let first = args
+                .get(1)
+                .filter(|a| !a.starts_with("--"))
+                .cloned()
+                .unwrap_or_else(|| usage());
+            let second = args
+                .get(2)
+                .filter(|a| !a.starts_with("--"))
+                .cloned()
+                .unwrap_or_else(|| first.clone());
+            let secs = |name: &str, default: &str| {
+                Duration::from_secs(flag(name, default).parse().expect("seconds"))
+            };
+            let model = flag("--model", "gemini-3.5-transcribe-live");
+            let lang = flag("--lang", "");
+            let options = gap::Options {
+                model: &model,
+                first: &first,
+                second: &second,
+                lang: &lang,
+                gap: secs("--gap", "20"),
+                tail: secs("--tail", "8"),
+                manual: args.iter().any(|a| a == "--manual"),
+                keepalive: secs("--keepalive", "0"),
+            };
+            gap::run(&key, options).await;
         }
         Some("transcribe") => {
             let file = args
@@ -57,7 +89,7 @@ async fn main() {
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  gemini-bench translate [--model gemini-3.5-flash-lite] [--thinking minimal|low|none] [--runs 1]\n  gemini-bench transcribe fixtures/ko.wav [--lang ko] [--model gemini-3.5-transcribe-live]"
+        "usage:\n  gemini-bench translate [--model gemini-3.5-flash-lite] [--thinking minimal|low|none] [--runs 1]\n  gemini-bench transcribe fixtures/ko.wav [--lang ko] [--model gemini-3.5-transcribe-live]\n  gemini-bench gap fixtures/ko.wav [fixtures/ja.wav] [--gap 20] [--tail 8] [--manual] [--keepalive 30] [--lang ko]"
     );
     std::process::exit(2)
 }
@@ -141,9 +173,10 @@ struct Call {
     text: String,
     /// HTTP 오류(과부하 503 등). 측정을 멈추지 않고 기록만 한다.
     error: Option<String>,
+    served_tier: String,
 }
 
-async fn translate(key: &str, model: &str, thinking: &str, runs: usize) {
+async fn translate(key: &str, model: &str, thinking: &str, tier: &str, runs: usize) {
     let (price_in, price_out) = prices(model);
     let client = reqwest::Client::new();
     // 연결 수립(TLS) 비용은 실제 서비스에서 재사용되므로 측정에서 뺀다.
@@ -153,7 +186,7 @@ async fn translate(key: &str, model: &str, thinking: &str, runs: usize) {
         .send()
         .await;
 
-    println!("model={model} thinking={thinking} runs={runs}\n");
+    println!("model={model} thinking={thinking} service_tier={tier} runs={runs}\n");
     let mut calls = Vec::new();
     for run in 0..runs {
         for s in SAMPLES {
@@ -163,7 +196,8 @@ async fn translate(key: &str, model: &str, thinking: &str, runs: usize) {
             steps.push((true, s.text.to_owned()));
             for (is_final, current) in steps {
                 let call =
-                    translate_once(&client, key, model, thinking, s, &current, is_final).await;
+                    translate_once(&client, key, model, thinking, tier, s, &current, is_final)
+                        .await;
                 if let Some(err) = &call.error {
                     println!(
                         "  {} ERROR after {}ms: {}",
@@ -193,6 +227,22 @@ async fn translate(key: &str, model: &str, thinking: &str, runs: usize) {
 
     let errors = calls.iter().filter(|c| c.error.is_some()).count();
     println!("\n== 요약 ({} calls, 오류 {errors})", calls.len());
+    let mut tiers: Vec<&str> = calls.iter().map(|c| c.served_tier.as_str()).collect();
+    tiers.sort_unstable();
+    tiers.dedup();
+    let tier_counts: Vec<String> = tiers
+        .iter()
+        .map(|t| {
+            format!(
+                "{t}×{}",
+                calls.iter().filter(|c| c.served_tier == *t).count()
+            )
+        })
+        .collect();
+    println!(
+        "  처리된 등급(x-gemini-service-tier): {}",
+        tier_counts.join(", ")
+    );
     let calls: Vec<Call> = calls.into_iter().filter(|c| c.error.is_none()).collect();
     for (label, finals) in [("partial", false), ("final", true)] {
         let group: Vec<&Call> = calls.iter().filter(|c| c.is_final == finals).collect();
@@ -228,11 +278,13 @@ async fn translate(key: &str, model: &str, thinking: &str, runs: usize) {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // 측정용 도구라 인자를 묶지 않는다
 async fn translate_once(
     client: &reqwest::Client,
     key: &str,
     model: &str,
     thinking: &str,
+    tier: &str,
     s: &Sample,
     current: &str,
     is_final: bool,
@@ -254,6 +306,10 @@ async fn translate_once(
         "contents": [{ "role": "user", "parts": [{ "text": user }] }],
         "generationConfig": generation,
     });
+    let mut body = body;
+    if tier != "standard" {
+        body["serviceTier"] = json!(tier);
+    }
 
     let started = Instant::now();
     let res = client
@@ -274,6 +330,13 @@ async fn translate_once(
         thoughts: 0,
         text: String::new(),
         error: None,
+        // 실제로 처리된 등급. priority 요청도 한도를 넘으면 standard로 내려간다.
+        served_tier: res
+            .headers()
+            .get("x-gemini-service-tier")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("-")
+            .to_owned(),
     };
     if !res.status().is_success() {
         let status = res.status();

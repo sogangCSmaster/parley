@@ -2,6 +2,7 @@
 **/target/
 **/node_modules/
 web/dist/
+web/.vite/
 
 # ── 비밀정보·로컬 설정 (예시 파일만 커밋) ──
 .env
