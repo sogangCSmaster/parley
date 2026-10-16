@@ -387,7 +387,6 @@ mod tests {
                 stt,
                 rooms: rooms.clone(),
                 auth: auth.clone(),
-                ice_servers: Arc::new(serde_json::json!([])),
                 cookie_secure: false,
                 trusted_proxy: false,
             };

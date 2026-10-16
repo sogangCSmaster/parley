@@ -91,11 +91,10 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
       if (disposed) return
       switch (msg.t) {
         case 'welcome': {
-          const iceServers = iceRef.current
           const mesh = new Mesh(
             msg.you,
             local,
-            iceServers,
+            msg.ice_servers,
             (to, data) => sig.send({ t: 'signal', to, data: data as unknown as JsonValue }),
             (id, stream) => setStreams((s) => ({ ...s, [id]: stream })),
           )
@@ -175,9 +174,8 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
       }
     }
 
-    const iceRef = { current: [] as RTCIceServer[] }
     const joinedRef = { current: false }
-    const sig = new Signaling(onMessage, () => {
+    const sig = new Signaling(onMessage, (opened) => {
       if (disposed) return
       screenRef.current?.dispose()
       screenRef.current = null
@@ -187,22 +185,14 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
       meshRef.current = null
       setStreams({})
       if (joinedRef.current) setDisconnected(true)
-      else setStatus({ kind: 'error', message: 'room.disconnected' })
+      else setStatus({ kind: 'error', message: opened ? 'room.disconnected' : 'room.serverDown' })
     })
     sigRef.current = sig
     segRef.current = { next: 0 }
 
-    fetch('/api/config')
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`))))
-      .then((cfg: { iceServers: RTCIceServer[] }) => {
-        if (disposed) return
-        iceRef.current = cfg.iceServers
-        const j = joinRef.current
-        sig.send({ t: 'join', room: code, name: j.name, lang: j.lang, partner_lang: j.partnerLang, media: j.media })
-      })
-      .catch(() => {
-        if (!disposed) setStatus({ kind: 'error', message: 'room.serverDown' })
-      })
+    // ICE 서버(TURN 자격 포함)는 welcome으로 온다. 열리기 전에 보낸 join은 큐에 모였다가 바로 나간다.
+    const j = joinRef.current
+    sig.send({ t: 'join', room: code, name: j.name, lang: j.lang, partner_lang: j.partnerLang, media: j.media })
 
     return () => {
       disposed = true

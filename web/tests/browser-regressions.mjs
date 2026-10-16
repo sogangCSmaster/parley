@@ -48,7 +48,6 @@ async function setup({ missing = false, delayed = false, mobile = false } = {}) 
         window.WebSocket = Socket;
     }, { delayed });
     await page.route('**/api/me', r => r.fulfill({ json: { username: null } }));
-    await page.route('**/api/config', r => r.fulfill({ json: { iceServers: [] } }));
     await page.route('**/api/rooms/*', r => r.fulfill(missing ? { status: 404 } : { json: { translation: true } }));
     await page.goto(origin + '/abcd-efgh-ijkm');
     return { page, context };
@@ -80,7 +79,7 @@ try {
     {
         const { page, context } = await setup({ mobile: true });
         await join(page);
-        await receive(page, { t: 'welcome', you: 'self', host: true, settings: { translation: true }, peers: [], knocks: [{ id: 'guest', name: 'Guest' }] });
+        await receive(page, { t: 'welcome', you: 'self', host: true, settings: { translation: true }, peers: [], knocks: [{ id: 'guest', name: 'Guest' }], ice_servers: [] });
         await page.getByRole('button', { name: 'Admit', exact: true }).click();
         await receive(page, { t: 'error', code: 'room_full', message: 'RoomFull' });
         assert.equal(await page.getByRole('button', { name: 'Admit', exact: true }).count(), 1);
@@ -96,7 +95,7 @@ try {
     for (const leaveDuringPicker of [false, true]) {
         const { page, context } = await setup();
         await join(page);
-        await receive(page, { t: 'welcome', you: 'self', host: true, settings: { translation: true }, peers: [], knocks: [] });
+        await receive(page, { t: 'welcome', you: 'self', host: true, settings: { translation: true }, peers: [], knocks: [], ice_servers: [] });
         await page.getByRole('button', { name: 'Present screen', exact: true }).click();
         await page.waitForFunction(() => !!window.releaseDisplay);
         if (leaveDuringPicker) {

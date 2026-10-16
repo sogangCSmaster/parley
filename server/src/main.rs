@@ -1,5 +1,6 @@
 mod auth;
 mod dev;
+mod ice;
 mod pipeline;
 mod protocol;
 mod providers;
@@ -21,6 +22,7 @@ use serde_json::{Value, json};
 use tracing_subscriber::EnvFilter;
 
 use auth::{Auth, LoginError};
+use ice::Ice;
 use pipeline::Pipeline;
 use protocol::{ErrorCode, RoomSettings};
 use providers::Translator;
@@ -35,7 +37,6 @@ struct AppState {
     pipeline: Arc<Pipeline>,
     /// 브라우저 음성 인식 토큰 발급. Gemini 키가 없으면 None.
     stt: Option<Arc<dyn SttTokens>>,
-    ice_servers: Arc<Value>,
     /// 로컬 http 개발에서만 false. 운영(https)에서는 반드시 true.
     cookie_secure: bool,
     /// 리버스 프록시(Caddy) 뒤에서만 true. 그때만 X-Forwarded-For로 클라이언트 IP를 판단한다.
@@ -110,18 +111,15 @@ async fn run() {
         "dev mode only binds to loopback (BIND_ADDR={addr}); never run it on a public address"
     );
 
-    // TURN을 붙이면 ICE_SERVERS에 JSON 배열로 넣는다. 기본값은 개발용 공개 STUN.
-    let ice_servers: Value = match std::env::var("ICE_SERVERS") {
-        Ok(raw) => serde_json::from_str(&raw).expect("ICE_SERVERS must be a JSON array"),
-        Err(_) => json!([{ "urls": "stun:stun.l.google.com:19302" }]),
-    };
-    // /api/config는 공개라서 여기 든 값은 누구나 읽는다. 정적 TURN 자격을 넣으면 릴레이를 남이 쓰게 된다.
-    // TURN은 서버가 발급하는 시간제한 HMAC 자격으로 붙일 예정이다(docs/ARCHITECTURE.md의 "TURN 자격").
-    if let Some(field) = static_ice_credential(&ice_servers) {
-        panic!(
-            "ICE_SERVERS must not contain static `{field}` fields: /api/config is public. \
-             Use time-limited TURN credentials instead (see docs/ARCHITECTURE.md)"
-        );
+    // ICE 서버는 Welcome으로 입장한 참가자에게만 준다. TURN 자격은 참가자마다 시간제한으로 만든다.
+    let ice = Ice::new(
+        std::env::var("ICE_SERVERS").ok().as_deref(),
+        std::env::var("TURN_URLS").ok().as_deref(),
+        std::env::var("TURN_SECRET").ok().as_deref(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    if !ice.has_turn() && !dev_mode {
+        tracing::warn!("TURN_URLS is not set: participants behind strict NATs may fail to connect");
     }
 
     let mut accounts = auth::parse_accounts(&std::env::var("HOST_ACCOUNTS").unwrap_or_default())
@@ -166,14 +164,13 @@ async fn run() {
             "GEMINI_API_KEY is not set: no speech recognition, captions show the original only"
         ),
     }
-    let rooms = Arc::new(Rooms::default());
+    let rooms = Arc::new(Rooms::new(ice));
 
     let state = AppState {
         pipeline: Arc::new(Pipeline::new(rooms.clone(), translator)),
         stt,
         rooms,
         auth,
-        ice_servers: Arc::new(ice_servers),
         cookie_secure,
         trusted_proxy,
     };
@@ -190,7 +187,6 @@ async fn run() {
 
     let app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
-        .route("/api/config", get(config))
         .route("/api/login", post(login))
         .route("/api/logout", post(logout))
         .route("/api/me", get(me))
@@ -212,19 +208,6 @@ async fn run() {
     })
     .await
     .expect("server error");
-}
-
-fn static_ice_credential(ice_servers: &Value) -> Option<&'static str> {
-    let servers = ice_servers.as_array()?;
-    servers.iter().find_map(|server| {
-        ["credential", "username"]
-            .into_iter()
-            .find(|field| server.get(field).is_some())
-    })
-}
-
-async fn config(State(state): State<AppState>) -> Json<Value> {
-    Json(json!({ "iceServers": *state.ice_servers }))
 }
 
 #[derive(Deserialize)]

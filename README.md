@@ -73,7 +73,9 @@ Server environment variables:
 | Variable | Default | Description |
 |---|---|---|
 | `BIND_ADDR` | `127.0.0.1:8080` | Listen address |
-| `ICE_SERVERS` | Google public STUN | JSON array passed to `RTCPeerConnection`. Served publicly by `/api/config`, so static TURN `username`/`credential` fields are refused at startup |
+| `ICE_SERVERS` | Google public STUN | JSON array of STUN servers (`[{"urls": "stun:…"}]`), sent to each participant on join. Static `username`/`credential` fields are refused at startup; use `TURN_*` instead |
+| `TURN_URLS` | (none) | Space-separated `turn:`/`turns:` URLs of your coturn server. Set together with `TURN_SECRET` |
+| `TURN_SECRET` | (none) | coturn `static-auth-secret` (32+ characters). Each admitted participant gets their own 12-hour TURN credential; without TURN, some participants behind strict NATs can't connect |
 | `RUST_LOG` | `info` | Log filter |
 | `HOST_ACCOUNTS` | (none) | Host accounts: `id:argon2-hash`, space-separated. If empty, nobody can create meetings |
 | `COOKIE_SECURE` | `true` | Session cookie `Secure` flag. Use `false` only for local http development |

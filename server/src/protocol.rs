@@ -43,6 +43,19 @@ pub struct MediaState {
     pub screen: bool,
 }
 
+/// `RTCPeerConnection`의 `iceServers` 항목. TURN 자격은 참가자마다 시간제한으로 발급한다(`ice.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct IceServer {
+    pub urls: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub credential: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "t", rename_all = "snake_case")]
 #[ts(export)]
@@ -103,6 +116,8 @@ pub enum ServerMsg {
         peers: Vec<Peer>,
         /// 주최자에게만 채워진다: 이미 대기 중인 게스트들
         knocks: Vec<Knock>,
+        /// 이 참가자 전용 ICE 서버(TURN 자격 포함). 입장이 확정된 참가자만 받는다.
+        ice_servers: Vec<IceServer>,
     },
     /// 게스트: 주최자 수락을 기다리는 중
     Waiting,

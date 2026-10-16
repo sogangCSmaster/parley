@@ -1,6 +1,6 @@
 # Architecture
 
-> 상태: 구현과 향후 설계를 함께 기록한다. 회의·브라우저 음성 인식(ephemeral token)·서버 번역 파이프라인·자막 UI가 구현되어 있다. TURN 자격 발급·배포는 아직 계획이다. AI 제공자는 Gemini로 통일하며, "결정 필요" 표시는 아직 정하지 않은 항목이다.
+> 상태: 구현과 향후 설계를 함께 기록한다. 회의·브라우저 음성 인식(ephemeral token)·서버 번역 파이프라인·자막 UI·TURN 시간제한 자격 발급이 구현되어 있다. coturn 운영과 배포는 아직 계획이다. AI 제공자는 Gemini로 통일하며, "결정 필요" 표시는 아직 정하지 않은 항목이다.
 
 ## 범위
 
@@ -22,7 +22,7 @@
 
 ## 전체 구조
 
-아래 구조에서 TURN만 아직 붙지 않았다.
+아래 구조에서 TURN은 자격 발급까지 구현됐고, coturn 서버 운영은 배포와 함께 붙인다.
 
 ```
  Browser A                                   Rust server (EC2)                 외부 API
@@ -60,7 +60,8 @@
 
 ```
 server/src/
-  main.rs       axum 라우터 (/api/health, POST /api/rooms, /api/config, /ws)
+  main.rs       axum 라우터 (/api/health, POST /api/rooms, /ws)
+  ice.rs        참가자별 ICE 서버 목록(STUN + 시간제한 TURN 자격)
   ws.rs         WS 연결 = 참가자. join 검증, 메시지 라우팅
   room.rs       방·참가자 상태, 입력 검증, 시그널 중계 (+ 단위 테스트)
   protocol.rs   메시지 타입. `cargo test` 시 ts-rs가 web/src/protocol/*.ts 생성
@@ -143,7 +144,8 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 { "t": "stt_token", "id": 7 }                                         // 음성 인식 세션 하나용 토큰 요청
 
 // server → client
-{ "t": "welcome", "you": "<peer id>", "peers": [Peer…] }
+{ "t": "welcome", "you": "<peer id>", "host": false, "settings": {…}, "peers": [Peer…], "knocks": [],
+  "ice_servers": [{ "urls": ["stun:…"] }, { "urls": ["turn:…"], "username": "1760000000:<peer id>", "credential": "…" }] }
 { "t": "peer_joined" | "peer_updated", "peer": Peer }
 { "t": "peer_left", "id": "<peer id>" }
 { "t": "signal", "from": "<peer id>", "data": {…} }
@@ -189,6 +191,23 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 | 비밀정보 | 서버 운영 키는 SSM Parameter Store / Secrets Manager. 로그에 키·음성·자막 원문 남기지 않음 |
 | 배포 | GitHub Actions에서 바이너리 빌드 → systemd 서비스 재시작 (컨테이너는 선택) |
 
+coturn 필수 설정(서버의 `TURN_URLS`·`TURN_SECRET`과 짝):
+
+```ini
+use-auth-secret
+static-auth-secret=<TURN_SECRET과 같은 값>
+realm=<도메인>
+fingerprint
+no-cli
+# 릴레이로 인스턴스 내부·VPC·메타데이터(169.254.169.254)에 닿지 못하게 막는다.
+no-loopback-peers
+no-multicast-peers
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=169.254.0.0-169.254.255.255
+```
+
 주의: ALB는 UDP를 다루지 못하므로 TURN·(나중의) SFU 트래픽은 로드밸런서 없이 인스턴스 직접 또는 NLB로 받는다.
 
 ### 확장 경로
@@ -206,7 +225,7 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 | 입장 | 방을 만든 계정으로 접속하면 바로 입장, 그 외는 대기열(방당 8명) → 주최자가 수락해야 입장. 수락·거절·번역 설정은 서버가 매 요청 주최자인지 확인. 방당 최대 4명 |
 | CSRF·WS 하이재킹 | API는 JSON Content-Type만 받음 + SameSite=Lax. `/ws`는 Origin이 Host와 같아야 업그레이드 |
 | 시그널링 | `signal.to`는 같은 방 참가자에게만 중계 |
-| TURN 자격 | 정적 비밀번호 대신 서버가 발급하는 시간제한 HMAC 자격(TURN REST API 방식) |
+| TURN 자격 | 정적 비밀번호 대신 서버가 발급하는 시간제한 HMAC 자격(coturn `use-auth-secret`, TURN REST API 방식). `username = "<만료>:<참가자 id>"`, `credential = base64(HMAC-SHA1(TURN_SECRET, username))`, 12시간(coturn은 할당 갱신 때도 자격을 검사하므로 회의보다 길게). `welcome`으로만 나가므로 입장이 확정된 참가자만 받는다. 공개 API로는 ICE 설정을 내주지 않는다(구현됨) |
 | Gemini API 키 | 운영자가 루트 `.env` 또는 서버 환경 변수로 설정. Git·로그·에러 메시지·클라이언트 응답에 키를 노출하지 않음 |
 | 음성·자막 | 기본은 저장하지 않음. 기록 저장 기능은 참가자 전원 고지 후에만 |
 | 입력 제한 | 이름 1~40자·언어 태그·방 코드 형식 검증, WS 메시지 64KB 제한, `stt` 빈도 제한·1000자 제한, STT 토큰 발급 빈도 제한(구현됨). 다른 메시지 빈도 제한, 방당 인원 제한 |

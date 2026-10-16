@@ -6,12 +6,15 @@ export class Signaling {
   private ws: WebSocket
   private queue: string[] = []
   private closedByUs = false
+  private opened = false
 
-  constructor(onMessage: (msg: ServerMsg) => void, onDisconnect: () => void) {
+  /** `onDisconnect(opened)`: opened가 false면 서버에 연결조차 못 한 것이다. */
+  constructor(onMessage: (msg: ServerMsg) => void, onDisconnect: (opened: boolean) => void) {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
     this.ws = new WebSocket(`${proto}//${location.host}/ws`)
     this.ws.onopen = () => {
       if (this.closedByUs) return
+      this.opened = true
       for (const m of this.queue) this.ws.send(m)
       this.queue = []
     }
@@ -19,7 +22,7 @@ export class Signaling {
       if (!this.closedByUs) onMessage(JSON.parse(e.data) as ServerMsg)
     }
     this.ws.onclose = () => {
-      if (!this.closedByUs) onDisconnect()
+      if (!this.closedByUs) onDisconnect(this.opened)
     }
   }
 

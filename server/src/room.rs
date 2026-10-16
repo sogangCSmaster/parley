@@ -8,11 +8,12 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use rand::RngExt;
 use tokio::sync::{Notify, mpsc, watch};
 
+use crate::ice::Ice;
 use crate::protocol::{ErrorCode, Knock, MediaState, Peer, PeerId, RoomSettings, ServerMsg};
 
 /// P2P mesh는 인원이 늘면 업링크가 (n-1)배가 되므로 4명으로 제한한다.
@@ -121,6 +122,7 @@ impl Audience {
 #[derive(Default)]
 pub struct Rooms {
     rooms: Mutex<HashMap<String, Room>>,
+    ice: Ice,
 }
 
 pub struct JoinRequest {
@@ -139,6 +141,13 @@ pub enum JoinOutcome {
 }
 
 impl Rooms {
+    pub fn new(ice: Ice) -> Self {
+        Self {
+            rooms: Mutex::default(),
+            ice,
+        }
+    }
+
     pub fn create(&self, host_account: &str, settings: RoomSettings) -> Result<String, ErrorCode> {
         let mut rooms = self.rooms.lock().unwrap();
         if rooms
@@ -180,6 +189,7 @@ impl Rooms {
         account: Option<&str>,
         tx: Outbox,
     ) -> Result<JoinOutcome, ErrorCode> {
+        let id = random_token(12);
         let mut rooms = self.rooms.lock().unwrap();
         let room = rooms.get_mut(code).ok_or(ErrorCode::RoomNotFound)?;
         if room.members.len() >= MAX_PEERS {
@@ -189,7 +199,6 @@ impl Rooms {
         if !is_host && room.waiting.len() >= MAX_WAITING {
             return Err(ErrorCode::TooManyWaiting);
         }
-        let id = random_token(12);
         let peer = Peer {
             id: id.clone(),
             name: req.name,
@@ -207,6 +216,7 @@ impl Rooms {
                 settings: room.settings,
                 peers: room.members.values().map(|m| m.peer.clone()).collect(),
                 knocks: room.knocks(),
+                ice_servers: self.ice.servers_for(&id, SystemTime::now()),
             };
             send(&tx, welcome);
             broadcast(
@@ -245,6 +255,8 @@ impl Rooms {
     }
 
     pub fn admit(&self, code: &str, by: &str, guest: &str) -> Result<(), ErrorCode> {
+        // 자격은 잠금 밖에서 만든다. 수락이 거절되면 버려진다.
+        let ice_servers = self.ice.servers_for(guest, SystemTime::now());
         let mut rooms = self.rooms.lock().unwrap();
         let room = rooms.get_mut(code).ok_or(ErrorCode::RoomNotFound)?;
         if !room.is_host_member(by) {
@@ -264,6 +276,7 @@ impl Rooms {
             settings: room.settings,
             peers: room.members.values().map(|m| m.peer.clone()).collect(),
             knocks: Vec::new(),
+            ice_servers,
         };
         send(&member.tx, welcome);
         broadcast(
@@ -590,6 +603,40 @@ mod tests {
                 .join(&code, req("Bob"), Some("bob"), other.tx)
                 .unwrap(),
         );
+    }
+
+    #[test]
+    fn turn_credentials_go_only_to_admitted_participants() {
+        let ice = Ice::new(
+            Some("[]"),
+            Some("turn:t.example:3478"),
+            Some("0123456789abcdef0123456789abcdef"),
+        )
+        .unwrap();
+        let rooms = Rooms::new(ice);
+        let code = rooms.create(HOST, ON).unwrap();
+        let turn_user = |msgs: Vec<ServerMsg>| match &msgs[..] {
+            [ServerMsg::Welcome { ice_servers, .. }] => ice_servers[0].username.clone().unwrap(),
+            other => panic!("expected welcome, got {other:?}"),
+        };
+
+        let mut host = client();
+        let host_id = joined(
+            rooms
+                .join(&code, req("Host"), Some(HOST), host.tx.clone())
+                .unwrap(),
+        );
+        assert!(turn_user(host.drain()).ends_with(&format!(":{host_id}")));
+
+        let mut guest = client();
+        let guest_id = waiting(
+            rooms
+                .join(&code, req("Guest"), None, guest.tx.clone())
+                .unwrap(),
+        );
+        assert!(matches!(&guest.drain()[..], [ServerMsg::Waiting]));
+        rooms.admit(&code, &host_id, &guest_id).unwrap();
+        assert!(turn_user(guest.drain()).ends_with(&format!(":{guest_id}")));
     }
 
     #[test]
