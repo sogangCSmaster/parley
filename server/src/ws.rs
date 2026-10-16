@@ -76,7 +76,12 @@ async fn run(
     let tx = Outbox::new(sender, disconnect.clone());
 
     let mut writer = tokio::spawn(async move {
-        let mut ping = tokio::time::interval(PING_INTERVAL);
+        // 첫 핑은 한 주기 뒤에. 연결 직후 핑을 보내면 읽지 않은 퐁이 남은 채 끊을 수 있고,
+        // 그러면 OS가 FIN 대신 RST를 보내 아직 안 보낸 데이터까지 버린다.
+        let mut ping = tokio::time::interval_at(
+            tokio::time::Instant::now() + PING_INTERVAL,
+            PING_INTERVAL,
+        );
         loop {
             let msg = tokio::select! {
                 msg = rx.recv() => match msg {
