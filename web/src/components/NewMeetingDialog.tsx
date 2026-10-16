@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useI18n, type MessageKey } from '../lib/i18n'
 import { Icon } from './Icon'
+import { KindPreview } from './KindPreview'
 import type { IconName } from './icons'
 
 export type MeetingKind = 'global' | 'standard' | 'inPerson' | 'live'
@@ -45,6 +46,8 @@ export function NewMeetingDialog({ open, creating, error, onCreate, onClose }: P
   const { t } = useI18n()
   const ref = useRef<HTMLDialogElement>(null)
   const [kind, setKind] = useState<MeetingKind>(lastMeetingKind)
+  // 처음엔 좁게 열고, 종류를 고르면 넓어지며 오른쪽에 그 종류의 예시 화면을 보인다(좁은 화면에서는 보이지 않음).
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     const dialog = ref.current
@@ -52,6 +55,16 @@ export function NewMeetingDialog({ open, creating, error, onCreate, onClose }: P
     if (open && !dialog.open) dialog.showModal()
     if (!open && dialog.open) dialog.close()
   }, [open])
+
+  function choose(next: MeetingKind) {
+    setKind(next)
+    setExpanded(true)
+  }
+
+  function close() {
+    setExpanded(false)
+    onClose()
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -62,9 +75,9 @@ export function NewMeetingDialog({ open, creating, error, onCreate, onClose }: P
   return (
     <dialog
       ref={ref}
-      className="dialog"
+      className={`dialog${expanded ? ' dialog-wide' : ''}`}
       aria-labelledby="new-meeting-title"
-      onClose={onClose}
+      onClose={close}
       onCancel={(e) => {
         // 만드는 중에는 Esc로 닫히지 않게 한다(중복 생성 방지).
         if (creating) e.preventDefault()
@@ -75,13 +88,13 @@ export function NewMeetingDialog({ open, creating, error, onCreate, onClose }: P
         <p className="lead">{t('newMeeting.lead')}</p>
         <div className="kind-options" role="radiogroup" aria-labelledby="new-meeting-title">
           {OPTIONS.map((o) => (
-            <label key={o.kind} className="kind-option">
+            <label key={o.kind} className="kind-option" onClick={() => setExpanded(true)}>
               <input
                 type="radio"
                 name="meeting-kind"
                 value={o.kind}
                 checked={kind === o.kind}
-                onChange={() => setKind(o.kind)}
+                onChange={() => choose(o.kind)}
               />
               <span className="kind-icon" aria-hidden="true">
                 <Icon name={o.icon} />
@@ -94,14 +107,17 @@ export function NewMeetingDialog({ open, creating, error, onCreate, onClose }: P
             </label>
           ))}
         </div>
-        <p className="dialog-note">{t('newMeeting.note')}</p>
+        {/* 번역 켜고 끄기는 화상 회의에만 있다. 다른 종류에서도 자리는 남겨 고를 때 창 높이가 튀지 않게 한다. */}
+        <p className="dialog-note" style={kind === 'global' || kind === 'standard' ? undefined : { visibility: 'hidden' }}>
+          {t('newMeeting.note')}
+        </p>
         {error && (
           <p className="form-error" role="alert">
             {t(error)}
           </p>
         )}
         <div className="dialog-actions">
-          <button type="button" className="btn btn-quiet btn-lg" onClick={onClose} disabled={creating}>
+          <button type="button" className="btn btn-quiet btn-lg" onClick={close} disabled={creating}>
             {t('room.cancel')}
           </button>
           <button type="submit" className="btn btn-primary btn-lg" disabled={creating}>
@@ -109,6 +125,11 @@ export function NewMeetingDialog({ open, creating, error, onCreate, onClose }: P
           </button>
         </div>
       </form>
+      {expanded && (
+        <div className="dialog-preview">
+          <KindPreview kind={kind} />
+        </div>
+      )}
     </dialog>
   )
 }

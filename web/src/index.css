@@ -388,3 +388,56 @@ h1 { text-wrap: balance; }
   .live-bar { padding: var(--space-3); }
   .live-actions .btn { padding-inline: var(--space-3); }
 }
+
+/* 새 회의: 종류를 고르면 넓어지며 오른쪽에 예시 화면 */
+.dialog { transition: width 240ms cubic-bezier(.2, .8, .2, 1); overflow-x: clip; }
+.dialog-wide { width: min(1000px, calc(100% - 32px)); }
+.dialog-wide[open] { display: grid; grid-template-columns: 480px minmax(0, 1fr); }
+.dialog-wide .dialog-body { min-width: 0; }
+.dialog-preview { display: grid; place-items: center; padding: 28px 28px 28px 0; animation: preview-in 240ms ease-out; }
+@keyframes preview-in { from { opacity: 0; transform: translateX(12px); } }
+@media (max-width: 899px) {
+  .dialog-wide { width: min(480px, calc(100% - 32px)); }
+  .dialog-wide[open] { display: block; }
+  .dialog-preview { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .dialog, .dialog[open], .dialog-preview { transition: none; animation: none; } }
+
+.kp { width: 100%; aspect-ratio: 4 / 3; border-radius: 16px; overflow: hidden; font-size: 11px; line-height: 1.4; }
+.kp-stage { height: 100%; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--stage-bg); }
+.kp-split { flex-direction: row; }
+.kp-tiles { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.kp-tiles.two { flex-direction: row; }
+.kp-tile { position: relative; flex: 1; display: grid; place-items: center; border-radius: 10px; background: var(--tile-bg); }
+.kp-tile.speaking { box-shadow: inset 0 0 0 2px var(--brand-accent); }
+.kp-avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
+.kp-name { position: absolute; left: 6px; bottom: 6px; padding: 1px 6px; border-radius: 6px; background: rgb(0 0 0 / .45); color: var(--on-stage); font-size: 10px; }
+.kp-controls { display: flex; justify-content: center; gap: 6px; }
+.kp-controls i { width: 18px; height: 18px; border-radius: 50%; background: var(--control-bg); }
+.kp-controls i.end { width: 26px; border-radius: 9px; background: var(--danger); }
+.kp-panel { width: 46%; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 10px; background: var(--panel-bg); color: var(--text); }
+.kp-panel-title { font-size: 12px; }
+.kp-entry { display: flex; flex-direction: column; gap: 3px; padding-bottom: 8px; border-bottom: 1px solid var(--divider); }
+.kp-entry small { font-weight: 600; font-size: 10px; }
+.kp-entry p { margin: 0; display: flex; gap: 4px; }
+.kp-entry p.tr { color: var(--text-secondary); }
+.kp-entry em { flex: none; font-style: normal; font-size: 8px; font-weight: 700; padding: 1px 3px; border-radius: 3px; background: var(--field-bg); color: var(--text-secondary); align-self: start; }
+.kp-entry p.tr em { background: var(--brand-ink); color: var(--page-bg); }
+.kp-device { height: 100%; display: flex; flex-direction: column; overflow: hidden; padding: 10px; background: var(--page-bg); border: 6px solid var(--brand-ink); border-radius: 16px; color: var(--text); }
+.kp-talk { gap: 6px; }
+.kp-half { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; }
+.kp-half.far { transform: rotate(180deg); }
+.kp-half .big { margin: 0; font-size: 14px; font-weight: 700; }
+.kp-half .small { margin: 0 0 6px; color: var(--text-tertiary); }
+.kp-half .big.mine { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.kp-btn { display: block; padding: 6px; border-radius: var(--radius-full); background: var(--accent); color: #fff; text-align: center; font-weight: 600; }
+.kp-btn.on { background: var(--control-active-bg); color: var(--control-active-fg); }
+.kp-bar { height: 1px; background: var(--divider); }
+.kp-live { gap: 6px; justify-content: flex-end; }
+.kp-live-bar { display: flex; justify-content: space-between; margin-bottom: auto; padding-bottom: 6px; border-bottom: 1px solid var(--divider); color: var(--text-secondary); font-weight: 600; }
+.kp-dot::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 4px; border-radius: 50%; background: var(--brand-accent); }
+.kp-line { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; border-bottom: 1px solid var(--divider); }
+.kp-line small { color: var(--text-secondary); }
+.kp-line small b { color: var(--text-tertiary); font-weight: 600; margin-right: 2px; }
+.kp-line p { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.3; }
+.kp-line.pending p, .kp-line.pending small { color: var(--text-tertiary); }
