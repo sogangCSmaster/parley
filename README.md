@@ -1,5 +1,16 @@
 # parley
-🌐 Open-source real-time multilingual caption translator for Video Meet. Context-aware AI translations (OpenAI, Gemini, Claude, DeepL) with Bring-Your-Own-Key support.
+
+Open-source video meetings with context-aware multilingual captions powered by Google Gemini.
+
+Parley uses **Google Gemini as its only AI provider**, with one API key configured by the server operator. Video, audio and screen sharing use peer-to-peer WebRTC.
+
+## Current status
+
+- **Implemented:** host login, meeting links, guest admission, video/audio calls, screen sharing and a multilingual caption panel.
+- **Implemented:** server-side STT text → sentence buffering → Gemini streaming translation → captions, with recent sentence context and one translation per target language. Translated text appears from the first chunk; failed or incomplete translations fall back to the original.
+- **Planned:** browser microphone capture for Gemini live transcription and server-issued ephemeral tokens. Microphone-to-caption translation is not connected yet; setting an API key alone does not enable it.
+
+The Gemini key belongs in the server environment or the repository root `.env`. Participants do not supply individual keys.
 
 ## Structure
 

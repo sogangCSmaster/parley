@@ -1,6 +1,6 @@
 # Architecture
 
-> 상태: 초안. 구현 전 결정을 위한 설계 문서다. "결정 필요" 표시는 아직 정하지 않은 항목이다.
+> 상태: 구현과 향후 설계를 함께 기록한다. 회의·서버 번역 파이프라인·자막 UI는 구현되어 있고, 브라우저 STT·ephemeral token 발급은 아직 계획이다. AI 제공자는 Gemini로 통일하며, "결정 필요" 표시는 아직 정하지 않은 항목이다.
 
 ## 범위
 
@@ -21,6 +21,8 @@
 화자 A의 발화는 `A.lang`으로 인식되고 `A.partner_lang`으로 번역된다. 3명 이상이면 다른 참가자들의 `lang` 중 원문과 다른 언어도 추가로 한 번씩만 번역한다. 자막 패널은 모두에게 같은 형태로 **원문 → 번역** 순서로 보여준다(디자인 시스템의 자막 항목). 2단계 대면 모드는 같은 기기의 두 가상 참가자(`ko→ja`, `ja→ko`)로 표현된다.
 
 ## 전체 구조
+
+아래는 STT 연결까지 포함한 목표 구조다. 현재 구현된 번역 경로는 `/ws`로 받은 STT 텍스트부터 시작한다.
 
 ```
  Browser A                                   Rust server (EC2)                 외부 API
@@ -63,14 +65,16 @@ server/src/
   room.rs       방·참가자 상태, 입력 검증, 시그널 중계 (+ 단위 테스트)
   protocol.rs   메시지 타입. `cargo test` 시 ts-rs가 web/src/protocol/*.ts 생성
   pipeline/     STT 텍스트 → 문장 버퍼 → 번역 → 자막 이벤트 (WebRTC와 무관, 2단계 재사용). 화자당 워커 태스크 1개
-  providers/    trait Translator + 헤징, Gemini 구현. (예정) trait SpeechToText, 다른 제공자(OpenAI, Claude, DeepL …)
+  providers/    trait Translator + 헤징, Gemini 스트리밍 번역 구현
 ```
 
-`pipeline`과 `providers`를 trait로 분리해 README가 말하는 여러 제공자와 BYOK를 구현체 교체로 지원한다.
+`pipeline`과 `providers`의 경계는 번역 상태 처리와 Gemini API 통신을 분리하고, 테스트에서 가짜 번역기를 주입하기 위한 것이다. 실제 AI 제공자는 Gemini만 사용한다. 운영자가 루트 `.env` 또는 서버 환경 변수에 `GEMINI_API_KEY`를 설정하며 참가자별 키 입력·보관 기능은 없다.
 
 ### 번역 파이프라인 (지연이 제품 품질을 결정한다)
 
 측정 근거: [docs/benchmarks/2026-10-16-gemini.md](benchmarks/2026-10-16-gemini.md).
+
+1~3단계의 브라우저 음성 인식 연결은 계획이며, 4~6단계 서버 파이프라인은 구현되어 있다. 아래 벤치마크 수치는 실제 회의 전체 경로의 지연 보장을 의미하지 않는다.
 
 1. **마이크 → AudioWorklet**: 16kHz mono PCM16, 100ms 조각. 클라이언트 VAD가 말하는 구간만 보낸다(아래 "음성 구간 감지").
 2. **STT**: 브라우저 → `gemini-3.5-transcribe-live`(수동 활동 모드). 중간 결과가 약 0.5초마다 "지금까지의 전체 문장"으로 오고, `activityEnd` 후 0.3~0.4초에 확정 결과가 온다. 일본어 중간 결과의 단어 사이 공백은 제거한다.
@@ -182,17 +186,16 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 | CSRF·WS 하이재킹 | API는 JSON Content-Type만 받음 + SameSite=Lax. `/ws`는 Origin이 Host와 같아야 업그레이드 |
 | 시그널링 | `signal.to`는 같은 방 참가자에게만 중계 |
 | TURN 자격 | 정적 비밀번호 대신 서버가 발급하는 시간제한 HMAC 자격(TURN REST API 방식) |
-| BYOK 키 | 아래 "결정 필요" 참고. 어떤 방식이든 로그·에러 메시지·클라이언트 응답에 키를 노출하지 않음 |
+| Gemini API 키 | 운영자가 루트 `.env` 또는 서버 환경 변수로 설정. Git·로그·에러 메시지·클라이언트 응답에 키를 노출하지 않음 |
 | 음성·자막 | 기본은 저장하지 않음. 기록 저장 기능은 참가자 전원 고지 후에만 |
 | 입력 제한 | 이름 1~40자·언어 태그·방 코드 형식 검증, WS 메시지 64KB 제한, `stt` 빈도 제한·1000자 제한(구현됨). 다른 메시지 빈도 제한, 방당 인원 제한, STT 토큰 발급 빈도 제한(비용 폭주 방지) |
 | STT ephemeral token | 서버가 **입장이 확정된 참가자**에게만, 번역이 켜진 방에서만 발급. 1회용(`uses: 1`), 짧은 만료, `gemini-3.5-transcribe-live`와 전사 설정으로 제한(`live_connect_constraints`). 서버 API 키는 브라우저에 절대 내려가지 않음 |
 
 ## 결정 필요
 
+AI 구성은 Gemini로 결정했다. 번역 기본 모델은 `gemini-3.5-flash-lite`이며 `GEMINI_TRANSLATE_MODEL`로 변경할 수 있다. 브라우저 STT는 `gemini-3.5-transcribe-live`를 사용하는 설계다. 키는 서버 운영자가 관리한다.
+
 | 항목 | 권장 | 대안 |
 |---|---|---|
-| STT 제공자 | 스트리밍 품질·한국어 기준으로 2~3개 실측 후 결정 (OpenAI Realtime transcription, Deepgram, Google Chirp 등) | 하나로 고정 후 trait로 교체 |
-| 번역 기본 모델 | 빠른 소형 모델(지연 우선) + 용어집 문맥 | 고품질 대형 모델 / DeepL(문맥 약함) |
-| BYOK 키 보관 | 호스트가 방 생성 시 입력 → 서버 메모리에만, 방 종료 시 폐기 | 서버 운영 키로 제공(과금 필요) / 계정 저장(암호화 at rest, 범위 커짐) |
 | 인증 | 주최자: 환경변수 계정(결정됨). 게스트: 링크 + 주최자 수락 | OAuth로 확장 |
 | TURN | coturn 자체 운영 | 관리형 TURN |
