@@ -42,9 +42,10 @@ Server environment variables:
 | Variable | Default | Description |
 |---|---|---|
 | `BIND_ADDR` | `127.0.0.1:8080` | Listen address |
-| `ICE_SERVERS` | Google public STUN | JSON array passed to `RTCPeerConnection` (add TURN here) |
+| `ICE_SERVERS` | Google public STUN | JSON array passed to `RTCPeerConnection`. Served publicly by `/api/config`, so static TURN `username`/`credential` fields are refused at startup |
 | `RUST_LOG` | `info` | Log filter |
 | `HOST_ACCOUNTS` | (none) | Host accounts: `id:argon2-hash`, space-separated. If empty, nobody can create meetings |
 | `COOKIE_SECURE` | `true` | Session cookie `Secure` flag. Use `false` only for local http development |
+| `TRUSTED_PROXY` | (unset) | Set to `1` only behind a reverse proxy (Caddy) that sets `X-Forwarded-For`; login throttling then uses its last hop as the client IP. Otherwise the socket peer address is used |
 
 Protocol types are defined in `server/src/protocol.rs`; `cargo test --manifest-path server/Cargo.toml` regenerates `web/src/protocol/*.ts`.

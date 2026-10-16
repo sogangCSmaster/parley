@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use axum::extract::{FromRef, Path, State};
+use axum::extract::{ConnectInfo, FromRef, Path, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -28,6 +28,8 @@ struct AppState {
     ice_servers: Arc<Value>,
     /// 로컬 http 개발에서만 false. 운영(https)에서는 반드시 true.
     cookie_secure: bool,
+    /// 리버스 프록시(Caddy) 뒤에서만 true. 그때만 X-Forwarded-For로 클라이언트 IP를 판단한다.
+    trusted_proxy: bool,
 }
 
 impl FromRef<AppState> for Arc<Rooms> {
@@ -71,6 +73,14 @@ async fn main() {
         Ok(raw) => serde_json::from_str(&raw).expect("ICE_SERVERS must be a JSON array"),
         Err(_) => json!([{ "urls": "stun:stun.l.google.com:19302" }]),
     };
+    // /api/config는 공개라서 여기 든 값은 누구나 읽는다. 정적 TURN 자격을 넣으면 릴레이를 남이 쓰게 된다.
+    // TURN은 서버가 발급하는 시간제한 HMAC 자격으로 붙일 예정이다(docs/ARCHITECTURE.md의 "TURN 자격").
+    if let Some(field) = static_ice_credential(&ice_servers) {
+        panic!(
+            "ICE_SERVERS must not contain static `{field}` fields: /api/config is public. \
+             Use time-limited TURN credentials instead (see docs/ARCHITECTURE.md)"
+        );
+    }
 
     let accounts = auth::parse_accounts(&std::env::var("HOST_ACCOUNTS").unwrap_or_default())
         .unwrap_or_else(|e| panic!("HOST_ACCOUNTS: {e}"));
@@ -81,12 +91,14 @@ async fn main() {
     let cookie_secure = std::env::var("COOKIE_SECURE")
         .map(|v| v != "false")
         .unwrap_or(true);
+    let trusted_proxy = std::env::var("TRUSTED_PROXY").is_ok_and(|v| v == "1");
 
     let state = AppState {
         rooms: Arc::new(Rooms::default()),
         auth,
         ice_servers: Arc::new(ice_servers),
         cookie_secure,
+        trusted_proxy,
     };
 
     let sweeper = state.clone();
@@ -114,12 +126,24 @@ async fn main() {
         .await
         .expect("failed to bind");
     tracing::info!(%addr, "listening");
-    axum::serve(listener, app)
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await
         .expect("server error");
+}
+
+fn static_ice_credential(ice_servers: &Value) -> Option<&'static str> {
+    let servers = ice_servers.as_array()?;
+    servers.iter().find_map(|server| {
+        ["credential", "username"]
+            .into_iter()
+            .find(|field| server.get(field).is_some())
+    })
 }
 
 async fn config(State(state): State<AppState>) -> Json<Value> {
@@ -134,8 +158,14 @@ struct LoginReq {
 
 // Json 추출기는 Content-Type: application/json만 받는다. 이 덕분에 다른 사이트의 단순 폼 전송(CSRF)은
 // 여기까지 오지 못하고, SameSite=Lax 쿠키와 함께 이중으로 막힌다.
-async fn login(State(state): State<AppState>, Json(req): Json<LoginReq>) -> Response {
-    match state.auth.login(&req.username, &req.password).await {
+async fn login(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(req): Json<LoginReq>,
+) -> Response {
+    let client = auth::client_ip(peer.ip(), &headers, state.trusted_proxy);
+    match state.auth.login(client, &req.username, &req.password).await {
         Ok(token) => {
             tracing::info!(user = %req.username, "login");
             (
