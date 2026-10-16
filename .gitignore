@@ -1,0 +1,26 @@
+# ── 빌드 결과 ─────────────────────────────
+**/target/
+**/node_modules/
+web/dist/
+
+# ── 비밀정보·로컬 설정 (예시 파일만 커밋) ──
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+server/.dev-host-password
+# 로컬 개발 서버 설정: 개발용 주최자 계정 해시가 들어 있다
+.claude/launch.json
+.claude/settings.local.json
+
+# ── 측정 산출물 (make-fixtures.sh 로 다시 만든다) ──
+bench/gemini/fixtures/
+bench/gemini/results/
+
+# ── OS·에디터 ─────────────────────────────
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log

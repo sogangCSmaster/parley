@@ -1,0 +1,26 @@
+[package]
+name = "parley-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+argon2 = "0.6.0"
+axum = { version = "0.8.9", features = ["ws"] }
+futures-util = "0.3.34"
+getrandom = "0.4.3"
+rand = "0.10.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "sync", "signal", "net"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+ts-rs = { version = "12.0.1", features = ["serde-json-impl"] }
+
+[dev-dependencies]
+tokio = { version = "1.53.3", features = ["test-util"] }
+
+# 비밀번호 해싱은 디버그 빌드에서 수십 배 느리다. 개발 중 로그인·테스트 속도를 위해 해당 크레이트만 최적화한다.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
