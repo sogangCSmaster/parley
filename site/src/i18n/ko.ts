@@ -37,6 +37,8 @@ export const ko: Dict = {
     ['휴대폰 하나로', '마주 앉은 대화에도 쓸 수 있습니다'],
   ],
 
+  statement: '통역사를 부르기엔 작은 회의, 번역 앱을 돌리기엔 빠른 대화. 미뤄 온 해외 미팅, 이제 각자의 언어로 할 수 있습니다.',
+
   meName: '민준',
   meFace: 'minjun',
   otherName: 'さくら',
@@ -84,6 +86,8 @@ export const ko: Dict = {
     { name: 'Pro', price: '$19', unit: '/월', hours: '매달 번역 회의 10시간', note: '연간 결제 시 월 $15', cta: 'Pro로 시작하기' },
     { name: 'Business', price: '$39', unit: '/사용자/월', hours: '사용자마다 매달 30시간', note: '연간 결제 시 월 $32', cta: 'Business로 시작하기' },
   ],
+  includesTitle: '모든 요금제에 포함',
+  includes: ['화상 회의, 대면 대화, 자막 화면', '8개 언어 전부', '게스트는 가입 없이 무료로 참여', '텍스트 파일로 저장하는 자막'],
   pricingExtra: '바쁜 달에 더 필요하면 시간당 $3로 추가할 수 있습니다.',
   pricingFine: '가격은 미국 달러 기준입니다. 세금은 해당되는 경우 결제할 때 더해집니다.',
 

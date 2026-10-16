@@ -42,6 +42,9 @@ export const en = {
     ['One phone on the table', 'Works face to face, too'],
   ] as [string, string][],
 
+  // 문제 제기: 스크롤하면 낱말이 하나씩 진해진다. 띄어쓰기로 나누고, 띄어 쓰지 않는 언어는 | 로 나눈다.
+  statement: 'Too small to book an interpreter. Too fast for a translation app. The overseas meetings you kept putting off can happen today, each in your own language.',
+
   // 스크롤 장면: 보는 사람(나)과 상대. 상대가 왼쪽, 내가 오른쪽(실제 회의 화면과 같다).
   meName: 'Alex',
   meFace: 'minjun' as FaceName,
@@ -90,6 +93,8 @@ export const en = {
     { name: 'Pro', price: '$19', unit: '/month', hours: '10 hours of translated meetings a month', note: '$15 a month when billed yearly.', cta: 'Start with Pro' },
     { name: 'Business', price: '$39', unit: '/user/month', hours: '30 hours a month for each user', note: '$32 a month when billed yearly.', cta: 'Start with Business' },
   ],
+  includesTitle: 'Every plan includes',
+  includes: ['Video meetings, in-person conversations and the live captions screen', 'All eight languages', 'Guests join free, without an account', 'Captions you can save as a text file'],
   pricingExtra: 'Need more in a busy month? Add hours for $3 each.',
   pricingFine: 'Prices in US dollars. Tax is added at checkout where it applies.',
 

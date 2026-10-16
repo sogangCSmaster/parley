@@ -11,6 +11,9 @@ const you = (name: string) => t.you.replace('{name}', name)
 const names = { other: t.otherName, me: you(t.meName) }
 const nameLang = { other: t.otherNameLang, me: t.lang }
 const times = ['15:21', '15:22', '15:22']
+// 띄어 쓰지 않는 언어(일본어)는 문구에 | 로 나눠 둔다
+const words = t.statement.includes('|') ? t.statement.split('|') : t.statement.split(' ')
+const joiner = t.statement.includes('|') ? '' : ' '
 
 const jsonLd = [
   {
@@ -77,6 +80,11 @@ const jsonLd = [
           <li><span>{a}</span><span class="tr-mark">{b}</span></li>
         ))}
       </ul>
+    </section>
+
+    {/* 문제 제기: 스크롤해 내려가는 만큼 낱말이 하나씩 진해진다(읽는 속도에 맞춘 강조). */}
+    <section class="statement wrap" data-statement>
+      <p>{words.map((w, i) => <><span class="w">{w}</span>{i < words.length - 1 ? joiner : ''}</>)}</p>
     </section>
 
     {/* 스크롤 장면: 회의 화면이 화면에 머물고, 스크롤한 만큼 대화가 진행된다(말 → 중간 번역 → 확정). */}
@@ -183,6 +191,10 @@ const jsonLd = [
             <a class={`btn ${i === 0 ? 'btn-ink' : 'btn-outline'}`} href={SIGNUP_URL}>{p.cta}</a>
           </div>
         ))}
+      </div>
+      <div class="includes">
+        <h3>{t.includesTitle}</h3>
+        <ul>{t.includes.map((x) => <li class="tr-mark">{x}</li>)}</ul>
       </div>
       <p class="plans-extra">{t.pricingExtra}</p>
       <p class="plans-fine">{t.pricingFine}</p>
@@ -314,6 +326,9 @@ const jsonLd = [
         modes.forEach((m, i) => m.classList.toggle('is-active', i === idx))
       }
 
+      const statementEl = document.querySelector('[data-statement]')
+      const statementWords = [...statementEl.querySelectorAll('.w')]
+      let lit = -1
       const meetingEl = storyEl.querySelector('.meeting')
       const stepsEl = storyEl.querySelector('.story-steps')
       const set = (el, name, value) => { if (el.style.getPropertyValue(name) !== value) el.style.setProperty(name, value) }
@@ -325,6 +340,7 @@ const jsonLd = [
         const sr = storyEl.getBoundingClientRect()
         const mr = modesEl.getBoundingClientRect()
         const hh = header.offsetHeight
+        const tr = statementEl.firstElementChild.getBoundingClientRect()
         if (sr.bottom > -vh && sr.top < vh * 2) {
           const p = clamp(-sr.top / (sr.height - vh))
           // 다가오는 동안(0→1): 회의 화면이 기울어진 채 떠오르다 평평해진다
@@ -333,6 +349,10 @@ const jsonLd = [
           drawStory(p)
         }
         if (mr.bottom > -vh && mr.top < vh * 2) drawModes(clamp(-mr.top / (mr.height - vh)))
+        // 문장 윗줄이 화면 85% 높이에 닿으면 시작하고, 마지막 줄이 화면 55% 높이에 오면 다 진해진다(머리말에 가리기 전에 끝난다)
+        const k = Math.round(clamp((vh * 0.85 - tr.top) / (tr.height + vh * 0.3)) * statementWords.length)
+        if (k !== lit) { lit = k; statementWords.forEach((w, i) => w.classList.toggle('on', i < k)) }
+        header.classList.toggle('scrolled', scrollY > 8)
         // 어두운 회의 장면 위를 지나는 동안 머리도 어둡게(흐린 회색으로 비치지 않게)
         header.classList.toggle('on-dark', sr.top <= hh && sr.bottom >= hh)
       }
