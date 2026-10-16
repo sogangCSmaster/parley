@@ -32,6 +32,7 @@ export class TalkSide {
   private seg: SegCounter = { next: 0 }
   private active = false
   private warm = true
+  /** 음성 인식 세션 열쇠("내 언어|상대 언어") */
   private lang: string
   private closed = false
   private track: MediaStreamTrack | null
@@ -39,7 +40,7 @@ export class TalkSide {
 
   /** `track`이 null이면 자기 음성 인식을 띄우지 않는다(`requestToken`·`sendStt`를 바깥에서 쓴다). */
   constructor(code: string, lang: string, partnerLang: string, track: MediaStreamTrack | null, events: TalkEvents) {
-    this.lang = lang
+    this.lang = `${lang}|${partnerLang}`
     this.track = track
     this.events = events
     let joined = false
@@ -77,9 +78,10 @@ export class TalkSide {
   }
 
   setLangs(lang: string, partnerLang: string) {
-    this.lang = lang
+    // 토큰은 내 언어 + 상대 언어로 잠긴다. 어느 쪽이 바뀌어도 세션을 새로 열도록 둘을 열쇠로 쓴다.
+    this.lang = `${lang}|${partnerLang}`
     this.sig.send({ t: 'lang', lang, partner_lang: partnerLang })
-    this.speech?.setLang(lang)
+    this.speech?.setLang(this.lang)
   }
 
   close() {

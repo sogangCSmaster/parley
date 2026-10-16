@@ -273,30 +273,25 @@ h1 { text-wrap: balance; }
 .tile-status { position: absolute; right: var(--space-3); top: var(--space-3); width: 28px; height: 28px; border-radius: var(--radius-full); background: rgb(32 33 36 / .6); display: grid; place-items: center; }
 .tile-status .icon { font-size: 18px; }
 
-/* 혼자일 때: 무대(컨테이너) 크기에 맞춰 내 화면과 초대 카드가 겹치지 않게. 넓으면 나란히, 좁고 충분히 높으면
-   내 화면이 한 줄을 다 차지해 카드가 아래 줄로 넘어간다(flex-wrap: 무대 자체의 방향은 컨테이너 질의로 못 바꾼다). */
-/* 카드 폭은 무대 폭에 비례(220~320px). 무대 안 요소에서 정의해야 cq 단위가 무대를 기준으로 계산된다. */
-.stage.alone > * { --invite-w: clamp(220px, 40cqw, 320px); --invite-h: 240px; }
-.stage.alone { display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: center; gap: var(--space-4); container-type: size; }
-.stage.alone .tile { flex: none; width: min(960px, calc(100cqw - var(--invite-w) - var(--space-4)), calc(100cqh * 16 / 9)); }
-.stage.alone .invite { flex: none; width: var(--invite-w); }
-@container (max-width: 720px) and (min-height: 420px) {
-  .stage.alone .tile { width: min(100cqw, calc((100cqh - var(--invite-h) - var(--space-4)) * 16 / 9)); }
-  .stage.alone .invite { width: min(100cqw, 420px); }
+/* 혼자일 때: 내 화면이 무대를 다 쓰고(높이·너비에 맞춘 16:9, 최대 960px), 초대 카드는 무대 왼쪽 아래에 떠 있다
+   (내 이름표 위로 비켜서). */
+.stage.alone { position: relative; display: flex; align-items: center; justify-content: center; container-type: size; }
+.stage.alone .tile { flex: none; width: min(960px, 100cqw, calc(100cqh * 16 / 9)); }
+/* 카드는 내 화면(무대 가운데 16:9) 안쪽 왼쪽 아래, 이름표 바로 위에 붙인다. 내 화면 크기는 위 규칙과 같은 식으로 계산한다. */
+.stage.alone .invite {
+  --tile-w: min(960px, 100cqw, calc(100cqh * 16 / 9));
+  position: absolute;
+  left: calc((100cqw - var(--tile-w)) / 2 + var(--space-3));
+  bottom: calc((100cqh - var(--tile-w) * 9 / 16) / 2 + var(--space-3) + 36px);
+  width: min(340px, calc(var(--tile-w) - 2 * var(--space-3)));
+  box-shadow: 0 12px 32px rgb(0 0 0 / .35);
 }
-/* 좁고 낮은 무대(가로 휴대폰, 낮은 창): 카드는 제목과 링크 복사만 남겨 내 화면 자리를 넓힌다.
-   좁은 카드에서는 버튼 글자가 줄바꿈되게 한다(일본어 "リンクをコピー"가 카드를 뚫고 나가지 않게). */
-@container (max-width: 720px) and (max-height: 419.98px) {
-  .stage.alone > * { --invite-w: clamp(160px, 34cqw, 220px); }
-  .stage.alone .invite { padding: var(--space-4); }
-  .stage.alone .invite :is(p, code) { display: none; }
-  .stage.alone .invite .btn { max-width: 100%; height: auto; min-height: 40px; padding-block: var(--space-2); padding-inline: var(--space-3); white-space: normal; text-align: left; }
-}
-/* 아주 낮은 무대(넓어도): 카드가 무대보다 길어지지 않게 설명과 링크를 숨긴다. */
-@container (max-height: 260px) {
+.invite-close { position: absolute; top: var(--space-2); right: var(--space-2); width: 32px; height: 32px; }
+/* 낮은 무대: 카드가 무대를 덮지 않게 설명·링크를 숨긴다(링크 복사 버튼은 남김). */
+@container (max-height: 360px) {
   .stage.alone .invite :is(p, code) { display: none; }
 }
-.invite { align-self: center; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); padding: var(--space-5); border-radius: var(--radius-panel); background: var(--panel-bg); color: var(--text); }
+.invite { position: relative; align-self: center; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); padding: var(--space-5); border-radius: var(--radius-panel); background: var(--panel-bg); color: var(--text); }
 .invite h2 { font-size: var(--text-lg); }
 .invite p { margin: 0; color: var(--text-secondary); }
 .invite code { font-family: inherit; padding: var(--space-2) var(--space-3); background: var(--hover); border-radius: 4px; word-break: break-all; }
@@ -356,9 +351,10 @@ h1 { text-wrap: balance; }
   .room-main { flex-direction: column; }
   .stage { flex: none; }
   .stage.count-1 { grid-template-columns: 1fr; }
-  /* 좁은 화면은 무대 높이가 내용을 따르므로(크기 단위를 쓸 수 없음) 그냥 위아래로 쌓는다. */
+  /* 좁은 화면은 무대 높이가 내용을 따르므로(크기 단위를 쓸 수 없음) 내 화면 아래에 카드를 놓는다. */
   .stage.alone { container-type: normal; display: grid; }
-  .stage.alone .tile, .stage.alone .invite { width: auto; }
+  .stage.alone .tile { width: auto; }
+  .stage.alone .invite { position: relative; left: auto; bottom: auto; width: auto; box-shadow: none; }
   .stage.presenting { flex-direction: column; }
   .strip { width: 100%; flex-direction: row; }
   .strip .tile { flex: 1; }
@@ -418,14 +414,16 @@ h1 { text-wrap: balance; }
 /* 새 회의: 종류를 고르면 넓어지며 오른쪽에 예시 화면 */
 .dialog { transition: width 240ms cubic-bezier(.2, .8, .2, 1); overflow-x: clip; }
 .dialog-wide { width: min(1000px, calc(100% - 32px)); }
-.dialog-wide[open] { display: grid; grid-template-columns: 480px minmax(0, 1fr); }
-.dialog-wide .dialog-body { min-width: 0; }
-.dialog-preview { display: grid; place-items: center; padding: 28px 28px 28px 0; animation: preview-in 240ms ease-out; }
+.dialog-main { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+/* 넓어지면 본문 | 예시 화면, 버튼은 맨 아래 오른쪽(창 전체 기준). */
+.dialog-wide .dialog-body { display: grid; grid-template-columns: 424px minmax(0, 1fr); column-gap: 28px; }
+.dialog-wide .dialog-actions { grid-column: 1 / -1; }
+.dialog-preview { display: grid; place-items: center; min-width: 0; animation: preview-in 240ms ease-out; }
 @keyframes preview-in { from { opacity: 0; transform: translateX(12px); } }
 @media (max-width: 899px) {
   .dialog-wide { width: min(480px, calc(100% - 32px)); }
-  .dialog-wide[open] { display: block; }
   .dialog-preview { display: none; }
+  .dialog-wide .dialog-body { display: flex; }
 }
 @media (prefers-reduced-motion: reduce) { .dialog, .dialog[open], .dialog-preview { transition: none; animation: none; } }
 

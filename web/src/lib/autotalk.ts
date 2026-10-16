@@ -6,8 +6,8 @@ import { TalkSide, type TalkFailure } from './talk'
 
 /**
  * 자막 화면: 기기 하나의 마이크로 두 언어를 자동으로 가려 번역 자막을 띄운다.
- * 두 언어 = 같은 방의 두 참가자(연결 둘). 음성 인식 세션은 하나만 쓰고(언어를 잠가도 다른 언어를 그대로
- * 적는다는 실측), 발화마다 글자로 언어를 판단해 그 언어 참가자의 연결로 보낸다. 서버 변경 없음.
+ * 두 언어 = 같은 방의 두 참가자(연결 둘). 음성 인식 세션은 하나만 쓰고(토큰은 두 언어로 잠겨 각 발화가 그 언어
+ * 글자로 적힌다는 실측), 발화마다 글자로 언어를 판단해 그 언어 참가자의 연결로 보낸다.
  */
 export type AutoTalkEvents = {
   onJoined: (side: 'a' | 'b', selfId: string) => void
@@ -71,8 +71,8 @@ export class AutoTalk {
     this.last = 'a'
     this.sides.a.setLangs(a, b)
     this.sides.b.setLangs(b, a)
-    // 토큰은 첫 번째 언어로 잠근다(다른 언어도 그대로 적힌다). 바뀌면 세션을 새로 연다.
-    this.speech?.setLang(a)
+    // 토큰은 첫 번째 쪽 연결(내 언어 a + 상대 언어 b)로 받아 두 언어로 잠긴다. 바뀌면 세션을 새로 연다.
+    this.speech?.setLang(`${a}|${b}`)
   }
 
   close() {
@@ -89,7 +89,7 @@ export class AutoTalk {
     if (this.speech || this.closed) return
     this.speech = startSpeech({
       track: this.track,
-      lang: this.langs.a,
+      lang: `${this.langs.a}|${this.langs.b}`,
       mic: this.listening,
       seg: this.seg,
       requestToken: () => this.sides.a.requestToken(),

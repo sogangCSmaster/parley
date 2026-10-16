@@ -39,8 +39,8 @@ impl std::fmt::Display for TokenError {
 }
 
 pub trait SttTokens: Send + Sync {
-    /// `lang`(BCP-47)으로 인식하는 1회용 세션 토큰을 만든다.
-    fn issue(&self, lang: &str) -> BoxFuture<'static, Result<SttGrant, TokenError>>;
+    /// `langs`(BCP-47, 내 언어 먼저)로 인식하는 1회용 세션 토큰을 만든다.
+    fn issue(&self, langs: &[String]) -> BoxFuture<'static, Result<SttGrant, TokenError>>;
 }
 
 pub struct GeminiLive {
@@ -60,7 +60,7 @@ impl GeminiLive {
         GeminiLive { client, key, model }
     }
 
-    fn body(&self, lang: &str, now: SystemTime) -> Value {
+    fn body(&self, langs: &[String], now: SystemTime) -> Value {
         json!({
             "uses": 1,
             "expireTime": rfc3339(now + SESSION_LIFETIME),
@@ -68,7 +68,10 @@ impl GeminiLive {
             "bidiGenerateContentSetup": {
                 "model": self.model,
                 "generationConfig": { "responseModalities": ["TEXT"] },
-                "inputAudioTranscription": { "languageCodes": [lang] },
+                // 실측(2026-10-17): 내 언어 하나로만 잠그면 다른 언어로 한 말(한국식 발음의 일본어·영어)을 내 언어
+                // 글자로 소리 나는 대로 적는다("요로시쿠 오네가이시마스"). 상대 언어까지 함께 주면 그 언어 글자로 적고,
+                // 내 언어 인식은 그대로다.
+                "inputAudioTranscription": { "languageCodes": langs },
                 // 클라이언트 VAD가 activityStart/End를 보낸다. 자동 모드는 침묵을 보내지 않으면 확정이 오지 않는다.
                 "realtimeInputConfig": { "automaticActivityDetection": { "disabled": true } },
             },
@@ -78,13 +81,13 @@ impl GeminiLive {
 }
 
 impl SttTokens for GeminiLive {
-    fn issue(&self, lang: &str) -> BoxFuture<'static, Result<SttGrant, TokenError>> {
+    fn issue(&self, langs: &[String]) -> BoxFuture<'static, Result<SttGrant, TokenError>> {
         let request = self
             .client
             .post(format!("{API}/auth_tokens"))
             .header("x-goog-api-key", &self.key)
             .timeout(Duration::from_secs(10))
-            .json(&self.body(lang, SystemTime::now()));
+            .json(&self.body(langs, SystemTime::now()));
         let model = self.model.clone();
         async move {
             let res = request
@@ -149,8 +152,9 @@ pub mod testing {
     }
 
     impl SttTokens for FakeTokens {
-        fn issue(&self, lang: &str) -> BoxFuture<'static, Result<SttGrant, TokenError>> {
-            self.langs.lock().unwrap().push(lang.to_owned());
+        fn issue(&self, langs: &[String]) -> BoxFuture<'static, Result<SttGrant, TokenError>> {
+            let lang = langs.join("+");
+            self.langs.lock().unwrap().push(lang.clone());
             let result = if self.fail {
                 Err(TokenError("fake failure".into()))
             } else {
@@ -185,13 +189,13 @@ mod tests {
     fn token_locks_model_language_and_manual_activity() {
         let live = GeminiLive::new(reqwest::Client::new(), "k".into(), DEFAULT_MODEL.into());
         let now = UNIX_EPOCH + Duration::from_secs(1_792_142_999);
-        let body = live.body("ja", now);
+        let body = live.body(&["ja".to_owned(), "ko".to_owned()], now);
         assert_eq!(body["uses"], 1);
         assert_eq!(body["newSessionExpireTime"], "2026-10-16T09:30:59Z");
         assert_eq!(body["expireTime"], "2026-10-16T09:44:59Z");
         let setup = &body["bidiGenerateContentSetup"];
         assert_eq!(setup["model"], "models/gemini-3.5-transcribe-live");
-        assert_eq!(setup["inputAudioTranscription"]["languageCodes"][0], "ja");
+        assert_eq!(setup["inputAudioTranscription"]["languageCodes"], json!(["ja", "ko"]));
         assert_eq!(
             setup["realtimeInputConfig"]["automaticActivityDetection"]["disabled"],
             true

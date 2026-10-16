@@ -510,11 +510,17 @@ impl Rooms {
         })
     }
 
-    /// 음성 인식 토큰을 받을 수 있으면 그 참가자의 언어. 입장한 참가자이고 번역이 켜진 방이어야 한다.
-    pub fn stt_lang(&self, code: &str, id: &str) -> Option<String> {
+    /// 음성 인식 토큰에 잠글 언어: 내 언어, 그리고 다르면 상대 언어(상대 언어로 한 말도 그 언어 글자로 적게).
+    /// 입장한 참가자이고 번역이 켜진 방이어야 한다(아니면 None).
+    pub fn stt_langs(&self, code: &str, id: &str) -> Option<Vec<String>> {
         let rooms = self.rooms.lock().unwrap();
         let room = rooms.get(code).filter(|r| r.settings.translation)?;
-        room.members.get(id).map(|m| m.peer.lang.clone())
+        let peer = &room.members.get(id)?.peer;
+        let mut langs = vec![peer.lang.clone()];
+        if peer.partner_lang != peer.lang {
+            langs.push(peer.partner_lang.clone());
+        }
+        Some(langs)
     }
 
     /// 오래 빈 방을 지운다(주기 작업).

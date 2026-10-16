@@ -48,3 +48,12 @@ test('pairs sharing a script cannot be auto-detected', () => {
   assert.equal(canAutoDetect('ko', 'ko'), false)
   assert.equal(detectLang('hello there friends', 'en', 'es'), null)
 })
+
+test('mixed korean and japanese text goes to the language with clearly more letters', () => {
+  // 실제 전사: 한국식 발음의 일본어 발화에 한글이 섞였다.
+  const text = 'よろしくおねがいします。여보세요.私は승지です。本日はお忙しい中、ありがとうございます。'
+  assert.equal(lang(text, 'ko', 'ja'), 'ja')
+  assert.ok(sure(text, 'ko', 'ja'))
+  assert.equal(sure('여보세요 はい', 'ko', 'ja'), false, 'close counts are not sure on an interim')
+  assert.ok(sure('네, 그건 寿司가 맞아요', 'ko', 'ja'), 'a few kanji in korean stay korean')
+})

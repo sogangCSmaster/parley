@@ -1,7 +1,7 @@
 /**
  * 두 언어 중 어느 쪽으로 말했는지를 인식된 글자의 문자 체계로 가른다.
- * 실측(2026-10-17): Gemini Live 전사는 언어를 한 개로 잠가도 다른 언어 발화를 그 언어 글자로 정확히 적고,
- * 응답에 언어 정보는 없다. 그래서 글자로 판단한다. 같은 문자 체계끼리(예: 영어·스페인어)는 가를 수 없다.
+ * 실측(2026-10-17): Gemini Live 전사는 두 언어(내 언어 + 상대 언어)로 잠그면 각 발화를 그 언어 글자로 적고
+ * (한국식 발음의 일본어도 가나로), 응답에 언어 정보는 없다. 그래서 글자로 판단한다. 같은 문자 체계끼리(예: 영어·스페인어)는 가를 수 없다.
  */
 
 type Script = 'hangul' | 'kana' | 'han' | 'latin'
@@ -68,7 +68,11 @@ export function detectLang(text: string, a: string, b: string): Detection | null
     const e = evidence(lang)
     if (jaZh) return lang === 'ja' ? count.kana > 0 && e + count.han >= SURE_NON_LATIN : e >= SURE_HAN_VS_JA
     if (isLatin(lang)) return e >= SURE_LATIN && evidence(other) === 0
-    return e >= SURE_NON_LATIN
+    // 상대가 라틴 문자 언어면 한글·가나 몇 글자로 충분하다(한국어 문장 속 영어 단어는 흔하다).
+    if (isLatin(other)) return e >= SURE_NON_LATIN
+    // 둘 다 비라틴(한국어·일본어 등)이면 섞여 적히기도 한다(한국식 발음의 일본어 속 "여보세요"):
+    // 상대 글자보다 두 배 넘게 많아야 확신한다.
+    return e >= SURE_NON_LATIN && e > 2 * evidence(other)
   }
   if (sure(a, b)) return { lang: a, sure: true }
   if (sure(b, a)) return { lang: b, sure: true }

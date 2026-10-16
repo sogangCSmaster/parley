@@ -321,10 +321,10 @@ async fn run(
             }
             (ClientMsg::SttToken { id: req }, Some((room, id))) => {
                 while stt_tasks.try_join_next().is_some() {}
-                match (&stt, rooms.stt_lang(room, id)) {
-                    (Some(issuer), Some(lang)) if stt_token_limit.take(Instant::now()) => {
+                match (&stt, rooms.stt_langs(room, id)) {
+                    (Some(issuer), Some(langs)) if stt_token_limit.take(Instant::now()) => {
                         // 발급은 Gemini 왕복(수백 ms)이라 연결 루프를 막지 않도록 따로 돌린다.
-                        let issue = issuer.issue(&lang);
+                        let issue = issuer.issue(&langs);
                         let tx = tx.clone();
                         stt_tasks.spawn(async move {
                             let msg = match issue.await {
@@ -792,7 +792,7 @@ mod tests {
         match next_message(&mut host).await {
             Some(ServerMsg::SttToken { id, token, model }) => {
                 assert_eq!(id, 1);
-                assert_eq!(token, "auth_tokens/fake-en", "issued for the participant's language");
+                assert_eq!(token, "auth_tokens/fake-en+ko", "issued for my language, then my partner's");
                 assert_eq!(model, "models/gemini-3.5-transcribe-live");
             }
             other => panic!("expected stt_token, got {other:?}"),

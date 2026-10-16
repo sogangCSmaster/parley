@@ -183,7 +183,8 @@ export class SttController {
   private open() {
     if (this.unavailable || this.tokenPending || this.deps.now() < this.retryAt) return
     this.tokenPending = true
-    // 서버는 요청을 받은 시점의 내 언어로 토큰을 만든다(`lang` 메시지가 같은 연결에서 먼저 간다).
+    // 서버는 요청을 받은 시점의 내 언어 + 상대 언어로 토큰을 잠근다(`lang` 메시지가 같은 연결에서 먼저 간다).
+    // `lang`은 그 둘을 나타내는 세션 열쇠다(바뀌면 세션을 새로 연다).
     const lang = this.lang
     this.deps.requestToken().then(
       (grant) => {

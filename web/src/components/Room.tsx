@@ -59,6 +59,9 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const [screenBusy, setScreenBusy] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
   const [disconnected, setDisconnected] = useState(false)
+  // 혼자일 때 띄우는 초대 카드를 닫았는지(이 회의 동안).
+  const [inviteClosed, setInviteClosed] = useState(false)
+  const copyLinkRef = useRef<HTMLButtonElement>(null)
   const [toast, setToast] = useState<{ key: MessageKey; params?: Record<string, string>; ms?: number } | null>(null)
   // 헤드폰 안내는 회의에 한 번만(재연결·번역 토글로 음성 인식이 다시 시작돼도).
   const echoHintedRef = useRef(false)
@@ -107,10 +110,12 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   useEffect(() => {
     mediaRef.current = media
   }, [media])
-  const langRef = useRef(prefs.lang)
+  // 음성 인식 세션 열쇠: 서버가 토큰을 내 언어 + 상대 언어로 잠그므로 둘 중 하나라도 바뀌면 세션을 새로 연다.
+  const sttKey = `${prefs.lang}|${prefs.partnerLang}`
+  const langRef = useRef(sttKey)
   useEffect(() => {
-    langRef.current = prefs.lang
-  }, [prefs.lang])
+    langRef.current = sttKey
+  }, [sttKey])
 
   useEffect(() => {
     let disposed = false
@@ -361,8 +366,8 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   }, [media.mic, sttEnabled])
 
   useEffect(() => {
-    speechRef.current?.setLang(prefs.lang)
-  }, [prefs.lang, sttEnabled])
+    speechRef.current?.setLang(sttKey)
+  }, [sttKey, sttEnabled])
   const showPanel = joined && panelOpen && (settings.translation || isHost)
   const selfStream = useMemo(() => (screenTrack ? new MediaStream([screenTrack]) : local), [screenTrack, local])
 
@@ -511,10 +516,22 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             aria-label={t('room.participants')}
           >
             {tiles}
-            {alone && (
-              // 내 화면은 그대로 두고 옆(좁으면 아래)에 초대 카드를 붙인다. 감싸면 내 영상이 다시 마운트돼 깜박인다.
-              <div className="invite">
-                <h2>{t('room.aloneTitle')}</h2>
+            {alone && !inviteClosed && (
+              // 내 화면은 무대를 다 쓰고, 초대 카드는 그 위 왼쪽 아래에 띄운다(닫을 수 있음, 링크 복사는 아래 막대에도 있다).
+              // 내 화면을 감싸지 않는다: 감싸면 혼자 ↔ 상대 있음이 바뀔 때 영상이 다시 마운트돼 깜박인다.
+              <div className="invite" role="region" aria-labelledby="invite-title">
+                <button
+                  className="icon-btn invite-close"
+                  aria-label={t('room.closeInvite')}
+                  onClick={() => {
+                    setInviteClosed(true)
+                    // 닫으면 이 버튼이 사라진다. 키보드 포커스를 같은 일을 하는 아래 막대의 링크 복사 버튼으로 옮긴다.
+                    copyLinkRef.current?.focus()
+                  }}
+                >
+                  <Icon name="close" />
+                </button>
+                <h2 id="invite-title">{t('room.aloneTitle')}</h2>
                 <p>{t('room.aloneBody')}</p>
                 <code>{location.host + location.pathname}</code>
                 <button className="btn btn-primary" onClick={copyLink}>
@@ -580,7 +597,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           </button>
         </div>
         <div className="bar-right">
-          <button className="ctl plain copy-link" aria-label={t('ctl.copyLink')} onClick={copyLink}>
+          <button ref={copyLinkRef} className="ctl plain copy-link" aria-label={t('ctl.copyLink')} onClick={copyLink}>
             <Icon name="link" />
           </button>
           {/* 번역이 꺼지면 게스트에게는 자막 패널이 없다. 주최자는 다시 켤 수 있도록 남긴다. */}

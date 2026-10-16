@@ -84,37 +84,44 @@ export function NewMeetingDialog({ open, creating, error, onCreate, onClose }: P
       }}
     >
       <form className="dialog-body" onSubmit={submit}>
-        <h2 id="new-meeting-title">{t('newMeeting.title')}</h2>
-        <p className="lead">{t('newMeeting.lead')}</p>
-        <div className="kind-options" role="radiogroup" aria-labelledby="new-meeting-title">
-          {OPTIONS.map((o) => (
-            <label key={o.kind} className="kind-option" onClick={() => setExpanded(true)}>
-              <input
-                type="radio"
-                name="meeting-kind"
-                value={o.kind}
-                checked={kind === o.kind}
-                onChange={() => choose(o.kind)}
-              />
-              <span className="kind-icon" aria-hidden="true">
-                <Icon name={o.icon} />
-              </span>
-              <span className="kind-text">
-                <b>{t(o.title)}</b>
-                <span>{t(o.body)}</span>
-              </span>
-              <span className="kind-radio" aria-hidden="true" />
-            </label>
-          ))}
-        </div>
-        {/* 번역 켜고 끄기는 화상 회의에만 있다. 다른 종류에서도 자리는 남겨 고를 때 창 높이가 튀지 않게 한다. */}
-        <p className="dialog-note" style={kind === 'global' || kind === 'standard' ? undefined : { visibility: 'hidden' }}>
-          {t('newMeeting.note')}
-        </p>
-        {error && (
-          <p className="form-error" role="alert">
-            {t(error)}
+        <div className="dialog-main">
+          <h2 id="new-meeting-title">{t('newMeeting.title')}</h2>
+          <p className="lead">{t('newMeeting.lead')}</p>
+          <div className="kind-options" role="radiogroup" aria-labelledby="new-meeting-title">
+            {OPTIONS.map((o) => (
+              <label key={o.kind} className="kind-option" onClick={() => setExpanded(true)}>
+                <input
+                  type="radio"
+                  name="meeting-kind"
+                  value={o.kind}
+                  checked={kind === o.kind}
+                  onChange={() => choose(o.kind)}
+                />
+                <span className="kind-icon" aria-hidden="true">
+                  <Icon name={o.icon} />
+                </span>
+                <span className="kind-text">
+                  <b>{t(o.title)}</b>
+                  <span>{t(o.body)}</span>
+                </span>
+                <span className="kind-radio" aria-hidden="true" />
+              </label>
+            ))}
+          </div>
+          {/* 번역 켜고 끄기는 화상 회의에만 있다. 다른 종류에서도 자리는 남겨 고를 때 창 높이가 튀지 않게 한다. */}
+          <p className="dialog-note" style={kind === 'global' || kind === 'standard' ? undefined : { visibility: 'hidden' }}>
+            {t('newMeeting.note')}
           </p>
+          {error && (
+            <p className="form-error" role="alert">
+              {t(error)}
+            </p>
+          )}
+        </div>
+        {expanded && (
+          <div className="dialog-preview">
+            <KindPreview kind={kind} />
+          </div>
         )}
         <div className="dialog-actions">
           <button type="button" className="btn btn-quiet btn-lg" onClick={close} disabled={creating}>
@@ -125,11 +132,6 @@ export function NewMeetingDialog({ open, creating, error, onCreate, onClose }: P
           </button>
         </div>
       </form>
-      {expanded && (
-        <div className="dialog-preview">
-          <KindPreview kind={kind} />
-        </div>
-      )}
     </dialog>
   )
 }
