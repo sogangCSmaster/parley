@@ -4,6 +4,16 @@ Open-source video meetings with context-aware multilingual captions powered by G
 
 Parley uses **Google Gemini as its only AI provider**, with one API key configured by the server operator. Video, audio and screen sharing use peer-to-peer WebRTC.
 
+## Screenshots
+
+| Video meeting with live captions (Korean ⇄ Japanese) | Live captions screen for in-person meetings |
+|---|---|
+| ![Meeting room: two participants, caption panel with the original and the translation](docs/screenshots/meeting.jpg) | ![Live captions screen on a tablet: each sentence's original in small text and the translation in large text](docs/screenshots/live-captions.jpg) |
+| **Home** | **New meeting: pick a kind and see what it looks like** |
+| ![Home with the live caption demo](docs/screenshots/home.jpg) | ![New meeting dialog with a preview of the selected kind](docs/screenshots/new-meeting.jpg) |
+
+Captured from the running app with real Gemini recognition and translation (speech played through a fake microphone).
+
 ## Current status
 
 - **Implemented:** host login, meeting links, guest admission, video/audio calls, screen sharing and a multilingual caption panel.
