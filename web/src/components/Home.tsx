@@ -8,12 +8,6 @@ import { HeroDemo } from './HeroDemo'
 import { Icon } from './Icon'
 import { NewMeetingDialog, type MeetingKind } from './NewMeetingDialog'
 
-/**
- * AGPL-3.0 §13: 수정한 버전을 서비스로 운영하면 사용자에게 그 소스를 제공해야 한다.
- * 포크해서 운영한다면 이 주소를 자기 저장소로 바꾼다.
- */
-const SOURCE_URL = 'https://github.com/sogangCSmaster/tolkmeet'
-
 export function Home({ invalidPath }: { invalidPath: boolean }) {
   const { t } = useI18n()
   const [input, setInput] = useState('')
@@ -96,12 +90,6 @@ export function Home({ invalidPath }: { invalidPath: boolean }) {
             </p>
           )}
           <p className="hint">{isHost ? t('home.hint') : t('home.guestHint')}</p>
-          <p className="source-note">
-            {t('home.openSource')}{' '}
-            <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer">
-              {t('home.sourceCode')}
-            </a>
-          </p>
           {isHost && (
             <NewMeetingDialog
               open={dialogOpen}

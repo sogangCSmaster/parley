@@ -86,8 +86,6 @@ h1 { text-wrap: balance; }
 .code-form { display: flex; gap: var(--space-2); }
 .code-form .field { flex: 1; min-width: 0; }
 .hint { margin: 40px 0 0; padding-top: var(--space-5); border-top: 1px solid var(--divider); color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; max-width: 480px; }
-.source-note { margin: var(--space-3) 0 0; color: var(--text-secondary); font-size: var(--text-sm); }
-.source-note a { color: var(--accent-text); font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
 
 /* 라이브 데모: 상자 높이는 고정, 자막이 쌓이면 자막 영역 안에서만 스크롤된다. */
 .demo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 10px; height: 440px; padding: 12px; border-radius: 24px; background: var(--stage-bg); box-shadow: 0 2px 4px rgb(22 24 29 / .06), 0 32px 64px -12px rgb(22 24 29 / .35); }
