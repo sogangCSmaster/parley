@@ -64,6 +64,18 @@ try {
         console.log('PASS missing room stops ' + (delayed ? 'late' : 'active') + ' capture');
         await context.close();
     }
+    for (const [label, msgs] of [
+        ['denied after waiting', [{ t: 'waiting' }, { t: 'denied' }]],
+        ['room full before joining', [{ t: 'error', code: 'room_full', message: 'RoomFull' }]],
+    ]) {
+        const { page, context } = await setup();
+        await join(page);
+        for (const msg of msgs) await receive(page, msg);
+        await page.getByRole('heading', { name: 'Can’t join', exact: true }).waitFor();
+        await page.waitForFunction(() => window.captures.length > 0 && window.captures.every(s => s.getTracks().every(t => t.readyState === 'ended')), null, { timeout: 5000 });
+        console.log('PASS ' + label + ' releases camera and microphone');
+        await context.close();
+    }
     {
         const { page, context } = await setup();
         await join(page);

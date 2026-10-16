@@ -73,8 +73,8 @@ export class SttController {
   private failures = 0
   private retryAt = 0
   private speaking = false
-  /** activityEnd를 보냈고 아직 확정 결과를 받지 못함 */
-  private awaitingFinal = false
+  /** 끝났는데 확정 결과를 아직 받지 못한 발화 수. 앞 발화의 확정이 다음 발화가 끝난 뒤에 와도 둘 다 받는다. */
+  private pendingFinals = 0
   private lastActivityAt = 0
   /** 이번 구간에 마지막으로 보낸 텍스트(바뀐 경우에만 보낸다) */
   private sent = ''
@@ -128,8 +128,12 @@ export class SttController {
     if (this.disposed) return
     const now = this.deps.now()
     // activityEnd 뒤 확정이 오지 않았거나, 확정 뒤에 중간 결과만 하나 더 왔다.
-    const open = this.awaitingFinal || this.sent !== ''
-    if (!this.speaking && open && now - this.lastActivityAt >= FINAL_WAIT_MS) this.finalizeLocally()
+    const open = this.pendingFinals > 0 || this.sent !== ''
+    // 확정 대기는 activityEnd가 실제로 Gemini에 간 때부터 센다. 세션이 아직 없어 오디오가 쌓여 있거나, 세션은 있어도
+    // 아직 준비 전(보낸 것이 세션 안 큐에 있음)이면 기다린다(늦게 연결돼도 그 발화의 결과를 버리지 않게).
+    // 준비되지 못하면 세션이 닫히며(설정 시간 초과) 그때 로컬로 확정한다.
+    const delivered = !this.backlog.length && (this.current?.ready ?? true)
+    if (!this.speaking && open && delivered && now - this.lastActivityAt >= FINAL_WAIT_MS) this.finalizeLocally()
     // 교체를 기다리는 세션도 입력이 60초 없으면 끊기므로 같이 살려 둔다.
     for (const slot of [this.current, this.next]) {
       if (slot?.ready && !(this.speaking && slot === this.current) && now - slot.lastSentAt >= KEEPALIVE_MS) {
@@ -156,7 +160,7 @@ export class SttController {
     if (this.disposed) return
     const now = this.deps.now()
     const cur = this.current
-    const quiet = !this.speaking && !this.awaitingFinal && this.sent === ''
+    const quiet = !this.speaking && this.pendingFinals === 0 && this.sent === ''
     const wanted = this.micOn || this.warm
 
     if (!wanted && cur && quiet && now - this.micChangedAt >= IDLE_ROTATE_MS) {
@@ -212,6 +216,8 @@ export class SttController {
       onReady: () => {
         if (!slot) return
         slot.ready = true
+        // 준비 전에 보낸 activityEnd는 지금 실제로 나간다. 확정 대기를 여기서부터 센다.
+        if (slot === this.current && this.pendingFinals > 0) this.lastActivityAt = this.deps.now()
         this.failures = 0
         this.update()
       },
@@ -283,9 +289,9 @@ export class SttController {
   private onTranscript(text: string, final: boolean) {
     // 기다리는 결과가 없으면 버린다: 로컬 확정 뒤에 늦게 온 확정, 확정 뒤 덧붙은 중간 결과.
     // 받으면 같은 말이 새 구간으로 한 번 더 확정된다.
-    if (!this.speaking && !this.awaitingFinal) return
+    if (!this.speaking && this.pendingFinals === 0) return
     if (final) {
-      this.awaitingFinal = false
+      this.pendingFinals = Math.max(0, this.pendingFinals - 1)
       if (text !== '' || this.sent !== '') {
         this.deps.sendStt(this.seg.next++, text, true)
         this.sent = ''
@@ -299,7 +305,7 @@ export class SttController {
 
   /** 확정 결과가 오지 않았다: 마지막 중간 결과를 이 구간의 확정으로 보낸다. */
   private finalizeLocally() {
-    this.awaitingFinal = false
+    this.pendingFinals = 0
     if (this.sent === '') return
     this.deps.sendStt(this.seg.next++, this.sent, true)
     this.sent = ''
@@ -309,7 +315,6 @@ export class SttController {
     this.flushChunk()
     this.emit({ kind: 'end' })
     this.speaking = false
-    this.awaitingFinal = true
     this.lastActivityAt = this.deps.now()
   }
 
@@ -327,19 +332,30 @@ export class SttController {
   }
 
   private emit(msg: Msg) {
-    if (this.current) return this.deliver(this.current, msg)
+    // 확정을 기다릴 발화는 activityEnd를 실제로 보내거나 쌓은 것만 센다(버려진 끝은 확정이 오지 않는다).
+    if (this.current) {
+      if (msg.kind === 'end') this.pendingFinals++
+      return this.deliver(this.current, msg)
+    }
     if (this.unavailable) return
-    // 너무 오래 연결되지 않으면 가장 최근 발화만 남긴다.
-    if (this.backlog.length >= MAX_BACKLOG) this.backlog = this.speaking ? [{ kind: 'start' }] : []
+    // 너무 오래 연결되지 않으면 가장 최근 발화만 남긴다. 버린 발화의 끝은 기다리지 않는다.
+    if (this.backlog.length >= MAX_BACKLOG) {
+      this.backlog = this.speaking ? [{ kind: 'start' }] : []
+      this.pendingFinals = 0
+    }
     if (msg.kind === 'end' && !this.backlog.length) return
+    if (msg.kind === 'end') this.pendingFinals++
     this.backlog.push(msg)
     if (msg.kind === 'start') this.update()
   }
 
   private deliver(slot: Slot, msg: Msg) {
     if (msg.kind === 'start') slot.session.activityStart()
-    else if (msg.kind === 'end') slot.session.activityEnd()
-    else {
+    else if (msg.kind === 'end') {
+      slot.session.activityEnd()
+      // 확정 대기는 실제로 보낸 때부터(쌓였다가 늦게 보내진 경우 포함).
+      this.lastActivityAt = this.deps.now()
+    } else {
       slot.session.audio(msg.pcm)
       slot.lastSentAt = this.deps.now()
     }

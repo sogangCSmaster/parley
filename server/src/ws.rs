@@ -12,6 +12,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{Notify, mpsc};
 
 use crate::auth::{self, Auth};
+use crate::limit::TokenBucket;
 use crate::pipeline::{self, Pipeline, SpeakerHandle};
 use crate::protocol::{ClientMsg, ErrorCode, PeerId, ServerMsg};
 use crate::providers::live::SttTokens;
@@ -31,9 +32,6 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 /// STT 중간 결과는 약 0.5초마다 온다. 이보다 훨씬 잦으면 버린다(번역 비용 폭주 방지).
 const STT_PER_SEC: f64 = 5.0;
 const STT_BURST: f64 = 10.0;
-/// 음성 인식 세션은 3분 넘게 조용하거나 언어가 바뀔 때 새로 연다. 평소 몇 분에 1개면 충분하다.
-const STT_TOKENS_PER_SEC: f64 = 1.0 / 30.0;
-const STT_TOKEN_BURST: f64 = 4.0;
 /// 연결 하나가 보내는 모든 프레임(잘못된 것·ping 포함). 아래 한도를 다 써도 닿지 않는 값이라,
 /// 넘으면 오작동이나 남용으로 보고 연결을 끊는다.
 const MESSAGES_PER_SEC: f64 = 100.0;
@@ -134,7 +132,6 @@ async fn run(
     // 첫 STT 메시지에서 띄운다. 연결이 끝나 버려지면 진행 중 번역도 멈춘다.
     let mut speaker: Option<SpeakerHandle> = None;
     let mut stt_limit = TokenBucket::new(STT_PER_SEC, STT_BURST);
-    let mut stt_token_limit = TokenBucket::new(STT_TOKENS_PER_SEC, STT_TOKEN_BURST);
     let mut message_limit = TokenBucket::new(MESSAGES_PER_SEC, MESSAGES_BURST);
     let mut candidate_limit = Limit::new(CANDIDATES_PER_SEC, CANDIDATES_BURST);
     let mut description_limit = Limit::new(DESCRIPTIONS_PER_SEC, DESCRIPTIONS_BURST);
@@ -322,7 +319,8 @@ async fn run(
             (ClientMsg::SttToken { id: req }, Some((room, id))) => {
                 while stt_tasks.try_join_next().is_some() {}
                 match (&stt, rooms.stt_langs(room, id)) {
-                    (Some(issuer), Some(langs)) if stt_token_limit.take(Instant::now()) => {
+                    // 발급 빈도는 참가자에 묶여 있어 다시 연결해도 새로 차지 않는다(재입장 토큰으로 연결만 바꿔 우회하지 못하게).
+                    (Some(issuer), Some(langs)) if rooms.take_stt_token(room, id, Instant::now()) => {
                         // 발급은 Gemini 왕복(수백 ms)이라 연결 루프를 막지 않도록 따로 돌린다.
                         let issue = issuer.issue(&langs);
                         let tx = tx.clone();
@@ -362,37 +360,6 @@ async fn run(
     writer.abort();
     if !writer_finished {
         let _ = writer.await;
-    }
-}
-
-/// 초당 `rate`개, 최대 `burst`개까지 허용한다.
-struct TokenBucket {
-    rate: f64,
-    burst: f64,
-    tokens: f64,
-    at: Instant,
-}
-
-impl TokenBucket {
-    fn new(rate: f64, burst: f64) -> Self {
-        TokenBucket {
-            rate,
-            burst,
-            tokens: burst,
-            at: Instant::now(),
-        }
-    }
-
-    fn take(&mut self, now: Instant) -> bool {
-        let elapsed = now.saturating_duration_since(self.at).as_secs_f64();
-        self.tokens = (self.tokens + elapsed * self.rate).min(self.burst);
-        self.at = now;
-        if self.tokens >= 1.0 {
-            self.tokens -= 1.0;
-            true
-        } else {
-            false
-        }
     }
 }
 
@@ -835,7 +802,7 @@ mod tests {
         let server = TestServer::start().await;
         let room = server.room();
         let mut socket = welcomed(&server, &room).await;
-        for _ in 0..STT_TOKEN_BURST as usize {
+        for _ in 0..room::STT_TOKEN_BURST as usize {
             send(&mut socket, ClientMsg::SttToken { id: 3 }).await;
             assert!(matches!(
                 next_message(&mut socket).await,

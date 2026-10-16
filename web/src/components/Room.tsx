@@ -29,6 +29,8 @@ type Props = {
   onMediaChange: (m: MediaState) => void
   /** 나갈 때 자막 기록을 텍스트로 만드는 함수를 넘긴다(없으면 null). 나간 화면에서 저장을 누를 때만 만든다. */
   onLeave: (exportTranscript: (() => string) | null) => void
+  /** 입장이 끝내 안 됐다(거절·없는 방·가득 참 등): 카메라·마이크를 놓아도 된다. "다시 시도"는 처음부터 다시 잡는다. */
+  onGiveUp: () => void
   onRejoin: () => void
 }
 
@@ -50,7 +52,7 @@ const FATAL_ERRORS: Partial<Record<string, MessageKey>> = {
   too_many_waiting: 'room.queueFull',
 }
 
-export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, onLeave, onRejoin }: Props) {
+export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, onLeave, onRejoin, onGiveUp }: Props) {
   const { t, locale } = useI18n()
   const [status, setStatus] = useState<Status>({ kind: 'connecting' })
   const [peers, setPeers] = useState<Record<string, Peer>>({})
@@ -309,6 +311,16 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
     window.addEventListener('online', retryNow)
     return () => window.removeEventListener('online', retryNow)
   }, [disconnected])
+
+  // 오류 화면(최종 실패)으로 바뀌면 장치를 놓게 한다. 그대로 두면 거절된 뒤에도 카메라 불이 켜져 있다.
+  const failed = status.kind === 'error'
+  const onGiveUpRef = useRef(onGiveUp)
+  useEffect(() => {
+    onGiveUpRef.current = onGiveUp
+  }, [onGiveUp])
+  useEffect(() => {
+    if (failed) onGiveUpRef.current()
+  }, [failed])
 
   useEffect(() => {
     if (!toast) return

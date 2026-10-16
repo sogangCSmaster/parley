@@ -37,7 +37,9 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
     }
   }, [code])
 
-  const captureNeeded = room !== null && stage !== 'left'
+  // 입장에 끝내 실패하면(거절 등) 장치를 놓는다. "다시 시도"는 Meeting을 새로 마운트해 다시 잡는다.
+  const [gaveUp, setGaveUp] = useState(false)
+  const captureNeeded = room !== null && stage !== 'left' && !gaveUp
   useEffect(() => {
     if (!captureNeeded) return
     let cancelled = false
@@ -128,6 +130,7 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
       onMediaChange={setMedia}
       onLeave={leave}
       onRejoin={onRejoin}
+      onGiveUp={() => setGaveUp(true)}
     />
   )
 }

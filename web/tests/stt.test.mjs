@@ -482,3 +482,43 @@ test('turning warm off closes idle sessions and the next speech reopens without 
   assert.equal(s.closed, false)
   assert.ok(s.log[0] === 'start' && s.log.includes('end'), s.log.join(','))
 })
+
+test('a slow session connection does not drop the first utterance', async () => {
+  const h = setup()
+  // 토큰이 3초 동안 오지 않는다: 말은 쌓여 있고 아직 보내지 못했다.
+  h.speak(5)
+  h.advance(3000)
+  assert.equal(h.sent.length, 0)
+  await h.grant()
+  h.ready()
+  const log = h.sessions[0].log
+  assert.equal(log[0], 'start', 'the buffered utterance is delivered once connected')
+  assert.ok(log.includes('end'))
+  h.sessions[0].events.onFinal('늦게 연결돼도 남아요.')
+  assert.deepEqual(JSON.parse(JSON.stringify(h.sent)), [[0, '늦게 연결돼도 남아요.', true]])
+})
+
+test('a late final for the previous utterance does not drop the next one', async () => {
+  const h = setup()
+  await h.grant()
+  h.ready()
+  h.speak(3) // 첫 발화
+  h.speak(3) // 둘째 발화(첫 발화 확정이 아직 안 옴)
+  h.sessions[0].events.onFinal('첫 문장.')
+  h.sessions[0].events.onFinal('둘째 문장.')
+  assert.deepEqual(JSON.parse(JSON.stringify(h.sent)), [
+    [0, '첫 문장.', true],
+    [1, '둘째 문장.', true],
+  ])
+})
+
+test('a session that takes long to become ready does not drop the utterance sent before it', async () => {
+  const h = setup()
+  h.speak(4)
+  await h.grant() // 세션 객체는 생겼지만 Gemini 준비(setupComplete)가 3초 걸린다.
+  h.advance(3000)
+  h.ready()
+  h.advance(1000) // 준비 뒤 확정까지 1초: 여기서 2초 대기가 새로 시작된다.
+  h.sessions[0].events.onFinal('준비가 늦어도 남아요.')
+  assert.deepEqual(JSON.parse(JSON.stringify(h.sent)), [[0, '준비가 늦어도 남아요.', true]])
+})

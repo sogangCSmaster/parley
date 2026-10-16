@@ -14,6 +14,7 @@ use rand::RngExt;
 use tokio::sync::{Notify, mpsc, watch};
 
 use crate::ice::Ice;
+use crate::limit::TokenBucket;
 use crate::protocol::{
     ErrorCode, Knock, MediaState, Peer, PeerId, RoomSettings, ServerMsg, SignalData,
 };
@@ -28,6 +29,10 @@ pub const MAX_ROOMS_PER_HOST: usize = 20;
 pub const ROOM_IDLE_TTL: Duration = Duration::from_secs(30 * 60);
 /// 연결이 끊긴 참가자가 주최자 수락 없이 돌아올 수 있는 시간
 pub const RESUME_TTL: Duration = Duration::from_secs(2 * 60);
+/// 음성 인식 토큰 발급 빈도(참가자당). 세션은 3분 넘게 조용하거나 언어가 바뀔 때 새로 연다. 평소 몇 분에 1개면 충분하다.
+/// 연결이 아니라 참가자에 묶는다: 재입장 토큰으로 연결만 바꿔 가며 새 한도를 받지 못하게.
+pub const STT_TOKENS_PER_SEC: f64 = 1.0 / 30.0;
+pub const STT_TOKEN_BURST: f64 = 4.0;
 
 /// 혼동하기 쉬운 문자(l, o, 0, 1)를 뺀 32자. 4-4-4 형식이면 60bit.
 const CODE_ALPHABET: &[u8] = b"abcdefghijkmnpqrstuvwxyz23456789";
@@ -61,6 +66,11 @@ struct Member {
     caption_epoch: u64,
     peer: Peer,
     tx: Outbox,
+    stt_tokens: TokenBucket,
+}
+
+fn new_stt_tokens() -> TokenBucket {
+    TokenBucket::new(STT_TOKENS_PER_SEC, STT_TOKEN_BURST)
 }
 
 struct Room {
@@ -82,6 +92,8 @@ struct Resume {
     name: String,
     /// 그 참가자가 나간 시점. 아직 입장해 있으면 None(끊긴 걸 서버가 아직 모르는 경우 포함).
     left_at: Option<Instant>,
+    /// 나갈 때 남은 음성 인식 토큰 한도. 다시 들어오면 이어 받는다.
+    stt_tokens: Option<TokenBucket>,
 }
 
 impl Room {
@@ -93,6 +105,7 @@ impl Room {
                 peer: peer.to_owned(),
                 name: name.to_owned(),
                 left_at: None,
+                stt_tokens: None,
             },
         );
         token
@@ -232,16 +245,19 @@ impl Rooms {
         let room = rooms.get_mut(code).ok_or(ErrorCode::RoomNotFound)?;
         let now = Instant::now();
         // 1회용: 맞든 틀리든 쓴 토큰은 지운다.
-        let resumed = req
+        let mut resumed = req
             .resume
             .as_deref()
             .and_then(|token| room.resumes.remove(token))
             .filter(|r| r.left_at.is_none_or(|t| now.duration_since(t) < RESUME_TTL));
+        // 같은 참가자의 남은 음성 인식 토큰 한도를 이어 받는다(옛 연결이 아직 있으면 그쪽이 최신).
+        let mut stt_tokens = resumed.as_mut().and_then(|r| r.stt_tokens.take());
         if let Some(r) = &resumed
             && let Some(old) = room.members.remove(&r.peer)
         {
             // 서버가 아직 끊긴 줄 모르는 옛 연결(반쯤 열린 TCP)을 밀어낸다.
             old.tx.close();
+            stt_tokens = Some(old.stt_tokens);
             room.caption_changes.send_modify(|v| *v += 1);
             broadcast(&room.members, &r.peer, ServerMsg::PeerLeft { id: r.peer.clone() });
         }
@@ -286,6 +302,7 @@ impl Rooms {
                     caption_epoch: 0,
                     peer,
                     tx,
+                    stt_tokens: stt_tokens.unwrap_or_else(new_stt_tokens),
                 },
             );
             room.caption_changes.send_modify(|v| *v += 1);
@@ -305,6 +322,7 @@ impl Rooms {
                 caption_epoch: 0,
                 peer,
                 tx,
+                stt_tokens: new_stt_tokens(),
             },
         );
         Ok(JoinOutcome::Waiting(id))
@@ -462,12 +480,13 @@ impl Rooms {
         let Some(room) = rooms.get_mut(code) else {
             return;
         };
-        if room.members.remove(id).is_some() {
+        if let Some(member) = room.members.remove(id) {
             room.caption_changes.send_modify(|v| *v += 1);
             broadcast(&room.members, id, ServerMsg::PeerLeft { id: id.to_owned() });
             let now = Instant::now();
             for r in room.resumes.values_mut().filter(|r| r.peer == id) {
                 r.left_at.get_or_insert(now);
+                r.stt_tokens = Some(member.stt_tokens.clone());
             }
         } else if room.waiting.remove(id).is_some() {
             room.notify_hosts(ServerMsg::KnockResolved { id: id.to_owned() });
@@ -508,6 +527,15 @@ impl Rooms {
                 })
                 .collect(),
         })
+    }
+
+    /// 이 참가자가 음성 인식 토큰을 하나 더 받아도 되는지(받으면 한도를 하나 쓴다). 입장한 참가자만.
+    pub fn take_stt_token(&self, code: &str, id: &str, now: Instant) -> bool {
+        let mut rooms = self.rooms.lock().unwrap();
+        rooms
+            .get_mut(code)
+            .and_then(|r| r.members.get_mut(id))
+            .is_some_and(|m| m.stt_tokens.take(now))
     }
 
     /// 음성 인식 토큰에 잠글 언어: 내 언어, 그리고 다르면 상대 언어(상대 언어로 한 말도 그 언어 글자로 적게).
@@ -783,6 +811,35 @@ mod tests {
         rooms.leave(&code, &new_id);
         let again = client();
         waiting(rooms.join(&code, resume_req("Guest", &token), None, again.tx).unwrap());
+    }
+
+    #[test]
+    fn stt_token_limit_survives_reconnecting_with_a_resume_token() {
+        let (rooms, code, _, _, guest_id, _old, token) = room_with_admitted_guest();
+        let now = Instant::now();
+        for _ in 0..STT_TOKEN_BURST as usize {
+            assert!(rooms.take_stt_token(&code, &guest_id, now));
+        }
+        assert!(!rooms.take_stt_token(&code, &guest_id, now), "burst used up");
+
+        // 정상적으로 나갔다가 토큰으로 돌아와도 한도가 다시 차지 않는다.
+        rooms.leave(&code, &guest_id);
+        let mut back = client();
+        let id2 = joined(rooms.join(&code, resume_req("Guest", &token), None, back.tx.clone()).unwrap());
+        assert!(!rooms.take_stt_token(&code, &id2, now), "not refilled by leave + resume");
+        let token2 = match &back.drain()[..] {
+            [ServerMsg::Welcome { resume, .. }] => resume.clone(),
+            other => panic!("expected welcome, got {other:?}"),
+        };
+
+        // 옛 연결을 밀어내며 돌아와도 마찬가지다(반쯤 열린 연결).
+        let again = client();
+        let id3 = joined(rooms.join(&code, resume_req("Guest", &token2), None, again.tx).unwrap());
+        assert!(!rooms.take_stt_token(&code, &id3, now), "not refilled by evicting a half-open connection");
+
+        // 시간이 지나면 정상적으로 다시 찬다.
+        assert!(rooms.take_stt_token(&code, &id3, now + Duration::from_secs(31)));
+        assert!(!rooms.take_stt_token(&code, "nobody", now), "only members get tokens");
     }
 
     #[test]
