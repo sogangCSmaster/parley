@@ -65,6 +65,31 @@ impl Room {
     }
 }
 
+pub struct Audience {
+    pub src_lang: String,
+    pub partner_lang: String,
+    /// 화자 자신을 포함한 입장한 참가자 전원
+    pub readers: Vec<Reader>,
+}
+
+pub struct Reader {
+    pub lang: String,
+    pub tx: Outbox,
+}
+
+impl Audience {
+    /// 이 독자에게 보여줄 번역 언어. 원문과 다른 자기 언어가 있으면 그것, 아니면 화자가 고른 상대 언어.
+    /// 원문과 같은 언어가 나오면 번역할 필요가 없다.
+    pub fn target_for<'a>(&'a self, reader_lang: &'a str) -> Option<&'a str> {
+        let tgt = if reader_lang != self.src_lang {
+            reader_lang
+        } else {
+            self.partner_lang.as_str()
+        };
+        (tgt != self.src_lang).then_some(tgt)
+    }
+}
+
 #[derive(Default)]
 pub struct Rooms {
     rooms: Mutex<HashMap<String, Room>>,
@@ -295,6 +320,29 @@ impl Rooms {
         }
     }
 
+    /// 화자의 자막을 받을 사람들. 번역이 꺼진 방이거나 화자가 입장한 참가자가 아니면 None.
+    /// 잠금은 복사하는 동안만 잡는다(보내는 쪽 채널은 복제 비용이 작다).
+    pub fn caption_audience(&self, code: &str, speaker: &str) -> Option<Audience> {
+        let rooms = self.rooms.lock().unwrap();
+        let room = rooms.get(code)?;
+        if !room.settings.translation {
+            return None;
+        }
+        let me = room.members.get(speaker)?;
+        Some(Audience {
+            src_lang: me.peer.lang.clone(),
+            partner_lang: me.peer.partner_lang.clone(),
+            readers: room
+                .members
+                .values()
+                .map(|m| Reader {
+                    lang: m.peer.lang.clone(),
+                    tx: m.tx.clone(),
+                })
+                .collect(),
+        })
+    }
+
     /// 오래 빈 방을 지운다(주기 작업).
     pub fn sweep(&self, now: Instant) {
         self.rooms.lock().unwrap().retain(|_, r| {
@@ -312,7 +360,7 @@ fn broadcast(members: &HashMap<PeerId, Member>, except: &str, msg: ServerMsg) {
     }
 }
 
-fn send(tx: &Outbox, msg: ServerMsg) {
+pub fn send(tx: &Outbox, msg: ServerMsg) {
     // 느린 클라이언트 때문에 방 전체가 막히지 않도록 버퍼가 차면 버린다. 연결이 끊기면 leave로 정리된다.
     if let Err(err) = tx.try_send(msg) {
         tracing::warn!(%err, "dropping message to slow or closed client");

@@ -62,8 +62,8 @@ server/src/
   ws.rs         WS 연결 = 참가자. join 검증, 메시지 라우팅
   room.rs       방·참가자 상태, 입력 검증, 시그널 중계 (+ 단위 테스트)
   protocol.rs   메시지 타입. `cargo test` 시 ts-rs가 web/src/protocol/*.ts 생성
-  (예정) pipeline/   STT 텍스트 → 문장 버퍼 → 번역 → 자막 이벤트 (WebRTC와 무관, 2단계 재사용)
-  (예정) providers/  trait SpeechToText, trait Translator + 구현체(OpenAI, Gemini, Claude, DeepL …)
+  pipeline/     STT 텍스트 → 문장 버퍼 → 번역 → 자막 이벤트 (WebRTC와 무관, 2단계 재사용). 화자당 워커 태스크 1개
+  providers/    trait Translator + 헤징, Gemini 구현. (예정) trait SpeechToText, 다른 제공자(OpenAI, Claude, DeepL …)
 ```
 
 `pipeline`과 `providers`를 trait로 분리해 README가 말하는 여러 제공자와 BYOK를 구현체 교체로 지원한다.
@@ -77,7 +77,8 @@ server/src/
 3. **텍스트 업로드**: 브라우저가 `/ws`로 `stt { seg, text, final }`을 보낸다. 바뀐 경우에만 보낸다.
 4. **문장 버퍼**: 서버가 화자별로 "아직 문장이 끝나지 않은 확정 조각 + 현재 중간 결과"를 하나로 이어 둔다. 문장 끝 부호(。.?!)가 오면 그 문장을 확정한다.
 5. **번역**: 버퍼의 미완성 문장만 `gemini-3.5-flash-lite`(`thinkingLevel: minimal`, 유료 Standard)로 스트리밍 번역. 문맥은 직전 확정 문장 2~3쌍.
-   - **최신 우선**: 새 텍스트가 오면 진행 중 요청을 취소하고 최신 것만 번역한다. 화자당 동시에 1개.
+   - **최신 우선**: 말하는 중인 문장은 목표 언어마다 동시에 1개만 번역한다. 그사이 바뀐 텍스트는 진행 중 요청이 끝나는 즉시 최신 것 하나만 번역한다(중간 버전은 건너뜀). 진행 중 요청을 매번 취소하지 않는 이유: 중간 결과는 0.5초마다 오고 번역은 약 1초라 말하는 동안 번역이 하나도 끝나지 않는다. 문장이 확정되면 그때는 진행 중 요청을 취소하고 확정 번역을 바로 시작한다.
+   - **문장 확정**: 확정된 STT 텍스트에서 문장 끝 부호가 나오면 확정한다. 확정 조각이 부호 없이 끝나고 2초간 말이 없으면 그대로 확정한다. 400자를 넘어도 확정한다.
    - **헤징**: 1.5초 안에 첫 토큰이 없으면 같은 요청을 한 번 더 보내 먼저 오는 쪽을 쓴다(드문 20초급 지연 제거).
 6. **팬아웃**: 목표 언어별 1회 번역 → 해당 독자에게 `caption` 이벤트로 스트리밍.
 
@@ -111,6 +112,7 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 
 ```jsonc
 // client → server
+{ "t": "stt", "seg": 3, "text": "저희 투자팀은", "final": false }   // seg = STT 구간 번호, 중간 결과는 구간 내 누적
 { "t": "join", "room": "abcd-efgh-ijkm", "name": "유승재", "lang": "ko", "partner_lang": "ja",
   "media": { "mic": true, "cam": true, "screen": false } }
 { "t": "lang", "lang": "ko", "partner_lang": "ja" }
@@ -122,18 +124,13 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 { "t": "peer_joined" | "peer_updated", "peer": Peer }
 { "t": "peer_left", "id": "<peer id>" }
 { "t": "signal", "from": "<peer id>", "data": {…} }
+{ "t": "caption", "seg": "p2-42", "speaker": "p2", "src_lang": "ja", "src": "私たちの…",
+  "tgt_lang": "ko", "text": "저희 투자팀은…" | null, "final": false, "rev": 3 }
+{ "t": "notice", "code": "translation_failed" }
 { "t": "error", "code": "bad_request" | "room_full" | "not_joined" | "unknown_peer", "message": "…" }
 ```
 
-번역 단계에서 추가할 메시지(초안):
-
-```jsonc
-{ "t": "caption", "seg": "p2-0042", "speaker": "p2", "src_lang": "ja", "src": "私たちの…",
-  "tgt_lang": "ko", "text": "저희 투자팀은…", "final": false, "rev": 3 }
-{ "t": "notice", "level": "warning", "code": "translator_slow" }
-```
-
-`seg` + `rev`로 같은 줄을 갱신한다(늦게 도착한 낮은 rev는 버린다).
+`caption`은 독자마다 자기 목표 언어(`tgt_lang`)로 받는다. `seg` + `rev`로 같은 줄을 갱신한다(늦게 도착한 낮은 rev는 버린다). 확정 전 `text`는 이전 원문의 번역일 수 있다. `text`가 null이면 번역 중이거나, 같은 언어라 번역이 필요 없거나(`tgt_lang == src_lang`), 확정 번역에 실패한 것이다(`notice` 함께 전송). `stt`는 입장한 참가자의 것만, 번역이 켜진 방에서만 처리하고 연결당 초당 5개(버스트 10)로 제한한다.
 
 ## 클라이언트
 
@@ -187,7 +184,7 @@ STT 비용(전체의 약 75%)은 **보낸 오디오 길이**에 비례한다. �
 | TURN 자격 | 정적 비밀번호 대신 서버가 발급하는 시간제한 HMAC 자격(TURN REST API 방식) |
 | BYOK 키 | 아래 "결정 필요" 참고. 어떤 방식이든 로그·에러 메시지·클라이언트 응답에 키를 노출하지 않음 |
 | 음성·자막 | 기본은 저장하지 않음. 기록 저장 기능은 참가자 전원 고지 후에만 |
-| 입력 제한 | 이름 1~40자·언어 태그·방 코드 형식 검증, WS 메시지 64KB 제한(구현됨). 메시지 빈도 제한, 방당 인원 제한, STT 토큰 발급 빈도 제한(비용 폭주 방지) |
+| 입력 제한 | 이름 1~40자·언어 태그·방 코드 형식 검증, WS 메시지 64KB 제한, `stt` 빈도 제한·1000자 제한(구현됨). 다른 메시지 빈도 제한, 방당 인원 제한, STT 토큰 발급 빈도 제한(비용 폭주 방지) |
 | STT ephemeral token | 서버가 **입장이 확정된 참가자**에게만, 번역이 켜진 방에서만 발급. 1회용(`uses: 1`), 짧은 만료, `gemini-3.5-transcribe-live`와 전사 설정으로 제한(`live_connect_constraints`). 서버 API 키는 브라우저에 절대 내려가지 않음 |
 
 ## 결정 필요

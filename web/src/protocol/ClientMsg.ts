@@ -3,4 +3,4 @@ import type { MediaState } from "./MediaState";
 import type { RoomSettings } from "./RoomSettings";
 import type { JsonValue } from "./serde_json/JsonValue";
 
-export type ClientMsg = { "t": "join", room: string, name: string, lang: string, partner_lang: string, media: MediaState, } | { "t": "lang", lang: string, partner_lang: string, } | { "t": "media", media: MediaState, } | { "t": "signal", to: string, data: JsonValue, } | { "t": "admit", id: string, } | { "t": "deny", id: string, } | { "t": "settings", settings: RoomSettings, };
+export type ClientMsg = { "t": "join", room: string, name: string, lang: string, partner_lang: string, media: MediaState, } | { "t": "lang", lang: string, partner_lang: string, } | { "t": "media", media: MediaState, } | { "t": "signal", to: string, data: JsonValue, } | { "t": "admit", id: string, } | { "t": "deny", id: string, } | { "t": "settings", settings: RoomSettings, } | { "t": "stt", seg: number, text: string, final: boolean, };
