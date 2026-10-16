@@ -17,6 +17,8 @@ type Props = {
   onPrefsChange: (p: Prefs) => void
   onTranslationChange: (on: boolean) => void
   onClose: () => void
+  /** 확정된 자막이 있을 때만. 지금까지의 원문·번역을 텍스트 파일로 내려받는다. */
+  onDownload: (() => void) | null
 }
 
 export function CaptionPanel({
@@ -29,15 +31,23 @@ export function CaptionPanel({
   onPrefsChange,
   onTranslationChange,
   onClose,
+  onDownload,
 }: Props) {
   const { t } = useI18n()
   return (
     <aside className="panel" aria-label={t('captions.title')}>
       <div className="panel-head">
         <h2>{t('captions.title')}</h2>
-        <button className="icon-btn" aria-label={t('captions.close')} onClick={onClose}>
-          <Icon name="close" />
-        </button>
+        <div className="panel-actions">
+          {onDownload && (
+            <button className="icon-btn" aria-label={t('captions.download')} title={t('captions.download')} onClick={onDownload}>
+              <Icon name="download" />
+            </button>
+          )}
+          <button className="icon-btn" aria-label={t('captions.close')} onClick={onClose}>
+            <Icon name="close" />
+          </button>
+        </div>
       </div>
       {isHost && (
         <div className="panel-host">
@@ -54,6 +64,8 @@ export function CaptionPanel({
             </p>
           )}
           <Feed captions={captions} speakerName={speakerName} />
+          {/* 저장 기능을 모든 참가자에게 알린다(자막은 서버에 남지 않고, 각자 자기 화면의 것만 저장한다). */}
+          <p className="panel-note">{t('captions.saveNotice')}</p>
         </>
       ) : (
         <div className="feed">

@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import type { MediaState } from '../protocol/MediaState'
 import type { RoomSettings } from '../protocol/RoomSettings'
 import { fetchRoom } from '../lib/api'
+import { downloadText, transcriptFileName } from '../lib/transcript'
 import { useI18n } from '../lib/i18n'
 import { acquireLocalMedia, type LocalMedia } from '../lib/media'
 import { loadPrefs, savePrefs, type Prefs } from '../lib/prefs'
 import { navigate } from '../lib/router'
 import { Header } from './Header'
 import { Lobby } from './Lobby'
+import { Icon } from './Icon'
 import { Room } from './Room'
 
 type Stage = 'lobby' | 'room' | 'left'
@@ -18,6 +20,8 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs)
   const [media, setMedia] = useState<MediaState>({ mic: true, cam: true, screen: false })
   const [stage, setStage] = useState<Stage>('lobby')
+  // 나간 뒤에도 자막을 저장할 수 있게 회의실에서 넘겨받는다(메모리에만, 다시 참여하면 사라진다).
+  const [exportTranscript, setExportTranscript] = useState<(() => string) | null>(null)
   // undefined: 확인 중, null: 없는 회의
   const [room, setRoom] = useState<RoomSettings | null | undefined>(undefined)
 
@@ -63,8 +67,10 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
     savePrefs(next)
   }
 
-  function leave() {
+  function leave(exporter: (() => string) | null) {
     local?.stream.getTracks().forEach((t) => t.stop())
+    // 함수를 상태로 둘 때는 업데이트 함수로 오해되지 않게 감싼다.
+    setExportTranscript(() => exporter)
     setStage('left')
   }
 
@@ -79,6 +85,12 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
         <main className="left">
           <h1>{t('room.left')}</h1>
           <div className="row">
+            {exportTranscript && (
+              <button className="btn btn-outline" onClick={() => downloadText(transcriptFileName(code, new Date()), exportTranscript())}>
+                <Icon name="download" />
+                {t('captions.download')}
+              </button>
+            )}
             <button className="btn btn-outline" onClick={onRejoin}>
               {t('room.rejoin')}
             </button>

@@ -89,7 +89,12 @@ export function Lobby({ code, local, room, prefs, media, onPrefsChange, onMediaC
               placeholder={t('lobby.namePlaceholder')}
             />
           </label>
-          {room?.translation && <LanguageSelects prefs={prefs} onChange={onPrefsChange} />}
+          {room?.translation && (
+            <>
+              <LanguageSelects prefs={prefs} onChange={onPrefsChange} />
+              <p className="lobby-note save-note">{t('captions.saveNotice')}</p>
+            </>
+          )}
           <button className="btn btn-primary btn-lg" disabled={!name || !local || !room}>
             {auth.status === 'host' ? t('lobby.joinNow') : t('lobby.askToJoin')}
           </button>

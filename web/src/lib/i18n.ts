@@ -107,6 +107,10 @@ const en = {
   'captions.offHost': 'Turn them on and everyone will see the original and its translation.',
 
   'captions.title': 'Captions',
+  'captions.download': 'Save captions',
+  'captions.participant': 'Participant',
+  'captions.saveNotice': 'Captions aren’t stored on the server. Anyone in the meeting can save the captions on their own screen as a file.',
+  'transcript.title': 'Parley meeting captions',
   'captions.close': 'Close captions panel',
   'captions.empty': 'Once the conversation starts, the original and its translation will appear here.',
   'captions.translating': 'Translating…',
@@ -221,6 +225,10 @@ const ko: Messages = {
   'captions.offHost': '켜면 모두에게 원문과 번역이 함께 보여요.',
 
   'captions.title': '자막',
+  'captions.download': '자막 저장',
+  'captions.participant': '참가자',
+  'captions.saveNotice': '자막은 서버에 남지 않아요. 참가자는 자기 화면의 자막을 파일로 저장할 수 있어요.',
+  'transcript.title': 'Parley 회의 자막',
   'captions.close': '자막 패널 닫기',
   'captions.empty': '대화가 시작되면 여기에 원문과 번역이 함께 표시돼요.',
   'captions.translating': '번역 중…',
@@ -332,6 +340,10 @@ const ja: Messages = {
   'captions.offHost': 'オンにすると、全員に原文と翻訳が一緒に表示されます。',
 
   'captions.title': '字幕',
+  'captions.download': '字幕を保存',
+  'captions.participant': '参加者',
+  'captions.saveNotice': '字幕はサーバーに残りません。参加者は自分の画面の字幕をファイルに保存できます。',
+  'transcript.title': 'Parley 会議字幕',
   'captions.close': '字幕パネルを閉じる',
   'captions.empty': '会話が始まると、ここに原文と翻訳が一緒に表示されます。',
   'captions.translating': '翻訳中…',

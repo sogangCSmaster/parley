@@ -12,6 +12,7 @@ import type { Prefs } from '../lib/prefs'
 import { Signaling } from '../lib/signaling'
 import { ScreenShare } from '../lib/screen'
 import { startSpeech, type Speech } from '../lib/speech'
+import { downloadText, formatTranscript, Transcript, transcriptFileName } from '../lib/transcript'
 import type { Grant, SegCounter, SttStatus, TokenError } from '../lib/stt'
 import { CaptionPanel } from './CaptionPanel'
 import { Header } from './Header'
@@ -26,7 +27,8 @@ type Props = {
   media: MediaState
   onPrefsChange: (p: Prefs) => void
   onMediaChange: (m: MediaState) => void
-  onLeave: () => void
+  /** 나갈 때 자막 기록을 텍스트로 만드는 함수를 넘긴다(없으면 null). 나간 화면에서 저장을 누를 때만 만든다. */
+  onLeave: (exportTranscript: (() => string) | null) => void
   onRejoin: () => void
 }
 
@@ -64,6 +66,10 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const [settings, setSettings] = useState<RoomSettings>({ translation: true })
   const [knocks, setKnocks] = useState<Knock[]>([])
   const [captions, setCaptions] = useState<Caption[]>([])
+  // 화면 목록(최근 200줄)과 별개로 회의 내내 확정된 자막을 모은다. 다시 연결해도 이어진다.
+  const [transcript] = useState(() => new Transcript())
+  const transcriptRef = useRef(transcript)
+  const [hasTranscript, setHasTranscript] = useState(false)
   // 나간 참가자의 지난 자막에도 이름이 보이도록 이름은 지우지 않고 모은다.
   const [names, setNames] = useState<Record<string, string>>({})
   const [sttStatus, setSttStatus] = useState<SttStatus | null>(null)
@@ -183,9 +189,13 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
         case 'settings':
           setSettings(msg.settings)
           break
-        case 'caption':
-          setCaptions((list) => applyCaption(list, msg, Date.now()))
+        case 'caption': {
+          const now = Date.now()
+          setCaptions((list) => applyCaption(list, msg, now))
+          transcriptRef.current.add(msg, now)
+          setHasTranscript(transcriptRef.current.size > 0)
           break
+        }
         case 'stt_token':
           tokensRef.current.get(msg.id)?.resolve({ token: msg.token, model: msg.model })
           tokensRef.current.delete(msg.id)
@@ -376,6 +386,30 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
     }
   }
 
+  function speakerName(id: string) {
+    return selfIdsRef.current.has(id) ? t('room.you', { name: prefs.name.trim() }) : (names[id] ?? '')
+  }
+
+  function transcriptText(): string {
+    const fileName = (id: string) => speakerName(id) || t('captions.participant')
+    return formatTranscript(transcriptRef.current.entries(), {
+      title: t('transcript.title'),
+      code,
+      savedAt: new Date(),
+      locale,
+      speakerName: fileName,
+    })
+  }
+
+  function downloadTranscript() {
+    downloadText(transcriptFileName(code, new Date()), transcriptText())
+  }
+
+  function leave() {
+    // 나가는 클릭을 늦추지 않도록 텍스트는 저장을 누를 때 만든다.
+    onLeave(transcriptRef.current.size > 0 ? transcriptText : null)
+  }
+
   function admit(id: string) {
     sigRef.current?.send({ t: 'admit', id })
   }
@@ -396,7 +430,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           <span className="spinner" aria-hidden="true" />
           <h1>{t('room.waitingTitle')}</h1>
           <p className="lead">{t('room.waitingBody')}</p>
-          <button className="btn btn-outline" onClick={onLeave}>
+          <button className="btn btn-outline" onClick={leave}>
             {t('room.cancel')}
           </button>
         </main>
@@ -415,7 +449,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             <button className="btn btn-outline" onClick={onRejoin}>
               {t('room.retry')}
             </button>
-            <button className="btn btn-primary" onClick={onLeave}>
+            <button className="btn btn-primary" onClick={leave}>
               {t('room.leave')}
             </button>
           </div>
@@ -493,7 +527,8 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             isHost={isHost}
             captions={captions}
             sttStatus={sttStatus}
-            speakerName={(id) => (selfIdsRef.current.has(id) ? t('room.you', { name: prefs.name.trim() }) : (names[id] ?? ''))}
+            speakerName={speakerName}
+            onDownload={hasTranscript ? downloadTranscript : null}
             onPrefsChange={changePrefs}
             onTranslationChange={changeTranslation}
             onClose={() => setPanelOpen(false)}
@@ -535,7 +570,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           >
             <Icon name={screenTrack ? 'cancel_presentation' : 'present_to_all'} />
           </button>
-          <button className="ctl leave" aria-label={t('ctl.leave')} onClick={onLeave}>
+          <button className="ctl leave" aria-label={t('ctl.leave')} onClick={leave}>
             <Icon name="call_end" />
           </button>
         </div>
