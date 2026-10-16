@@ -461,6 +461,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const hasCam = local.getVideoTracks().length > 0
   const hasMic = local.getAudioTracks().length > 0
   const peerList = Object.values(peers)
+  const alone = peerList.length === 0 && joined
   const presenterId = screenTrack ? 'self' : peerList.find((p) => p.media.screen)?.id
 
   const selfTile = (
@@ -505,9 +506,13 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             <div className="strip">{tiles.filter((t) => t !== mainTile)}</div>
           </section>
         ) : (
-          <section className={`stage count-${tiles.length}`} aria-label={t('room.participants')}>
+          <section
+            className={`stage count-${tiles.length}${alone ? ' alone' : ''}`}
+            aria-label={t('room.participants')}
+          >
             {tiles}
-            {peerList.length === 0 && joined && (
+            {alone && (
+              // 내 화면은 그대로 두고 옆(좁으면 아래)에 초대 카드를 붙인다. 감싸면 내 영상이 다시 마운트돼 깜박인다.
               <div className="invite">
                 <h2>{t('room.aloneTitle')}</h2>
                 <p>{t('room.aloneBody')}</p>
