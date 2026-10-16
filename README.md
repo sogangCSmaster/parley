@@ -107,3 +107,11 @@ node web/tests/browser-stt.mjs speech.wav --lang ko --partner ja
 It calls Gemini for real, so it is not part of CI. `CHROMIUM_PATH` picks a different Chromium build.
 
 These scripts check waiting-room disconnects, failed admissions, mobile caption controls, mute preservation and capture cleanup, plus real WebRTC connections with and without local devices. Signaling and the screen picker are mocked. `TEST_ORIGIN` overrides the default `http://127.0.0.1:5173`.
+
+## License
+
+Copyright (C) 2026 Yoo Seung Jae
+
+Parley is free software under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
+If you run a modified version as a network service, you must offer its source code to the users of that service.
+Third-party material is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
