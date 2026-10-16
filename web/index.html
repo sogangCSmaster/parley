@@ -4,7 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tolkmeet</title>
+    <!-- 파비콘: 최신 브라우저는 SVG, 그 밖은 ico(16·32·48), iOS 홈 화면은 apple-touch-icon, 안드로이드는 매니페스트. 첫 화면 요청은 그대로 1개(SVG). -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#16181D" />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <!-- Pretendard JP는 한글·일본어·라틴을 모두 포함한다. dynamic subset이라 화면에 쓰인 글자 범위의 조각만 내려받는다. -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-jp-dynamic-subset.min.css" />
