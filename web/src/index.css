@@ -127,7 +127,7 @@ h1 { text-wrap: balance; }
  * 크기는 글자 크기(em)와 줄 높이(lh)를 따라가서 자막 패널·자막 화면·대면 모드·예시 어디서나 같은 비율로 보인다.
  */
 .tr-mark { position: relative; padding-left: .8em; }
-.tr-mark::before { content: ""; position: absolute; left: 0; top: calc(.5lh - .08em); width: .46em; height: max(2px, .16em); border-radius: 1em; background: var(--brand-accent); }
+.tr-mark::before { content: ""; position: absolute; left: 0; top: .7em; top: calc(.5lh - .08em); width: .46em; height: max(2px, .16em); border-radius: 1em; background: var(--brand-accent); }
 .pending .tr-mark::before { opacity: .45; }
 
 /* 자막 항목 (패널·데모 공통) */
