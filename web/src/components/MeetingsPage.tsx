@@ -73,7 +73,7 @@ export function MeetingsPage() {
   async function remove(m: Meeting) {
     // 이미 링크를 받은 손님이 있을 수 있으니 한 번 확인한다.
     const title = m.title || t('meetings.untitled')
-    const ended = m.endedAt != null || m.startedAt != null
+    const ended = m.endedAt != null
     if (!window.confirm(t(ended ? 'meetings.deletePastConfirm' : 'meetings.deleteConfirm', { title }))) return
     const r = await api.del(`/api/meetings/${m.id}`)
     if (r.ok) reload()

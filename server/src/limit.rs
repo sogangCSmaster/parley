@@ -80,11 +80,8 @@ impl KeyedLimiter {
         let now = Instant::now();
         let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let ready = |b: &TokenBucket| (b.tokens + now.saturating_duration_since(b.at).as_secs_f64() * b.rate).min(b.burst) >= 1.0;
-        match inner.map.get(key) {
-            Some(b) => ready(b),
-            None if inner.map.len() < self.cap => true,
-            None => ready(&inner.overflow),
-        }
+        // 맵에 없는 키는 허용으로 본다: 가득 찼을 때의 정리·넘침 버킷 판단은 `check`가 한다.
+        inner.map.get(key).is_none_or(ready)
     }
 
     pub fn check(&self, key: &str) -> bool {

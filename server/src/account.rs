@@ -652,7 +652,11 @@ pub async fn login_mfa(
         return error(StatusCode::UNAUTHORIZED, "expired");
     };
     let ip = client(&state, peer, &headers);
-    if !state.auth.count_mfa_attempt(&req.ticket) || !state.accounts.may_try_login_mfa(user_id, ip) {
+    // 이 로그인 시도(티켓)의 횟수를 다 썼으면 다시 로그인하면 되고, 사용자·클라이언트 한도에 걸렸으면 기다려야 한다.
+    if !state.auth.count_mfa_attempt(&req.ticket) {
+        return error(StatusCode::TOO_MANY_REQUESTS, "ticket_spent");
+    }
+    if !state.accounts.may_try_login_mfa(user_id, ip) {
         return error(StatusCode::TOO_MANY_REQUESTS, "locked");
     }
     let code = req.code.clone();
