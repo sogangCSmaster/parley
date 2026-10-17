@@ -1,5 +1,5 @@
 ---
-// 약관·개인정보·환불 페이지의 공통 틀(영어만). 머리 막대, 제목, 초안 안내, 목차(있으면), 본문, 바닥 줄.
+// 약관·개인정보·환불 페이지의 공통 틀(영어만). 머리 막대, 제목, 목차(있으면), 본문, 바닥 줄.
 import Base from '../layouts/Base.astro'
 import Mark from './Mark.astro'
 import { en } from '../i18n/en'
@@ -18,8 +18,8 @@ interface Props {
 const { page, title, metaTitle, metaDescription, updated, toc } = Astro.props
 const links: [Page, string][] = [['privacy', 'Privacy'], ['terms', 'Terms'], ['refund', 'Refunds']]
 const href = (p: Page) => `/${p}/`
-// Base는 hreflang 대안을 언어별 첫 페이지로 건다. 이 페이지들은 영어 하나뿐이라 그 대안이 틀리고,
-// 아직 법무 검토 전 초안이므로 noindex로 둔다(대표 주소·대안 링크도 함께 빠진다).
+// Base는 hreflang 대안을 언어별 첫 페이지로 건다. 이 페이지들은 영어 하나뿐이라 그 대안이 틀리므로
+// noindex로 둔다(대표 주소·대안 링크도 함께 빠진다). 검색에 올리려면 Base에 대안 링크를 끄는 옵션부터 만든다.
 const t = { ...en, metaTitle, metaDescription, path: href(page) }
 ---
 <Base t={t} noindex>
@@ -40,7 +40,6 @@ const t = { ...en, metaTitle, metaDescription, path: href(page) }
           <header class="legal-head">
             <h1>{title}</h1>
             <p class="legal-date">{updated}</p>
-            <p class="legal-draft">Draft for legal review. Not yet in effect.</p>
           </header>
           <div class="legal-body has-toc">
             <nav class="legal-toc" aria-label="On this page">
@@ -54,14 +53,13 @@ const t = { ...en, metaTitle, metaDescription, path: href(page) }
         <article class="legal-text legal-single">
           <h1>{title}</h1>
           <p class="legal-date">{updated}</p>
-          <p class="legal-draft">Draft for legal review. Not yet in effect.</p>
           <slot />
         </article>
       )}
     </main>
 
     <footer class="legal-foot">
-      © 2026 [COMPANY NAME]{links.map(([p, label]) => <> · <a href={href(p)}>{label}</a></>)}
+      © 2026 휘슬리{links.map(([p, label]) => <> · <a href={href(p)}>{label}</a></>)}
     </footer>
   </div>
 </Base>

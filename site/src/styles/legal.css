@@ -2,11 +2,11 @@
  * 약관·개인정보·환불 페이지(design/v2/source/{Privacy,Terms,Refund}.dc.html). site.css의 토큰과 다크 값을 그대로 쓴다.
  * 밝은 화면은 흰 바탕 위 회색 면(디자인), 어두운 화면은 가장 어두운 바탕 위 한 단계 밝은 면.
  */
-:root { --legal-bg: var(--panel-bg); --legal-card: var(--page-bg); --notice-bg: #FFF1EC; --notice-fg: #9E2D14; }
+:root { --legal-bg: var(--panel-bg); --legal-card: var(--page-bg); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --legal-bg: var(--page-bg); --legal-card: var(--panel-bg); --notice-bg: rgb(242 84 45 / .16); --notice-fg: #FF8A66; }
+  :root:not([data-theme="light"]) { --legal-bg: var(--page-bg); --legal-card: var(--panel-bg); }
 }
-:root[data-theme="dark"] { --legal-bg: var(--page-bg); --legal-card: var(--panel-bg); --notice-bg: rgb(242 84 45 / .16); --notice-fg: #FF8A66; }
+:root[data-theme="dark"] { --legal-bg: var(--page-bg); --legal-card: var(--panel-bg); }
 
 body:has(> .legal) { background: var(--legal-bg); }
 .legal a { color: var(--accent-text); text-decoration: none; }
@@ -24,7 +24,6 @@ body:has(> .legal) { background: var(--legal-bg); }
 .legal-head { padding-top: 88px; padding-bottom: 40px; }
 .legal h1 { font-size: clamp(40px, 5vw, 64px); font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; }
 .legal .legal-date { margin-top: 14px; color: var(--text-secondary); font-size: 17px; }
-.legal .legal-draft { display: inline-flex; margin-top: 16px; padding: 6px 12px; border-radius: 8px; background: var(--notice-bg); color: var(--notice-fg); font-size: 13px; font-weight: 600; line-height: 1.5; }
 
 .legal-body { display: grid; gap: 40px; padding-bottom: 120px; }
 .legal-toc { display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.4; }
