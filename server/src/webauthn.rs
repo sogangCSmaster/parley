@@ -15,7 +15,10 @@ use serde_json::{Value as Json, json};
 use sha2::{Digest, Sha256};
 
 const CHALLENGE_TTL: Duration = Duration::from_secs(5 * 60);
+const MAX_PENDING: usize = 10_000;
 const FLAG_UP: u8 = 0x01;
+/// 지문·PIN 등으로 사용자를 확인함. 패스키 로그인은 비밀번호와 2차 인증을 모두 대신하므로 반드시 요구한다.
+const FLAG_UV: u8 = 0x04;
 const FLAG_AT: u8 = 0x40;
 
 pub struct WebAuthn {
@@ -99,6 +102,12 @@ impl WebAuthn {
         let challenge = B64.encode(bytes);
         let mut map = self.challenges.lock().unwrap();
         map.retain(|_, (_, _, at)| at.elapsed() < CHALLENGE_TTL);
+        // 로그인하지 않은 요청도 하나씩 쌓으므로 상한을 두고, 넘으면 가장 오래된 것을 버린다.
+        if map.len() >= MAX_PENDING
+            && let Some(oldest) = map.iter().min_by_key(|(_, (_, _, at))| *at).map(|(k, _)| k.clone())
+        {
+            map.remove(&oldest);
+        }
         map.insert(challenge.clone(), (purpose, user, Instant::now()));
         challenge
     }
@@ -123,7 +132,7 @@ impl WebAuthn {
             "rp": { "id": self.rp_id, "name": "Tolkmeet" },
             "user": { "id": B64.encode(user_id.to_be_bytes()), "name": email, "displayName": if name.is_empty() { email } else { name } },
             "pubKeyCredParams": [{ "type": "public-key", "alg": -7 }],
-            "authenticatorSelection": { "residentKey": "required", "userVerification": "preferred" },
+            "authenticatorSelection": { "residentKey": "required", "userVerification": "required" },
             "excludeCredentials": exclude.iter().map(|id| json!({ "type": "public-key", "id": id })).collect::<Vec<_>>(),
             "attestation": "none",
             "timeout": 300_000,
@@ -136,7 +145,7 @@ impl WebAuthn {
         json!({
             "challenge": challenge,
             "rpId": self.rp_id,
-            "userVerification": "preferred",
+            "userVerification": "required",
             "timeout": 300_000,
         })
     }
@@ -235,7 +244,10 @@ impl WebAuthn {
         let auth_data = B64
             .decode(&res.response.authenticator_data)
             .map_err(|_| "auth data")?;
-        let (_, count) = self.check_rp(&auth_data)?;
+        let (flags, count) = self.check_rp(&auth_data)?;
+        if flags & FLAG_UV == 0 {
+            return Err("user verification");
+        }
         let (user, key, stored) = lookup(&res.id).ok_or("unknown credential")?;
         let key = VerifyingKey::from_sec1_bytes(&key).map_err(|_| "key")?;
         let sig = B64
@@ -369,7 +381,7 @@ mod tests {
         assert!(wa.finish_registration(&reg).is_err());
 
         let login = |challenge: &str, origin: &str, count: u32| {
-            let ad = auth_data("meet.example.com", FLAG_UP, count, None);
+            let ad = auth_data("meet.example.com", FLAG_UP | FLAG_UV, count, None);
             let cd = client_data("webauthn.get", challenge, origin);
             let mut signed = ad.clone();
             signed.extend_from_slice(&Sha256::digest(B64.decode(&cd).unwrap()));

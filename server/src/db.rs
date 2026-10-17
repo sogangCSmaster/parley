@@ -125,6 +125,8 @@ const MIGRATIONS: &[&str] = &[
          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
          expires_at INTEGER NOT NULL
      );",
+    // 지금 구독에 마지막으로 반영한 Paddle 이벤트 시각(늦게 도착한 옛 이벤트를 버리려고)
+    "ALTER TABLE users ADD COLUMN paddle_event_at INTEGER NOT NULL DEFAULT 0;",
 ];
 
 impl Db {

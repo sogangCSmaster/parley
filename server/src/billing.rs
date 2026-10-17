@@ -221,6 +221,8 @@ impl Billing {
             .as_str()
             .map(str::to_owned);
         let currency = data["currency_code"].as_str().unwrap_or("USD").to_owned();
+        // Paddle은 이벤트 순서를 보장하지 않는다. 일어난 시각으로 늦게 온 옛 이벤트를 가린다.
+        let occurred = event["occurred_at"].as_str().and_then(parse_rfc3339).unwrap_or(0);
 
         db.call(move |c| {
             let tx = c.transaction()?;
@@ -259,6 +261,24 @@ impl Billing {
                 tx.commit()?;
                 return Ok(None);
             };
+            // 구독 이벤트는 그 사용자의 지금 구독에만 반영한다. 새 구독(created·activated)만 지금 구독을 바꿀 수 있고,
+            // 같은 구독이면 이미 반영한 것보다 오래된 이벤트는 버린다.
+            if is_subscription {
+                let (current, last_at): (Option<String>, i64) = tx.query_row(
+                    "SELECT paddle_subscription_id, paddle_event_at FROM users WHERE id = ?1",
+                    params![user],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                let same = current.is_some() && current == subscription;
+                let starts_new = matches!(kind.as_str(), "subscription.created" | "subscription.activated");
+                let stale = same && occurred < last_at;
+                if stale || !(same || current.is_none() || starts_new) {
+                    tracing::info!(event = %id, "paddle event for an old subscription or out of order: ignored");
+                    tx.commit()?;
+                    return Ok(None);
+                }
+                tx.execute("UPDATE users SET paddle_event_at = ?2 WHERE id = ?1", params![user, occurred])?;
+            }
             let mut receipt = None;
             match kind.as_str() {
                 "subscription.created" | "subscription.activated" | "subscription.updated" | "subscription.resumed" => {
@@ -275,8 +295,8 @@ impl Billing {
                 }
                 "subscription.canceled" | "subscription.paused" => {
                     tx.execute(
-                        "UPDATE users SET plan = 'none', plan_canceled = 0, plan_renews_at = NULL WHERE id = ?1",
-                        params![user],
+                        "UPDATE users SET plan = 'none', plan_canceled = 0, plan_renews_at = NULL WHERE id = ?1 AND paddle_subscription_id = ?2",
+                        params![user, subscription],
                     )?;
                 }
                 "transaction.completed" if hours > 0 => {
@@ -436,6 +456,43 @@ mod tests {
             price_hour: "pri_hour".into(),
             http: reqwest::Client::new(),
         }
+    }
+
+    #[tokio::test]
+    async fn old_subscription_events_do_not_touch_the_new_one() {
+        let db = Db::memory();
+        let uid = db
+            .blocking(|c| {
+                c.execute("INSERT INTO users (email, created_at) VALUES ('a@b.co', 1)", [])?;
+                Ok(c.last_insert_rowid())
+            })
+            .unwrap();
+        let b = billing();
+        let sig = b.sign_user(uid);
+        let ev = |id: &str, kind: &str, sub: &str, status: &str, at: &str| {
+            json!({ "event_id": id, "event_type": kind, "occurred_at": at,
+                    "data": { "id": sub, "status": status, "custom_data": { "user_id": uid.to_string(), "sig": sig },
+                              "items": [{ "price": { "id": "pri_pro" }, "quantity": 1 }] } })
+        };
+        let plan = || -> (String, String) {
+            db.blocking(|c| {
+                c.query_row("SELECT plan, paddle_subscription_id FROM users WHERE id = ?1", params![uid], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })
+            })
+            .unwrap()
+        };
+        b.apply_event(&db, ev("e1", "subscription.activated", "sub_a", "active", "2026-10-01T00:00:00Z")).await.unwrap();
+        b.apply_event(&db, ev("e2", "subscription.activated", "sub_b", "active", "2026-10-10T00:00:00Z")).await.unwrap();
+        assert_eq!(plan(), ("pro".into(), "sub_b".into()));
+        // 옛 구독의 해지·변경 이벤트는 새 구독에 반영하지 않는다.
+        b.apply_event(&db, ev("e3", "subscription.canceled", "sub_a", "canceled", "2026-10-11T00:00:00Z")).await.unwrap();
+        b.apply_event(&db, ev("e4", "subscription.updated", "sub_a", "active", "2026-10-12T00:00:00Z")).await.unwrap();
+        assert_eq!(plan(), ("pro".into(), "sub_b".into()));
+        // 같은 구독이라도 늦게 온 옛 이벤트는 버린다.
+        b.apply_event(&db, ev("e5", "subscription.canceled", "sub_b", "canceled", "2026-10-20T00:00:00Z")).await.unwrap();
+        b.apply_event(&db, ev("e6", "subscription.updated", "sub_b", "active", "2026-10-15T00:00:00Z")).await.unwrap();
+        assert_eq!(plan().0, "none");
     }
 
     #[tokio::test]

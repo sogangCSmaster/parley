@@ -258,6 +258,7 @@ async fn run() {
         .route("/api/auth/google", get(account::google_start))
         .route("/api/auth/google/callback", get(account::google_callback))
         .route("/api/auth/google/unlink", post(account::google_unlink))
+        .route("/api/auth/google/link", post(account::google_link))
         .route("/api/rooms", post(meetings::create_room))
         .route("/api/rooms/{code}", get(meetings::room_info))
         .route("/api/meetings", get(meetings::list).post(meetings::schedule))
@@ -271,6 +272,10 @@ async fn run() {
         .route("/api/billing/{action}", post(meetings::manage))
         .route("/api/paddle/webhook", post(meetings::paddle_webhook))
         .route("/ws", get(ws::handler))
+        .layer(axum::middleware::from_fn_with_state(
+            state.accounts.origin.clone(),
+            same_site_writes,
+        ))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr)
@@ -286,4 +291,32 @@ async fn run() {
     })
     .await
     .expect("server error");
+}
+
+/// 쿠키로 로그인한 상태를 바꾸는 API 요청은 우리 화면에서 온 것만 받는다(SameSite에 더한 CSRF 방어).
+/// 브라우저가 보낸 Origin이 앱 주소와 다르거나 Sec-Fetch-Site가 다른 사이트면 거부한다.
+/// Paddle 웹훅은 서명으로 확인하므로 제외한다.
+async fn same_site_writes(
+    axum::extract::State(origin): axum::extract::State<String>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::{Method, StatusCode};
+    use axum::response::IntoResponse;
+    let writes = !matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS);
+    let path = req.uri().path();
+    if writes && path.starts_with("/api/") && path != "/api/paddle/webhook" {
+        let headers = req.headers();
+        let foreign_origin = headers
+            .get(axum::http::header::ORIGIN)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|o| o != origin);
+        let cross_site = headers
+            .get("sec-fetch-site")
+            .is_some_and(|v| v.as_bytes() == b"cross-site");
+        if foreign_origin || cross_site {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+    }
+    next.run(req).await
 }

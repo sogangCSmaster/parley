@@ -63,8 +63,11 @@ impl KeyedLimiter {
                 b.tokens = (b.tokens + now.saturating_duration_since(b.at).as_secs_f64() * b.rate).min(b.burst);
                 b.tokens < b.burst
             });
-            if map.len() >= self.cap {
-                return false;
+            // 그래도 가득하면 가장 오래 안 쓴 키 하나를 버린다(가득 찼다고 모든 새 키를 막으면 누구도 못 쓴다).
+            if map.len() >= self.cap
+                && let Some(oldest) = map.iter().min_by_key(|(_, b)| b.at).map(|(k, _)| k.clone())
+            {
+                map.remove(&oldest);
             }
         }
         map.entry(key.to_owned())

@@ -516,6 +516,10 @@ pub async fn update(
         Ok(id) => id,
         Err(r) => return r,
     };
+    // 요금제가 끝난 계정은 예약 회의를 고치거나 초대 메일을 보내지 못한다(예약과 같게).
+    if plan_of(state.auth.db(), uid).await == "none" {
+        return error(StatusCode::PAYMENT_REQUIRED, "plan");
+    }
     let m = match clean_meeting(&req) {
         Ok(m) => m,
         Err(field) => return error(StatusCode::BAD_REQUEST, field),
@@ -588,6 +592,10 @@ pub async fn invite(
         Ok(id) => id,
         Err(r) => return r,
     };
+    // 요금제가 끝난 계정은 예약 회의를 고치거나 초대 메일을 보내지 못한다(예약과 같게).
+    if plan_of(state.auth.db(), uid).await == "none" {
+        return error(StatusCode::PAYMENT_REQUIRED, "plan");
+    }
     let db = state.auth.db().clone();
     let Some(mut meeting) = owned(&db, uid, id).await else {
         return error(StatusCode::NOT_FOUND, "missing");
@@ -873,6 +881,10 @@ pub async fn checkout(
             error(StatusCode::SERVICE_UNAVAILABLE, "billing")
         };
     };
+    // 이미 구독 중이면 새 구독을 만들지 않는다(두 번 결제되지 않게). 요금제 바꾸기·다시 이어 쓰기로 처리한다.
+    if req.item != "hours" && plan_of(state.auth.db(), uid).await != "none" {
+        return error(StatusCode::CONFLICT, "subscribed");
+    }
     let price = if req.item == "hours" {
         Some(b.price_hour.as_str())
     } else {
@@ -1120,6 +1132,10 @@ pub async fn refresh_quota(state: &AppState) {
 
 /// 주기 작업: 잰 번역 시간을 기록하고, 시간이 떨어진 주최자의 회의를 막는다.
 pub async fn tick(state: &AppState, metered: &[Metered]) {
+    // 주기 작업과 웹훅의 확인이 겹치면 늦게 끝난 쪽이 옛 목록으로 덮어쓸 수 있어 한 번에 하나씩 돈다.
+    // 회의 요청 경로가 아니라(주기 작업·결제 웹훅) 기다려도 회의는 막히지 않는다.
+    static TICK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _one_at_a_time = TICK.lock().await;
     let check = state.rooms.out_of_time_hosts();
     let metered: Vec<Metered> = metered.to_vec();
     let now = now_secs();

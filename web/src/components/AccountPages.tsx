@@ -846,6 +846,7 @@ function TotpCard({ user }: { user: User }) {
 function PasswordCard({ user }: { user: User }) {
   const { t, locale } = useI18n()
   const [open, setOpen] = useState(false)
+  const [linking, setLinking] = useState(false)
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [busy, setBusy] = useState(false)
@@ -865,6 +866,15 @@ function PasswordCard({ user }: { user: User }) {
     setNext('')
     setNote('account.passwordChanged')
     void refreshUser()
+  }
+
+  // Google 연결은 비밀번호 없이 들어올 길이 하나 더 생기므로 한 번 더 확인한 뒤 Google로 보낸다.
+  async function link(password: string) {
+    setError(null)
+    const r = await api.post<{ url: string }>('/api/auth/google/link', { password, locale })
+    if (r.ok) return location.assign(r.data.url)
+    setLinking(false)
+    setError(errorKey(r.code))
   }
 
   async function unlink() {
@@ -908,13 +918,19 @@ function PasswordCard({ user }: { user: User }) {
             {t('account.disconnect')}
           </button>
         ) : (
-          features().google && (
-            <a className="link-btn" href="/api/auth/google">
+          features().google &&
+          !linking && (
+            <button className="link-btn" onClick={() => setLinking(true)}>
               {t('account.connect')}
-            </a>
+            </button>
           )
         )}
       </Row>
+      {linking && (
+        <div className="settings-row">
+          <PasswordGate user={user} label={t('account.continue')} onPass={(p) => void link(p)} />
+        </div>
+      )}
       {!open && <Message error={error} note={note} />}
     </Card>
   )

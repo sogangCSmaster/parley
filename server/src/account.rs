@@ -44,8 +44,10 @@ pub struct Accounts {
     /// 초대 메일: 보내는 사람마다 하루 100통, 받는 사람마다 하루 5통.
     invites_by_user: KeyedLimiter,
     invites_by_rcpt: KeyedLimiter,
-    /// 로그인한 뒤의 2차 인증 코드 확인(끄기·복구 코드): 사용자마다 15분에 10번
+    /// 2차 인증 코드 확인(로그인·켜기·끄기·복구 코드): 사용자마다 15분에 10번, 하루 30번.
+    /// 로그인할 때마다 새 티켓이 나오므로 티켓마다 세는 것만으로는 비밀번호를 아는 사람이 계속 맞혀 볼 수 있다.
     totp_by_user: KeyedLimiter,
+    totp_daily: KeyedLimiter,
     /// Google 로그인 진행 중: state → (nonce, 연결할 사용자, 화면 언어, 시작 시각)
     oauth: Mutex<HashMap<String, OAuthPending>>,
 }
@@ -87,6 +89,7 @@ impl Accounts {
             invites_by_user: KeyedLimiter::new(100, Duration::from_secs(86_400)),
             invites_by_rcpt: KeyedLimiter::new(5, Duration::from_secs(86_400)),
             totp_by_user: KeyedLimiter::new(10, Duration::from_secs(15 * 60)),
+            totp_daily: KeyedLimiter::new(30, Duration::from_secs(86_400)),
             oauth: Mutex::default(),
         }
     }
@@ -97,8 +100,15 @@ impl Accounts {
     }
 
     /// 메일을 보내는 요청의 빈도 제한. 넘으면 조용히 보내지 않는다(응답은 같게 해 계정 존재를 숨긴다).
+    /// IPv6는 /64로 묶는다(주소를 바꿔 가며 피하지 못하게).
     fn may_mail(&self, ip: IpAddr, email: &str) -> bool {
-        self.by_ip.check(&ip.to_string()) && self.by_email.check(email)
+        self.by_ip.check(&auth::client_key(ip).to_string()) && self.by_email.check(email)
+    }
+
+    /// 이 사용자의 2차 인증 코드를 한 번 더 확인해 봐도 되는지.
+    pub fn may_try_totp(&self, user_id: i64) -> bool {
+        let key = user_id.to_string();
+        self.totp_by_user.check(&key) && self.totp_daily.check(&key)
     }
 }
 
@@ -184,7 +194,10 @@ async fn breached(password: &str) -> bool {
         .map(|b| format!("{b:02X}"))
         .collect();
     let (prefix, suffix) = hex.split_at(5);
-    let res = reqwest::Client::new()
+    // 연결을 다시 쓰게 하나만 만든다(요청마다 TLS 연결을 새로 맺지 않게).
+    static HTTP: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let res = HTTP
+        .get_or_init(reqwest::Client::new)
         .get(format!("https://api.pwnedpasswords.com/range/{prefix}"))
         .header("Add-Padding", "true")
         .timeout(Duration::from_secs(3))
@@ -428,11 +441,13 @@ pub async fn verify(
     }
     let opened = db
         .call(move |c| {
-            c.execute(
+            let tx = c.transaction()?;
+            tx.execute(
                 "UPDATE users SET email_verified = 1, password_hash = ?2, password_changed_at = ?3 WHERE id = ?1 AND email_verified = 0",
                 params![user_id, hash, now],
             )?;
-            c.execute("DELETE FROM email_codes WHERE user_id = ?1 AND kind = 'verify'", params![user_id])
+            tx.execute("DELETE FROM email_codes WHERE user_id = ?1 AND kind = 'verify'", params![user_id])?;
+            tx.commit()
         })
         .await;
     if opened.is_err() {
@@ -579,7 +594,7 @@ pub async fn login_mfa(
     let Some(user_id) = state.auth.mfa_ticket_user(&req.ticket) else {
         return error(StatusCode::UNAUTHORIZED, "expired");
     };
-    if !state.auth.count_mfa_attempt(&req.ticket) {
+    if !state.auth.count_mfa_attempt(&req.ticket) || !state.accounts.may_try_totp(user_id) {
         return error(StatusCode::TOO_MANY_REQUESTS, "locked");
     }
     let code = req.code.clone();
@@ -757,15 +772,32 @@ pub async fn reset(
     if !valid_password(&req.password) {
         return error(StatusCode::BAD_REQUEST, "password");
     }
+    let want = code_hash(req.uid, &req.token);
+    let uid = req.uid;
+    let now = now_secs();
+    // 비싼 일(유출 확인 요청·argon2)은 링크가 맞을 때만 한다(엉터리 요청으로 서버를 바쁘게 하지 못하게).
+    let check = want.clone();
+    let valid = state
+        .auth
+        .db()
+        .call(move |c| {
+            c.query_row(
+                "SELECT EXISTS(SELECT 1 FROM email_codes WHERE user_id = ?1 AND kind = 'reset' AND code_hash = ?2 AND expires_at > ?3)",
+                params![uid, check, now],
+                |r| r.get::<_, bool>(0),
+            )
+        })
+        .await
+        .unwrap_or(false);
+    if !valid {
+        return error(StatusCode::BAD_REQUEST, "token");
+    }
     if breached(&req.password).await {
         return error(StatusCode::BAD_REQUEST, "breached");
     }
     let Some(hash) = hash_async(&req.password).await else {
         return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
     };
-    let want = code_hash(req.uid, &req.token);
-    let uid = req.uid;
-    let now = now_secs();
     let result = state
         .auth
         .db()
@@ -1414,6 +1446,9 @@ pub async fn export(State(state): State<AppState>, headers: HeaderMap) -> Respon
 pub struct ReauthReq {
     #[serde(default)]
     password: String,
+    /// Google 연결에서만: 메일 등에 쓸 화면 언어
+    #[serde(default)]
+    locale: String,
 }
 
 pub async fn totp_setup(
@@ -1487,7 +1522,7 @@ pub async fn totp_enable(
         Err(r) => return r,
     };
     // 6자리 코드를 무차별로 맞혀 보지 못하게 다른 인증 앱 확인과 같은 한도를 둔다.
-    if !state.accounts.totp_by_user.check(&uid.to_string()) {
+    if !state.accounts.may_try_totp(uid) {
         return error(StatusCode::TOO_MANY_REQUESTS, "locked");
     }
     let code = req.code.clone();
@@ -1537,7 +1572,7 @@ pub async fn totp_recovery(
         Ok(id) => id,
         Err(r) => return r,
     };
-    if !state.accounts.totp_by_user.check(&uid.to_string()) {
+    if !state.accounts.may_try_totp(uid) {
         return error(StatusCode::TOO_MANY_REQUESTS, "locked");
     }
     let code = req.code.clone();
@@ -1569,7 +1604,7 @@ pub async fn totp_disable(
         Ok(id) => id,
         Err(r) => return r,
     };
-    if !state.accounts.totp_by_user.check(&uid.to_string()) {
+    if !state.accounts.may_try_totp(uid) {
         return error(StatusCode::TOO_MANY_REQUESTS, "locked");
     }
     let code = req.code.clone();
@@ -1794,28 +1829,67 @@ pub struct GoogleStart {
     locale: String,
 }
 
-pub async fn google_start(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Query(q): Query<GoogleStart>,
-) -> Response {
-    let Some(google) = &state.accounts.google else {
+pub async fn google_start(State(state): State<AppState>, Query(q): Query<GoogleStart>) -> Response {
+    let Some((url, cookie)) = google_begin(&state, None, &q.locale) else {
         return Redirect::to("/login?error=google").into_response();
     };
-    let link = state.auth.user_id_from_headers(&headers);
+    ([(header::SET_COOKIE, cookie)], Redirect::to(&url)).into_response()
+}
+
+/// 로그인한 계정에 Google 계정을 연결한다. 비밀번호 없이 들어올 길이 하나 더 생기므로
+/// 다른 민감한 작업처럼 다시 확인하고, 이미 연결돼 있으면 덮어쓰지 않는다(먼저 연결을 끊어야 한다).
+pub async fn google_link(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(req): Json<ReauthReq>,
+) -> Response {
+    let uid = match require_user(&state, &headers) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    if let Err(r) = reauth(&state, uid, &headers, client(&state, peer, &headers), &req.password).await {
+        return r;
+    }
+    let linked: bool = state
+        .auth
+        .db()
+        .call(move |c| {
+            c.query_row(
+                "SELECT google_sub IS NOT NULL FROM users WHERE id = ?1",
+                params![uid],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .unwrap_or(true);
+    if linked {
+        return error(StatusCode::CONFLICT, "linked");
+    }
+    let locale = req.locale.clone();
+    let Some((url, cookie)) = google_begin(&state, Some(uid), &locale) else {
+        return error(StatusCode::NOT_FOUND, "google");
+    };
+    ([(header::SET_COOKIE, cookie)], Json(json!({ "url": url }))).into_response()
+}
+
+/// Google 로그인을 시작한다: state·nonce를 기억하고 (이동할 주소, 이 브라우저에 묶을 쿠키)를 돌려준다.
+fn google_begin(state: &AppState, link: Option<i64>, locale: &str) -> Option<(String, String)> {
+    let google = state.accounts.google.as_ref()?;
     let st = new_token();
     let nonce = new_token();
     {
         let mut map = state.accounts.oauth.lock().unwrap();
         map.retain(|_, (_, _, _, at)| at.elapsed() < OAUTH_TTL);
+        // 로그인하지 않은 요청도 하나씩 쌓으므로 상한을 두고, 넘으면 가장 오래된 것을 버린다.
+        if map.len() >= 10_000
+            && let Some(oldest) = map.iter().min_by_key(|(_, (_, _, _, at))| *at).map(|(k, _)| k.clone())
+        {
+            map.remove(&oldest);
+        }
         map.insert(
             st.clone(),
-            (
-                nonce.clone(),
-                link,
-                clean_locale(&q.locale).to_owned(),
-                Instant::now(),
-            ),
+            (nonce.clone(), link, clean_locale(locale).to_owned(), Instant::now()),
         );
     }
     let redirect = format!("{}/api/auth/google/callback", state.accounts.origin);
@@ -1829,7 +1903,7 @@ pub async fn google_start(
     let cookie = format!(
         "{OAUTH_COOKIE}={st}; Path=/api/auth/google; HttpOnly; SameSite=Lax; Max-Age=600{secure}"
     );
-    ([(header::SET_COOKIE, cookie)], Redirect::to(&url)).into_response()
+    Some((url, cookie))
 }
 
 fn urlencode(s: &str) -> String {
@@ -2013,12 +2087,14 @@ fn google_account(
     if let Some(uid) = link {
         return match by_sub {
             Some(other) if other != uid => Ok(None),
-            _ => {
-                c.execute(
-                    "UPDATE users SET google_sub = ?2 WHERE id = ?1",
+            Some(_) => Ok(Some((uid, false))),
+            None => {
+                // 이미 다른 Google 계정이 연결돼 있으면 덮어쓰지 않는다.
+                let changed = c.execute(
+                    "UPDATE users SET google_sub = ?2 WHERE id = ?1 AND google_sub IS NULL",
                     params![uid, sub],
                 )?;
-                Ok(Some((uid, false)))
+                Ok((changed == 1).then_some((uid, false)))
             }
         };
     }

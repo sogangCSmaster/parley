@@ -33,6 +33,8 @@ pub const RESUME_TTL: Duration = Duration::from_secs(2 * 60);
 /// 연결이 아니라 참가자에 묶는다: 재입장 토큰으로 연결만 바꿔 가며 새 한도를 받지 못하게.
 pub const STT_TOKENS_PER_SEC: f64 = 1.0 / 30.0;
 pub const STT_TOKEN_BURST: f64 = 4.0;
+/// 혼자 있는 방(대면 대화·자막 화면)은 이 시간 안에 번역을 썼을 때만 번역 시간으로 센다.
+const SOLO_ACTIVE: Duration = Duration::from_secs(90);
 
 /// 혼동하기 쉬운 문자(l, o, 0, 1)를 뺀 32자. 4-4-4 형식이면 60bit.
 const CODE_ALPHABET: &[u8] = b"abcdefghijkmnpqrstuvwxyz23456789";
@@ -85,8 +87,11 @@ struct Room {
     /// 재입장 토큰 → 참가자. 입장할 때 하나씩 발급하고, 쓰면 없어진다.
     resumes: HashMap<String, Resume>,
     /// 번역 시간 측정: 마지막으로 잰 시점과 아직 보고하지 않은 초.
+    /// 입장·퇴장·번역 켜고 끄기마다 그 앞까지를 쌓는다(주기 측정 순간의 상태만 보면 그 순간만 피해 갈 수 있다).
     metered_at: Instant,
     unreported: f64,
+    /// 마지막으로 번역을 실제로 쓴 때(음성 인식 토큰을 받거나 자막을 번역함). 혼자 쓰는 대면·자막 화면도 세려고.
+    used_at: Option<Instant>,
     /// 측정할 때 본 최대 인원과 마지막으로 보고한 값
     peak: usize,
     reported_peak: usize,
@@ -116,8 +121,24 @@ impl Room {
             idle_since: Some(now),
             metered_at: now,
             unreported: 0.0,
+            used_at: None,
             peak: 0,
             reported_peak: 0,
+        }
+    }
+
+    /// 지난 측정부터 지금까지를 쌓는다. 번역이 켜져 있고, 두 명 이상이거나 혼자라도 방금 번역을 썼으면 센다.
+    fn accrue(&mut self, now: Instant) {
+        let elapsed = now.saturating_duration_since(self.metered_at).as_secs_f64();
+        self.metered_at = now;
+        let solo_active = self
+            .used_at
+            .is_some_and(|t| now.saturating_duration_since(t) < SOLO_ACTIVE);
+        if self.settings.translation
+            && !self.members.is_empty()
+            && (self.members.len() >= 2 || solo_active)
+        {
+            self.unreported += elapsed;
         }
     }
 
@@ -278,17 +299,13 @@ impl Rooms {
         }
     }
 
-    /// 번역 시간을 잰다(주기 작업). 번역이 켜져 있고 두 명 이상 입장해 있는 동안만 센다.
+    /// 번역 시간을 잰다(주기 작업). 번역이 켜져 있고 두 명 이상 입장해 있거나, 혼자라도 번역을 쓰는 동안 센다.
     /// 1초 미만은 다음 측정으로 넘긴다.
     pub fn meter(&self, now: Instant) -> Vec<Metered> {
         let mut rooms = self.rooms.lock().unwrap();
         let mut out = Vec::new();
         for (code, room) in rooms.iter_mut() {
-            let elapsed = now.saturating_duration_since(room.metered_at).as_secs_f64();
-            room.metered_at = now;
-            if room.settings.translation && room.members.len() >= 2 {
-                room.unreported += elapsed;
-            }
+            room.accrue(now);
             room.peak = room.peak.max(room.members.len());
             let whole = room.unreported.floor();
             if whole >= 1.0 || room.peak > room.reported_peak {
@@ -410,6 +427,7 @@ impl Rooms {
                 &id,
                 ServerMsg::PeerJoined { peer: peer.clone() },
             );
+            room.accrue(now);
             room.members.insert(
                 id.clone(),
                 Member {
@@ -478,6 +496,7 @@ impl Rooms {
                 peer: member.peer.clone(),
             },
         );
+        room.accrue(Instant::now());
         room.members.insert(guest.to_owned(), member);
         room.caption_changes.send_modify(|v| *v += 1);
         room.notify_hosts(ServerMsg::KnockResolved {
@@ -511,6 +530,7 @@ impl Rooms {
         if !room.is_host_member(by) {
             return Err(ErrorCode::Forbidden);
         }
+        room.accrue(Instant::now());
         if room.settings.translation != settings.translation {
             room.caption_epoch += 1;
             room.caption_changes.send_modify(|v| *v += 1);
@@ -595,6 +615,7 @@ impl Rooms {
         let Some(room) = rooms.get_mut(code) else {
             return;
         };
+        room.accrue(Instant::now());
         if let Some(member) = room.members.remove(id) {
             room.caption_changes.send_modify(|v| *v += 1);
             broadcast(&room.members, id, ServerMsg::PeerLeft { id: id.to_owned() });
@@ -622,11 +643,16 @@ impl Rooms {
     /// 화자의 자막을 받을 사람들. 번역이 꺼진 방이거나 화자가 입장한 참가자가 아니면 None.
     /// 잠금은 복사하는 동안만 잡는다(보내는 쪽 채널은 복제 비용이 작다).
     pub fn caption_audience(&self, code: &str, speaker: &str) -> Option<Audience> {
-        let rooms = self.rooms.lock().unwrap();
-        let room = rooms.get(code)?;
-        if !room.settings.translation {
+        let mut rooms = self.rooms.lock().unwrap();
+        let room = rooms.get_mut(code)?;
+        // 주최자의 번역 시간이 떨어졌으면 자막을 만들지 않는다(이미 받은 음성 인식 세션이 남아 있어도).
+        if !room.settings.translation || self.out_of_time.lock().unwrap().contains(&room.host_account) {
             return None;
         }
+        if !room.members.contains_key(speaker) {
+            return None;
+        }
+        room.used_at = Some(Instant::now());
         let me = room.members.get(speaker)?;
         Some(Audience {
             epoch: CaptionEpoch(room.caption_epoch, me.caption_epoch),
@@ -647,10 +673,14 @@ impl Rooms {
     /// 이 참가자가 음성 인식 토큰을 하나 더 받아도 되는지(받으면 한도를 하나 쓴다). 입장한 참가자만.
     pub fn take_stt_token(&self, code: &str, id: &str, now: Instant) -> bool {
         let mut rooms = self.rooms.lock().unwrap();
-        rooms
-            .get_mut(code)
-            .and_then(|r| r.members.get_mut(id))
-            .is_some_and(|m| m.stt_tokens.take(now))
+        let Some(room) = rooms.get_mut(code) else {
+            return false;
+        };
+        let ok = room.members.get_mut(id).is_some_and(|m| m.stt_tokens.take(now));
+        if ok {
+            room.used_at = Some(now);
+        }
+        ok
     }
 
     /// 음성 인식 토큰에 잠글 언어: 내 언어, 그리고 다르면 상대 언어(상대 언어로 한 말도 그 언어 글자로 적게).
@@ -784,6 +814,33 @@ mod tests {
             JoinOutcome::Joined(id) => id,
             other => panic!("expected joined, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn solo_room_is_metered_only_while_translation_is_used() {
+        let rooms = Rooms::default();
+        let code = rooms.create(HOST, ON).unwrap();
+        let host = client();
+        let id = joined(rooms.join(&code, req("Host"), Some(HOST), host.tx.clone()).unwrap());
+        let t0 = Instant::now();
+        // 혼자 들어와 있기만 하면 세지 않는다.
+        let idle: i64 = rooms.meter(t0 + Duration::from_secs(60)).iter().map(|m| m.seconds).sum();
+        assert_eq!(idle, 0);
+        // 대면 대화처럼 혼자라도 음성 인식을 받아 쓰면 센다.
+        assert!(rooms.take_stt_token(&code, &id, t0 + Duration::from_secs(61)));
+        let used: i64 = rooms.meter(t0 + Duration::from_secs(120)).iter().map(|m| m.seconds).sum();
+        assert!(used >= 58, "solo use should be metered, got {used}");
+    }
+
+    #[test]
+    fn captions_stop_when_host_is_out_of_time() {
+        let rooms = Rooms::default();
+        let code = rooms.create(HOST, ON).unwrap();
+        let host = client();
+        let id = joined(rooms.join(&code, req("Host"), Some(HOST), host.tx.clone()).unwrap());
+        assert!(rooms.caption_audience(&code, &id).is_some());
+        rooms.set_out_of_time(HashSet::from([HOST.to_owned()]));
+        assert!(rooms.caption_audience(&code, &id).is_none());
     }
 
     fn waiting(outcome: JoinOutcome) -> PeerId {

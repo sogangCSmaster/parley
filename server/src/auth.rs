@@ -602,7 +602,7 @@ pub fn token_hash(token: &str) -> String {
 
 /// 실패 기록에 쓰는 클라이언트 키. IPv6는 보통 /64 단위로 한 사용자에게 주어지므로
 /// 주소를 바꿔 가며 한도를 피하지 못하게 /64로 묶는다.
-fn client_key(ip: IpAddr) -> IpAddr {
+pub fn client_key(ip: IpAddr) -> IpAddr {
     match ip {
         IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
             Some(v4) => IpAddr::V4(v4),
