@@ -100,6 +100,8 @@ const MIGRATIONS: &[&str] = &[
         received_at INTEGER NOT NULL
     );
     ",
+    // 3: 운영자 계정 표시(HOST_ACCOUNTS·개발용). 목록에서 빠지면 시작할 때 권한을 거둔다.
+    "ALTER TABLE users ADD COLUMN operator INTEGER NOT NULL DEFAULT 0;",
 ];
 
 impl Db {

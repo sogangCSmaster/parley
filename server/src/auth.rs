@@ -239,9 +239,7 @@ impl Auth {
     /// 테스트·운영자 계정용: 이메일 → 해시 목록을 메모리 DB에 넣는다(인증 완료, 요금제 있음).
     pub fn new(accounts: HashMap<String, String>) -> Self {
         let db = Db::memory();
-        for (email, hash) in &accounts {
-            upsert_operator(&db, email, hash).expect("insert account");
-        }
+        sync_operators(&db, &accounts).expect("insert accounts");
         Self::with_db(db)
     }
 
@@ -494,19 +492,53 @@ struct LoginAccount {
     totp: bool,
 }
 
-/// 운영자 계정(`HOST_ACCOUNTS`, 개발용 계정): 인증 완료·요금제 있음으로 넣고 비밀번호를 맞춘다.
-pub fn upsert_operator(db: &Db, email: &str, hash: &str) -> rusqlite::Result<i64> {
-    let email = normalize_username(email);
+/// 운영자 계정(`HOST_ACCOUNTS`, 개발용 계정)을 시작할 때 DB에 맞춘다. 목록이 기준이다.
+/// - 목록의 계정: 인증 완료·요금제 있음으로 넣고 비밀번호를 맞춘다. 비밀번호가 바뀌었으면 세션을 끊는다.
+/// - 예전에 운영자였는데 목록에서 빠진 계정: 비밀번호·요금제를 거두고 세션을 끊는다
+///   (결제한 일반 계정으로 바뀐 경우는 요금제를 남긴다).
+pub fn sync_operators(db: &Db, accounts: &HashMap<String, String>) -> rusqlite::Result<()> {
     let now = now_secs();
     db.blocking(|c| {
-        c.execute(
-            "INSERT INTO users (email, name, password_hash, email_verified, plan, created_at)
-             VALUES (?1, ?2, ?3, 1, 'pro', ?4)
-             ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, email_verified = 1,
-               plan = CASE WHEN users.plan = 'none' THEN 'pro' ELSE users.plan END",
-            params![email, email.split('@').next().unwrap_or(""), hash, now],
-        )?;
-        c.query_row("SELECT id FROM users WHERE email = ?1", params![email], |r| r.get(0))
+        let tx = c.transaction()?;
+        let mut listed = Vec::new();
+        for (email, hash) in accounts {
+            let email = normalize_username(email);
+            let old: Option<Option<String>> = tx
+                .query_row("SELECT password_hash FROM users WHERE email = ?1", params![email], |r| r.get(0))
+                .optional()?;
+            tx.execute(
+                "INSERT INTO users (email, name, password_hash, email_verified, plan, operator, created_at)
+                 VALUES (?1, ?2, ?3, 1, 'pro', 1, ?4)
+                 ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, email_verified = 1,
+                   operator = 1, plan = CASE WHEN users.plan = 'none' THEN 'pro' ELSE users.plan END",
+                params![email, email.split('@').next().unwrap_or(""), hash, now],
+            )?;
+            if matches!(old, Some(Some(ref h)) if h != hash) {
+                tx.execute(
+                    "DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = ?1)",
+                    params![email],
+                )?;
+            }
+            listed.push(email);
+        }
+        let mut stmt = tx.prepare("SELECT id, email, paddle_subscription_id FROM users WHERE operator = 1")?;
+        let operators: Vec<(i64, String, Option<String>)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        drop(stmt);
+        for (id, email, subscription) in operators {
+            if listed.contains(&email) {
+                continue;
+            }
+            tracing::warn!(%email, "operator account removed from HOST_ACCOUNTS: revoking password and sessions");
+            tx.execute(
+                "UPDATE users SET operator = 0, password_hash = NULL,
+                   plan = CASE WHEN ?2 IS NULL THEN 'none' ELSE plan END WHERE id = ?1",
+                params![id, subscription],
+            )?;
+            tx.execute("DELETE FROM sessions WHERE user_id = ?1", params![id])?;
+        }
+        tx.commit()
     })
 }
 
@@ -573,7 +605,10 @@ pub fn parse_accounts(raw: &str) -> Result<HashMap<String, String>, String> {
             return Err(format!("invalid username `{user}`"));
         }
         PasswordHash::new(hash).map_err(|e| format!("invalid hash for `{user}`: {e}"))?;
-        accounts.insert(normalize_username(user), hash.to_owned());
+        // 대소문자만 다른 같은 이메일이 두 번 있으면 어느 비밀번호가 쓰일지 모호하므로 거부한다.
+        if accounts.insert(normalize_username(user), hash.to_owned()).is_some() {
+            return Err(format!("duplicate account `{user}`"));
+        }
     }
     Ok(accounts)
 }
@@ -854,12 +889,28 @@ mod tests {
         assert_ne!(client_key(a), client_key(c));
     }
 
+    #[tokio::test]
+    async fn operator_removed_from_list_loses_password_and_sessions() {
+        let hash = hash_password("pw").unwrap();
+        let db = Db::memory();
+        sync_operators(&db, &HashMap::from([("ops@x.com".to_owned(), hash.clone())])).unwrap();
+        let auth = Auth::with_db(db.clone());
+        let token = auth.login(IP_A, "ops@x.com", "pw").await.unwrap();
+        assert!(auth.session_user(&token).is_some());
+        sync_operators(&db, &HashMap::new()).unwrap();
+        // 재시작한 것처럼 다시 올린다.
+        let auth = Auth::with_db(db);
+        assert_eq!(auth.session_user(&token), None);
+        assert_eq!(auth.login(IP_A, "ops@x.com", "pw").await, Err(LoginError::Invalid));
+    }
+
     #[test]
     fn parses_accounts_and_rejects_malformed_entries() {
         let hash = hash_password("pw").unwrap();
         let accounts = parse_accounts(&format!("alice:{hash}\n bob:{hash}")).unwrap();
         assert_eq!(accounts.len(), 2);
         assert!(parse_accounts("alice").is_err());
+        assert!(parse_accounts(&format!("Alice@x.com:{hash} alice@x.com:{hash}")).is_err());
         assert!(parse_accounts("alice:not-a-hash").is_err());
         assert!(parse_accounts(&format!("bad user:{hash}")).is_err());
     }

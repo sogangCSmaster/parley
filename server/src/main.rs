@@ -135,18 +135,18 @@ async fn run() {
         tracing::warn!(user = %creds.username, file = %path.display(), "dev mode: test host account ready");
         accounts.insert(creds.username, hash);
     }
+    // 개발 모드는 따로 된 파일을 써서 개발용 계정이 운영 DB에 섞이지 않게 한다.
     let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| {
-        concat!(env!("CARGO_MANIFEST_DIR"), "/data/tolkmeet.db").to_owned()
+        let name = if dev_mode { "dev.db" } else { "tolkmeet.db" };
+        format!("{}/data/{name}", env!("CARGO_MANIFEST_DIR"))
     });
     if let Some(dir) = std::path::Path::new(&db_path).parent() {
         std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("database dir {}: {e}", dir.display()));
     }
     let db = db::Db::open(std::path::Path::new(&db_path))
         .unwrap_or_else(|e| panic!("database {db_path}: {e}"));
-    // 운영자 계정(HOST_ACCOUNTS·개발용 계정)은 시작할 때마다 DB에 맞춘다.
-    for (email, hash) in &accounts {
-        auth::upsert_operator(&db, email, hash).unwrap_or_else(|e| panic!("operator account {email}: {e}"));
-    }
+    // 운영자 계정(HOST_ACCOUNTS·개발용 계정)은 시작할 때마다 DB를 목록에 맞춘다(빠진 계정은 권한을 거둔다).
+    auth::sync_operators(&db, &accounts).unwrap_or_else(|e| panic!("operator accounts: {e}"));
     let auth = Arc::new(Auth::with_db(db));
     // dev 모드는 http://localhost 이므로 기본 false. 그 외에는 명시하지 않으면 항상 Secure.
     let cookie_secure = std::env::var("COOKIE_SECURE")

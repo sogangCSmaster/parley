@@ -10,6 +10,9 @@ function api(): DocumentPip | null {
   return (window as unknown as { documentPictureInPicture?: DocumentPip }).documentPictureInPicture ?? null
 }
 
+/** 코드로 닫는 창. 이런 창의 pagehide는 사용자가 닫은 것으로 치지 않는다. */
+const closingByCode = new WeakSet<Window>()
+
 export const pipSupported = typeof window !== 'undefined' && api() !== null
 
 /** 이 문서의 스타일을 새 창에 그대로 옮긴다(개발 중에는 <style>, 배포에서는 <link>). */
@@ -22,38 +25,72 @@ function copyStyles(target: Document) {
 
 /**
  * 자막 창 하나를 연다·닫는다. 여는 것은 사용자의 클릭 안에서만 된다(브라우저 규칙).
- * 사용자가 창을 직접 닫으면 null로 돌아간다.
+ * 사용자가 창을 직접 닫으면 `win`은 null, `closedByUser`는 true가 된다(다시 열면 false).
  */
 export function usePipWindow(title: string) {
   const [win, setWin] = useState<Window | null>(null)
+  const [closedByUser, setClosedByUser] = useState(false)
 
-  const open = useCallback(async (): Promise<boolean> => {
-    const pip = api()
-    if (!pip) return false
-    if (pip.window) {
-      setWin(pip.window)
+  /** `stillWanted`가 false를 돌려주면(여는 사이 공유가 끝남) 열린 창을 바로 닫는다. */
+  const open = useCallback(
+    async (stillWanted: () => boolean = () => true): Promise<boolean> => {
+      const pip = api()
+      if (!pip) return false
+      let w = pip.window
+      if (!w) {
+        try {
+          w = await pip.requestWindow({ width: 400, height: 190 })
+        } catch {
+          // 클릭 없이 부르면 브라우저가 거절한다. 그때는 버튼으로 다시 열게 한다.
+          return false
+        }
+        copyStyles(w.document)
+        w.document.title = title
+      }
+      if (!stillWanted()) {
+        closingByCode.add(w)
+        w.close()
+        return false
+      }
+      const opened = w
+      opened.addEventListener(
+        'pagehide',
+        () => {
+          setWin((cur) => (cur === opened ? null : cur))
+          if (!closingByCode.has(opened)) setClosedByUser(true)
+        },
+        { once: true },
+      )
+      setClosedByUser(false)
+      setWin(opened)
       return true
-    }
-    try {
-      const w = await pip.requestWindow({ width: 400, height: 190 })
-      copyStyles(w.document)
-      w.document.title = title
-      w.addEventListener('pagehide', () => setWin(null), { once: true })
-      setWin(w)
-      return true
-    } catch {
-      // 클릭 없이 부르면 브라우저가 거절한다. 그때는 버튼으로 다시 열게 한다.
-      return false
-    }
-  }, [title])
+    },
+    [title],
+  )
 
   const close = useCallback(() => {
-    api()?.window?.close()
+    const w = api()?.window
     setWin(null)
+    if (w) {
+      closingByCode.add(w)
+      w.close()
+    }
   }, [])
 
   // 회의 화면을 떠나면 창도 닫는다.
-  useEffect(() => () => api()?.window?.close(), [])
+  useEffect(
+    () => () => {
+      const w = api()?.window
+      if (w) {
+        closingByCode.add(w)
+        w.close()
+      }
+    },
+    [],
+  )
 
-  return { win, open, close }
+  /** 새 공유를 시작할 때 지난 공유에서 사용자가 닫은 기록을 지운다. */
+  const resetClosed = useCallback(() => setClosedByUser(false), [])
+
+  return { win, open, close, closedByUser, resetClosed }
 }

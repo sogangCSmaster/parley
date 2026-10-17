@@ -86,7 +86,7 @@ function PipContent({ captions, speakerName, micOn, hasMic, onMic, onStop }: Omi
           const translated = c.tgt_lang !== c.src_lang && (c.text != null || !c.final)
           const name = speakerName(c.speaker)
           return (
-            <div key={c.seg} className={`pip-line${latest ? ' latest' : ''}${c.final ? '' : ' pending'}`}>
+            <div key={c.seg} className={`pip-line${latest ? ' latest' : ''}${c.final ? '' : ' pending'}`} aria-hidden={!c.final}>
               {latest && (
                 <span className="pip-avatar" aria-hidden="true">
                   {[...name][0] ?? '?'}

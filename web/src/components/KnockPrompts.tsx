@@ -14,7 +14,7 @@ export function KnockPrompts({ knocks, onAdmit, onDeny }: Props) {
   const k = knocks[0]
   if (!k) return null
   return (
-    <div className="knocks" role="region" aria-live="assertive" aria-label={t('knock.title', { name: k.name })}>
+    <div className="knocks" role="region" aria-live="assertive" aria-label={t('knock.region')}>
       <div className="knock" key={k.id}>
         <span className="knock-avatar" aria-hidden="true">
           {[...k.name][0] ?? '?'}

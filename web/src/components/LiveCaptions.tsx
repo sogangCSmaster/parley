@@ -263,7 +263,7 @@ function Live({ code }: { code: string }) {
 function LiveFeed({ captions }: { captions: Caption[] }) {
   const { t } = useI18n()
   const visible = captions.filter((c) => !(c.final && c.src === ''))
-  const { ref, reviewing, onScroll, toLatest, newCount } = useReviewScroll<HTMLElement>(visible.length, captions)
+  const { ref, reviewing, onScroll, toLatest, newCount } = useReviewScroll<HTMLElement>(visible.map((c) => String(c.seg)), captions)
 
   return (
     <div className="live-feed-wrap">

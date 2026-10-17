@@ -22,6 +22,7 @@
   --on-stage: #F5F5F7;
   --on-stage-muted: rgb(235 235 245 / .64);
   --glass: rgb(40 40 44 / .72);  /* 영상 위에 뜨는 유리 면(뒤를 흐리게) */
+  --glass-strong: rgb(36 36 40 / .9);  /* 글을 읽어야 하는 유리 카드(밝은 영상 위에서도 흐린 글자 4.5:1) */
   --monogram: linear-gradient(180deg, #A2A6B0 0%, #7D818C 100%);
 
   /* 밝은 화면 */

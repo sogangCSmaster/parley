@@ -40,7 +40,7 @@ const en = {
   'ctl.stopShare': 'Stop presenting',
   'ctl.leave': 'Leave call',
   'ctl.copyLink': 'Copy meeting link',
-  'ctl.captions': 'Captions panel',
+  'ctl.captions': 'Conversation panel',
 
   'room.participants': 'Participants',
   'room.you': '{name} (You)',
@@ -134,8 +134,8 @@ const en = {
   'room.controls': 'Call controls',
   'status.notFoundTitle': 'This page doesn’t exist',
   'status.notFoundBody': 'The address may have changed or been mistyped. Check the meeting link again.',
-  'status.goneTitle': 'This meeting has ended',
-  'status.goneBody': 'A meeting link closes 30 minutes after everyone leaves. Ask the host for a new link.',
+  'status.goneTitle': 'This meeting has ended or the link is wrong',
+  'status.goneBody': 'A meeting link closes 30 minutes after everyone leaves. Check the link, or ask the host for a new one.',
   'mic.title': 'Can’t use your microphone',
   'mic.body': 'Your speech becomes captions through the microphone. Allow it for this site in your browser.',
   'mic.step1': 'Tap the site info icon at the left of the address bar',
@@ -146,7 +146,7 @@ const en = {
   'inapp.body': 'Browsers inside messenger apps can’t use the camera and microphone. Open this link in one of the browsers below.',
   'inapp.openChrome': 'Open in Chrome',
   'ended.duration': 'Meeting time',
-  'ended.sentences': 'Translated sentences',
+  'ended.sentences': 'Caption lines',
   'ended.minutes': '{n} min',
   'ended.hoursMinutes': '{h} h {m} min',
   'ended.saveTitle': 'Save the conversation',
@@ -174,6 +174,7 @@ const en = {
   'pip.hint': 'The caption window floats above other apps. If you share a tab or window, others won’t see it.',
   'pip.unsupported': 'This browser can’t pop out captions. Put the meeting window next to what you share to keep reading them.',
   'pip.empty': 'Captions will appear here.',
+  'knock.region': 'Join requests',
 } as const
 
 export type MessageKey = keyof typeof en
@@ -214,7 +215,7 @@ const ko: Messages = {
   'ctl.stopShare': '화면 공유 중지',
   'ctl.leave': '통화에서 나가기',
   'ctl.copyLink': '회의 링크 복사',
-  'ctl.captions': '자막 패널',
+  'ctl.captions': '대화 기록 패널',
 
   'room.participants': '참가자',
   'room.you': '{name} (나)',
@@ -308,8 +309,8 @@ const ko: Messages = {
   'room.controls': '통화 조작',
   'status.notFoundTitle': '이 페이지를 찾을 수 없어요',
   'status.notFoundBody': '주소가 바뀌었거나 잘못 입력되었을 수 있어요. 회의 링크를 다시 확인해 주세요.',
-  'status.goneTitle': '이 회의는 이미 끝났어요',
-  'status.goneBody': '모두가 나가고 30분이 지나면 회의 링크가 닫혀요. 회의를 연 분에게 새 링크를 요청해 주세요.',
+  'status.goneTitle': '회의가 끝났거나 링크가 잘못됐어요',
+  'status.goneBody': '모두가 나가고 30분이 지나면 회의 링크가 닫혀요. 링크를 확인하거나 회의를 연 분에게 새 링크를 요청해 주세요.',
   'mic.title': '마이크를 쓸 수 없어요',
   'mic.body': '말을 자막으로 바꾸려면 마이크가 필요해요. 브라우저에서 이 사이트의 마이크를 허용해 주세요.',
   'mic.step1': '주소창 왼쪽의 사이트 정보 아이콘을 눌러요',
@@ -320,7 +321,7 @@ const ko: Messages = {
   'inapp.body': '메신저 앱 안의 브라우저는 카메라와 마이크를 쓸 수 없어요. 아래 브라우저 중 하나로 열어 주세요.',
   'inapp.openChrome': 'Chrome에서 열기',
   'ended.duration': '회의 시간',
-  'ended.sentences': '번역한 문장',
+  'ended.sentences': '자막 문장',
   'ended.minutes': '{n}분',
   'ended.hoursMinutes': '{h}시간 {m}분',
   'ended.saveTitle': '대화 기록을 저장해 두세요',
@@ -348,6 +349,7 @@ const ko: Messages = {
   'pip.hint': '자막 창은 다른 앱 위에도 떠 있어요. 탭이나 창을 공유하면 상대에게는 보이지 않아요.',
   'pip.unsupported': '이 브라우저는 자막 창을 띄울 수 없어요. 회의 창을 공유하는 화면 옆에 두면 자막을 함께 볼 수 있어요.',
   'pip.empty': '자막이 여기에 나타나요.',
+  'knock.region': '참여 요청',
 
 }
 
@@ -386,7 +388,7 @@ const ja: Messages = {
   'ctl.stopShare': '画面共有を停止',
   'ctl.leave': '通話から退出',
   'ctl.copyLink': '会議リンクをコピー',
-  'ctl.captions': '字幕パネル',
+  'ctl.captions': '会話の記録パネル',
 
   'room.participants': '参加者',
   'room.you': '{name}（自分）',
@@ -480,8 +482,8 @@ const ja: Messages = {
   'room.controls': '通話の操作',
   'status.notFoundTitle': 'このページは見つかりません',
   'status.notFoundBody': 'アドレスが変わったか、入力が間違っている可能性があります。会議リンクをもう一度確認してください。',
-  'status.goneTitle': 'この会議はすでに終了しています',
-  'status.goneBody': '全員が退出して30分たつと会議リンクは閉じられます。主催者に新しいリンクを依頼してください。',
+  'status.goneTitle': '会議が終了したか、リンクが正しくありません',
+  'status.goneBody': '全員が退出して30分たつと会議リンクは閉じられます。リンクを確認するか、主催者に新しいリンクを依頼してください。',
   'mic.title': 'マイクを使用できません',
   'mic.body': '話した内容を字幕にするにはマイクが必要です。ブラウザでこのサイトのマイクを許可してください。',
   'mic.step1': 'アドレスバー左側のサイト情報アイコンを押します',
@@ -492,7 +494,7 @@ const ja: Messages = {
   'inapp.body': 'メッセンジャーアプリ内のブラウザではカメラとマイクを使えません。下のいずれかのブラウザで開いてください。',
   'inapp.openChrome': 'Chromeで開く',
   'ended.duration': '会議時間',
-  'ended.sentences': '翻訳した文',
+  'ended.sentences': '字幕の文',
   'ended.minutes': '{n}分',
   'ended.hoursMinutes': '{h}時間{m}分',
   'ended.saveTitle': '会話の記録を保存しましょう',
@@ -520,6 +522,7 @@ const ja: Messages = {
   'pip.hint': '字幕ウィンドウは他のアプリの上にも表示されます。タブやウィンドウを共有すれば、相手には見えません。',
   'pip.unsupported': 'このブラウザでは字幕ウィンドウを表示できません。会議ウィンドウを共有画面の横に置くと字幕を一緒に見られます。',
   'pip.empty': '字幕はここに表示されます。',
+  'knock.region': '参加リクエスト',
 
 }
 

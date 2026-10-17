@@ -121,7 +121,7 @@ function Feed({ captions, speakerName }: { captions: Caption[]; speakerName: (id
   const { t, locale } = useI18n()
   // 취소 기록은 낮은 rev로 되살아나지 않도록 상태에 남기고 화면에서만 숨긴다.
   const visible = captions.filter((c) => !(c.final && c.src === ''))
-  const { ref, reviewing, onScroll, toLatest, newCount } = useReviewScroll<HTMLDivElement>(visible.length, captions)
+  const { ref, reviewing, onScroll, toLatest, newCount } = useReviewScroll<HTMLDivElement>(visible.map((c) => String(c.seg)), captions)
 
   return (
     <div className="feed-wrap">

@@ -27,7 +27,7 @@ export function VideoTile({ name, stream, showVideo, micOn, speaking, mirror, mu
   }, [stream])
 
   return (
-    <div className={`tile${speaking ? ' speaking' : ''}${showVideo ? ' has-video' : ''} ${className ?? ''}`}>
+    <div className={`tile${speaking ? ' speaking' : ''} ${className ?? ''}`}>
       {/* 카메라가 꺼져도 상대 음성은 계속 들려야 하므로 video 요소는 숨기기만 한다. */}
       <video
         ref={ref}

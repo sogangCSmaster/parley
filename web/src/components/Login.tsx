@@ -46,9 +46,10 @@ export function Login() {
             <label>
               <span>{t('auth.email')}</span>
               <input
-                type="email"
-                autoComplete="email"
+                autoComplete="username email"
                 inputMode="email"
+                autoCapitalize="none"
+                spellCheck={false}
                 autoFocus
                 required
                 value={email}

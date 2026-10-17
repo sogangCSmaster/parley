@@ -97,11 +97,17 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   // 화면 공유 중 자막 창(Document PiP). 공유를 시작한 클릭 안에서 바로 열어 보고, 막히면 버튼으로 연다.
   const pip = usePipWindow(`Tolkmeet · ${t('history.title')}`)
   const pipOpenRef = useRef(pip.open)
+  const pipResetRef = useRef(pip.resetClosed)
   useEffect(() => {
     pipOpenRef.current = pip.open
-  }, [pip.open])
+    pipResetRef.current = pip.resetClosed
+  }, [pip.open, pip.resetClosed])
   // 자막 창을 못 여는 브라우저 안내는 회의에 한 번만.
   const pipHintedRef = useRef(false)
+  // 이번 공유에서 자막 창 안내 카드를 닫았는지. 공유를 새로 시작하면 다시 보인다.
+  const [pipDismissed, setPipDismissed] = useState(false)
+  // 여는 사이 공유가 끝났는지 확인하는 용도(비동기 열기가 끝난 뒤 판단).
+  const sharingRef = useRef(false)
 
   const sigRef = useRef<Signaling | null>(null)
   const meshRef = useRef<Mesh | null>(null)
@@ -166,7 +172,12 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             local.getVideoTracks()[0] ?? null,
             (track) => {
               setScreenTrack(track)
-              if (track && pipSupported) void pipOpenRef.current()
+              sharingRef.current = !!track
+              if (track) {
+                setPipDismissed(false)
+                pipResetRef.current()
+              }
+              if (track && pipSupported) void pipOpenRef.current(() => sharingRef.current)
               else if (track && !pipHintedRef.current) {
                 pipHintedRef.current = true
                 setToast({ key: 'pip.unsupported', ms: 7000 })
@@ -670,7 +681,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             aria-pressed={!!pip.win}
             aria-label={pip.win ? t('pip.close') : t('pip.open')}
             title={pip.win ? t('pip.close') : t('pip.open')}
-            onClick={() => (pip.win ? pip.close() : void pip.open())}
+            onClick={() => (pip.win ? pip.close() : void pip.open(() => sharingRef.current))}
           >
             <Icon name="picture_in_picture_alt" />
           </button>
@@ -682,13 +693,16 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
       </div>
 
       {/* 공유를 시작한 클릭에서 자막 창이 열리지 않았으면(브라우저가 막음) 한 번 더 누르게 안내한다. */}
-      {screenTrack && pipSupported && !pip.win && (
+      {screenTrack && pipSupported && !pip.win && !pip.closedByUser && !pipDismissed && (
         <div className="pip-prompt" role="status">
+          <button className="icon-btn pip-prompt-close" aria-label={t('room.closeInvite')} onClick={() => setPipDismissed(true)}>
+            <Icon name="close" />
+          </button>
           <p>
             <b>{t('pip.prompt')}</b>
             {t('pip.hint')}
           </p>
-          <button className="btn btn-primary" onClick={() => void pip.open()}>
+          <button className="btn btn-primary" onClick={() => void pip.open(() => sharingRef.current)}>
             <Icon name="picture_in_picture_alt" />
             {t('pip.open')}
           </button>
