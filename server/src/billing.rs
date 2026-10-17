@@ -271,8 +271,11 @@ impl Billing {
                 )?;
                 let same = current.is_some() && current == subscription;
                 let starts_new = matches!(kind.as_str(), "subscription.created" | "subscription.activated");
+                // 다른 구독으로 바꾸는 것은 지금 반영된 것보다 나중에 일어난, 쓰는 중인 새 구독일 때만.
+                let live = matches!(status.as_str(), "active" | "trialing" | "past_due");
+                let switches = !same && current.is_some() && starts_new && live && occurred >= last_at;
                 let stale = same && occurred < last_at;
-                if stale || !(same || current.is_none() || starts_new) {
+                if stale || !(same || current.is_none() || switches) {
                     tracing::info!(event = %id, "paddle event for an old subscription or out of order: ignored");
                     tx.commit()?;
                     return Ok(None);

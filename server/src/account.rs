@@ -44,10 +44,15 @@ pub struct Accounts {
     /// 초대 메일: 보내는 사람마다 하루 100통, 받는 사람마다 하루 5통.
     invites_by_user: KeyedLimiter,
     invites_by_rcpt: KeyedLimiter,
-    /// 2차 인증 코드 확인(로그인·켜기·끄기·복구 코드): 사용자마다 15분에 10번, 하루 30번.
-    /// 로그인할 때마다 새 티켓이 나오므로 티켓마다 세는 것만으로는 비밀번호를 아는 사람이 계속 맞혀 볼 수 있다.
+    /// 로그인한 뒤의 2차 인증 코드 확인(켜기·끄기·복구 코드): 사용자마다 15분에 10번, 하루 30번.
     totp_by_user: KeyedLimiter,
     totp_daily: KeyedLimiter,
+    /// 로그인 때의 2차 인증 코드: (사용자, 클라이언트)마다 15분에 10번·하루 30번, 사용자 전체로 하루 100번.
+    /// 로그인할 때마다 새 티켓이 나오므로 티켓마다 세는 것만으로는 비밀번호를 아는 사람이 계속 맞혀 볼 수 있다.
+    /// 클라이언트마다 따로 세서, 비밀번호를 아는 다른 사람이 본인의 로그인까지 막기는 어렵게 한다.
+    mfa_by_client: KeyedLimiter,
+    mfa_daily_by_client: KeyedLimiter,
+    mfa_daily: KeyedLimiter,
     /// Google 로그인 진행 중: state → (nonce, 연결할 사용자, 화면 언어, 시작 시각)
     oauth: Mutex<HashMap<String, OAuthPending>>,
 }
@@ -90,6 +95,9 @@ impl Accounts {
             invites_by_rcpt: KeyedLimiter::new(5, Duration::from_secs(86_400)),
             totp_by_user: KeyedLimiter::new(10, Duration::from_secs(15 * 60)),
             totp_daily: KeyedLimiter::new(30, Duration::from_secs(86_400)),
+            mfa_by_client: KeyedLimiter::new(10, Duration::from_secs(15 * 60)),
+            mfa_daily_by_client: KeyedLimiter::new(30, Duration::from_secs(86_400)),
+            mfa_daily: KeyedLimiter::new(100, Duration::from_secs(86_400)),
             oauth: Mutex::default(),
         }
     }
@@ -105,7 +113,15 @@ impl Accounts {
         self.by_ip.check(&auth::client_key(ip).to_string()) && self.by_email.check(email)
     }
 
-    /// 이 사용자의 2차 인증 코드를 한 번 더 확인해 봐도 되는지.
+    /// 로그인 중 이 클라이언트가 이 사용자의 2차 인증 코드를 한 번 더 맞혀 봐도 되는지.
+    fn may_try_login_mfa(&self, user_id: i64, ip: IpAddr) -> bool {
+        let key = format!("{user_id}:{}", auth::client_key(ip));
+        self.mfa_by_client.check(&key)
+            && self.mfa_daily_by_client.check(&key)
+            && self.mfa_daily.check(&user_id.to_string())
+    }
+
+    /// 로그인한 사용자가 2차 인증 코드를 한 번 더 확인해 봐도 되는지.
     pub fn may_try_totp(&self, user_id: i64) -> bool {
         let key = user_id.to_string();
         self.totp_by_user.check(&key) && self.totp_daily.check(&key)
@@ -588,13 +604,15 @@ pub struct MfaReq {
 /// 비밀번호 다음의 2차 인증 코드. 티켓 하나에 5번까지(넘으면 처음부터 다시 로그인).
 pub async fn login_mfa(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(req): Json<MfaReq>,
 ) -> Response {
     let Some(user_id) = state.auth.mfa_ticket_user(&req.ticket) else {
         return error(StatusCode::UNAUTHORIZED, "expired");
     };
-    if !state.auth.count_mfa_attempt(&req.ticket) || !state.accounts.may_try_totp(user_id) {
+    let ip = client(&state, peer, &headers);
+    if !state.auth.count_mfa_attempt(&req.ticket) || !state.accounts.may_try_login_mfa(user_id, ip) {
         return error(StatusCode::TOO_MANY_REQUESTS, "locked");
     }
     let code = req.code.clone();
