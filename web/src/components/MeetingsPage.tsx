@@ -282,7 +282,12 @@ function ScheduleDialog({ meeting, onClose, onSaved }: { meeting: Meeting | null
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<MessageKey | null>(null)
 
-  const startsAt = Math.floor(new Date(`${date}T${time}`).getTime() / 1000)
+  // 고칠 때 날짜·시각을 건드리지 않았으면 원래 값을 그대로 보낸다(서머타임 겹치는 시간에도 같은 순간이 되게).
+  const original = toLocalInputs(initial)
+  const startsAt =
+    meeting?.startsAt != null && date === original.date && time === original.time
+      ? meeting.startsAt
+      : Math.floor(new Date(`${date}T${time}`).getTime() / 1000)
   const valid = Number.isFinite(startsAt)
   const myZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
