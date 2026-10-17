@@ -251,7 +251,7 @@ const jsonLd = [
             {t.privacyChips.map(([a, b, c]) => <li class="pv-chip">{a}<b>{b}</b>{c}</li>)}
           </ul>
           {/* 계속 도는 움직임이라 멈출 수 있게 한다(WCAG 2.2.2). */}
-          <button class="pv-toggle" type="button" aria-pressed="false" data-pv-toggle data-labels={JSON.stringify({ pause: t.privacyPause, play: t.privacyPlay })}>{t.privacyPause}</button>
+          <button class="pv-toggle" type="button" data-pv-toggle data-labels={JSON.stringify({ pause: t.privacyPause, play: t.privacyPlay })}>{t.privacyPause}</button>
         </div>
         <a class="privacy-link" href={LEGAL.privacy} hreflang="en">{t.privacyLink} ›</a>
       </div>
@@ -457,7 +457,6 @@ const jsonLd = [
       new IntersectionObserver(([x]) => pv.classList.toggle('pv-run', x.isIntersecting)).observe(pv)
       pvToggle.addEventListener('click', () => {
         const paused = pv.classList.toggle('pv-paused')
-        pvToggle.setAttribute('aria-pressed', String(paused))
         pvToggle.textContent = paused ? pvLabels.play : pvLabels.pause
       })
 

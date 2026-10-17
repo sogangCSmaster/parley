@@ -65,3 +65,5 @@ body:has(> .legal) { background: var(--legal-bg); }
   .legal-single { padding-left: 16px; padding-right: 16px; }
   .legal-summary { padding: 22px; }
 }
+/* .legal a의 링크 색이 건너뛰기 링크(진한 바탕)를 덮지 않게 */
+.legal .skip { color: var(--page-bg); }
