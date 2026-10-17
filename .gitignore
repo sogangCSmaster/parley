@@ -14,6 +14,14 @@ shots/
 *.pem
 *.key
 server/.dev-host-password
+# SQLite 데이터(계정·세션·회의). 운영 데이터는 Litestream으로 S3에 백업한다
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+server/data/
 # 로컬 개발 서버 설정: 개발용 주최자 계정 해시가 들어 있다
 .claude/launch.json
 .claude/settings.local.json

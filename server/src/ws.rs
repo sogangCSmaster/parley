@@ -535,7 +535,8 @@ mod tests {
 
         fn room(&self) -> String {
             self.rooms
-                .create("host", crate::protocol::RoomSettings { translation: true })
+                // 테스트 계정 "host"는 메모리 DB의 첫 사용자(id 1)다.
+                .create("1", crate::protocol::RoomSettings { translation: true })
                 .unwrap()
         }
     }

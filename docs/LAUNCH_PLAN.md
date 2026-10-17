@@ -39,7 +39,7 @@ docs/
 ```
 
 - `web/`과 `site/`는 각자 `package.json`·잠금 파일을 가진 독립 프로젝트로 둔다(작업 공간으로 묶으면 지금의 `pnpm --dir web` 명령·스크립트가 바뀌는데 얻는 것이 적다). 공용 디자인은 `design/tokens.css`를 두 곳이 가져다 쓴다(`site/`는 CSS `@import`로). 브랜드 마크와 데모 얼굴은 작은 SVG라 각 프로젝트에 같은 그림을 두고, 바꿀 때 둘 다 고친다.
-- GitHub Actions는 경로로 나눈다: `site/**` → Pages 배포, `server/**`·`web/**` → 테스트·EC2 배포.
+- **GitHub Actions로 배포하는 것은 랜딩페이지(`site/**` → GitHub Pages)뿐이다.** 공개 저장소이므로 앱(`server/**`·`web/**`)의 배포 비밀정보(SSH 키·API 키)를 CI에 두지 않는다. 앱은 운영자가 자기 컴퓨터에서 배포 스크립트로 EC2에 올린다.
 
 ## 2. 회원가입·로그인
 

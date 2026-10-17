@@ -1,5 +1,5 @@
-//! 주최자 인증. 계정은 운영자가 `HOST_ACCOUNTS` 환경변수로 등록한다(DB 없음).
-//! 세션은 프로세스 메모리에 두므로 서버를 재시작하면 다시 로그인해야 한다.
+//! 로그인·세션. 계정은 SQLite(`db.rs`)에 두고, 세션은 DB에 해시로 저장하면서 메모리에도 사본을 둔다
+//! (재시작해도 로그인이 유지되고, 회의 입장 경로는 DB를 읽지 않는다).
 
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -12,8 +12,11 @@ use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use axum::http::HeaderMap;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
+use crate::db::{Db, OptionalExtension, now_secs, params};
+
 pub const COOKIE_NAME: &str = "tolkmeet_session";
-const SESSION_TTL: Duration = Duration::from_secs(12 * 60 * 60);
+/// 로그인 유지 기간. 쿠키와 DB 세션이 같은 기간을 쓴다.
+const SESSION_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 /// (클라이언트 IP, 아이디)별로 이 시간 안에 이만큼 실패하면 시간이 지날 때까지 로그인을 막는다.
 /// IP별로 세므로 아이디를 아는 공격자가 다른 곳의 주최자를 잠글 수 없다.
 const MAX_FAILURES: u32 = 10;
@@ -31,11 +34,16 @@ const MAX_PASSWORD_BYTES: usize = 1024;
 pub enum LoginError {
     Invalid,
     Locked,
+    /// 비밀번호는 맞지만 이메일 인증 전
+    Unverified,
+    /// 비밀번호는 맞고 2차 인증 코드가 필요하다(티켓으로 이어서 확인)
+    MfaRequired(String),
 }
 
 struct Session {
-    username: String,
-    expires: Instant,
+    user_id: i64,
+    /// 유닉스 초
+    expires: i64,
 }
 
 /// in_flight는 아직 검증 중인 시도다. 결과가 나오기 전에도 한도에 넣어야 동시 요청으로 한도를 넘길 수 없다.
@@ -183,32 +191,66 @@ impl Drop for Reservation<'_> {
 }
 
 pub struct Auth {
-    accounts: HashMap<String, String>,
+    db: Db,
+    /// 유효한 세션의 메모리 사본(토큰 해시 → 세션). 회의 입장·WebSocket 확인은 DB를 읽지 않는다.
     sessions: Mutex<HashMap<String, Session>>,
+    /// 비밀번호까지 맞고 2차 인증을 기다리는 로그인(티켓 → 사용자, 만료).
+    mfa_tickets: Mutex<HashMap<String, (i64, Instant)>>,
     throttle: Mutex<Throttle>,
     verify_slots: Arc<Semaphore>,
     /// 없는 계정도 같은 시간이 걸리도록 비교에 쓰는 해시(계정 존재 여부를 응답 시간으로 알 수 없게).
     dummy_hash: String,
 }
 
+/// 2차 인증 티켓은 비밀번호를 맞힌 직후 5분 안에만 쓸 수 있다.
+const MFA_TICKET_TTL: Duration = Duration::from_secs(5 * 60);
+
 impl Auth {
-    pub fn new(accounts: HashMap<String, String>) -> Self {
+    /// 저장된 세션을 메모리로 올린다(만료된 것은 지운다).
+    pub fn with_db(db: Db) -> Self {
         let dummy_hash = hash_password("dummy-password-for-timing").expect("argon2 hashing works");
+        let now = now_secs();
+        let sessions = db
+            .blocking(|c| {
+                c.execute("DELETE FROM sessions WHERE expires_at <= ?1", params![now])?;
+                let mut stmt = c.prepare("SELECT token_hash, user_id, expires_at FROM sessions")?;
+                let rows = stmt.query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        Session {
+                            user_id: r.get(1)?,
+                            expires: r.get(2)?,
+                        },
+                    ))
+                })?;
+                rows.collect::<rusqlite::Result<HashMap<_, _>>>()
+            })
+            .expect("load sessions");
         Self {
-            accounts,
-            sessions: Mutex::default(),
+            db,
+            sessions: Mutex::new(sessions),
+            mfa_tickets: Mutex::default(),
             throttle: Mutex::new(Throttle::new(MAX_TRACKED)),
             verify_slots: Arc::new(Semaphore::new(VERIFY_CONCURRENCY)),
             dummy_hash,
         }
     }
 
-    pub fn has_accounts(&self) -> bool {
-        !self.accounts.is_empty()
+    /// 테스트·운영자 계정용: 이메일 → 해시 목록을 메모리 DB에 넣는다(인증 완료, 요금제 있음).
+    pub fn new(accounts: HashMap<String, String>) -> Self {
+        let db = Db::memory();
+        for (email, hash) in &accounts {
+            upsert_operator(&db, email, hash).expect("insert account");
+        }
+        Self::with_db(db)
+    }
+
+    pub fn db(&self) -> &Db {
+        &self.db
     }
 
     /// 성공하면 새 세션 토큰을 돌려준다. 비밀번호 검증은 블로킹 스레드에서 돌려 런타임을 막지 않는다.
-    /// 없는 아이디도 같은 방식으로 실패를 세므로 429 응답으로 계정 존재 여부를 알 수 없다.
+    /// 없는 계정도 같은 방식으로 실패를 세므로 429 응답으로 계정 존재 여부를 알 수 없다.
     pub async fn login(
         &self,
         client: IpAddr,
@@ -242,44 +284,148 @@ impl Auth {
             username,
             succeeded: false,
         };
-        if !self.verify(username, password, permit).await {
+        let Some(user) = self.verify(username, password, permit).await else {
             return Err(LoginError::Invalid);
-        }
+        };
         reservation.succeeded = true;
         drop(reservation);
 
-        let token = new_token();
-        let session = Session {
-            username: username.to_owned(),
-            expires: Instant::now() + SESSION_TTL,
-        };
-        self.sessions.lock().unwrap().insert(token.clone(), session);
-        Ok(token)
+        // 비밀번호가 맞은 뒤에만 인증·2차 인증 상태를 알린다(계정 존재 여부는 이미 드러나도 되는 시점).
+        if !user.verified {
+            return Err(LoginError::Unverified);
+        }
+        if user.totp {
+            return Err(LoginError::MfaRequired(self.new_mfa_ticket(user.id)));
+        }
+        Ok(self.create_session(user.id, "").await)
     }
 
-    async fn verify(&self, username: &str, password: &str, permit: OwnedSemaphorePermit) -> bool {
+    /// 계정 조회와 비밀번호 비교를 한 블로킹 작업에서 한다. 요청이 취소돼도 작업이 슬롯을 끝까지 쥔다.
+    async fn verify(
+        &self,
+        email: &str,
+        password: &str,
+        permit: OwnedSemaphorePermit,
+    ) -> Option<LoginAccount> {
         if password.len() > MAX_PASSWORD_BYTES {
-            return false;
+            return None;
         }
-        let known = self.accounts.get(username);
-        let hash = known.unwrap_or(&self.dummy_hash).clone();
+        let db = self.db.clone();
+        let dummy = self.dummy_hash.clone();
+        let email = email.to_owned();
         let password = password.to_owned();
-        let verified = tokio::task::spawn_blocking(move || {
-            // HTTP 요청이 취소돼도 spawn_blocking은 계속되므로 실제 작업이 슬롯을 소유한다.
+        tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            verify_password(&password, &hash)
+            let account = db
+                .blocking(|c| {
+                    c.query_row(
+                        "SELECT id, password_hash, email_verified, totp_enabled FROM users WHERE email = ?1",
+                        params![email],
+                        |r| {
+                            Ok(LoginAccount {
+                                id: r.get(0)?,
+                                hash: r.get(1)?,
+                                verified: r.get::<_, i64>(2)? != 0,
+                                totp: r.get::<_, i64>(3)? != 0,
+                            })
+                        },
+                    )
+                    .optional()
+                })
+                .ok()
+                .flatten();
+            // 비밀번호가 없는 계정(Google로만 가입)도 없는 계정과 똑같이 다룬다.
+            let hash = account.as_ref().and_then(|a| a.hash.clone()).unwrap_or(dummy);
+            let ok = verify_password(&password, &hash);
+            account.filter(|a| ok && a.hash.is_some())
         })
         .await
-        .unwrap_or(false);
-        verified && known.is_some()
+        .ok()
+        .flatten()
     }
 
+    /// 비밀번호 확인(계정 설정의 민감한 작업 전). 시도 제한은 로그인과 같은 기록을 쓴다.
+    pub async fn check_password(&self, client: IpAddr, user_id: i64, password: &str) -> Result<(), LoginError> {
+        let email = self
+            .db
+            .call(move |c| c.query_row("SELECT email FROM users WHERE id = ?1", params![user_id], |r| r.get::<_, String>(0)))
+            .await
+            .map_err(|_| LoginError::Invalid)?;
+        let permit = self.verify_slots.clone().try_acquire_owned().map_err(|_| LoginError::Locked)?;
+        let client = client_key(client);
+        if !self.throttle.lock().unwrap().try_reserve(client, &email, Instant::now()) {
+            return Err(LoginError::Locked);
+        }
+        let mut reservation = Reservation { throttle: &self.throttle, client, username: &email, succeeded: false };
+        if self.verify(&email, password, permit).await.is_none() {
+            return Err(LoginError::Invalid);
+        }
+        reservation.succeeded = true;
+        Ok(())
+    }
+
+    fn new_mfa_ticket(&self, user_id: i64) -> String {
+        let ticket = new_token();
+        let mut tickets = self.mfa_tickets.lock().unwrap();
+        let now = Instant::now();
+        tickets.retain(|_, (_, at)| now.duration_since(*at) < MFA_TICKET_TTL);
+        tickets.insert(ticket.clone(), (user_id, now));
+        ticket
+    }
+
+    /// 2차 인증 티켓의 사용자. 코드가 맞을 때까지 티켓은 남겨 두고, 맞으면 `take_mfa_ticket`으로 지운다.
+    pub fn mfa_ticket_user(&self, ticket: &str) -> Option<i64> {
+        let tickets = self.mfa_tickets.lock().unwrap();
+        tickets
+            .get(ticket)
+            .filter(|(_, at)| at.elapsed() < MFA_TICKET_TTL)
+            .map(|(id, _)| *id)
+    }
+
+    pub fn take_mfa_ticket(&self, ticket: &str) {
+        self.mfa_tickets.lock().unwrap().remove(ticket);
+    }
+
+    /// 새 세션을 만들고 DB와 메모리에 모두 넣는다.
+    pub async fn create_session(&self, user_id: i64, user_agent: &str) -> String {
+        let token = new_token();
+        let hash = token_hash(&token);
+        let now = now_secs();
+        let expires = now + SESSION_TTL.as_secs() as i64;
+        let ua: String = user_agent.chars().take(200).collect();
+        let h = hash.clone();
+        let saved = self
+            .db
+            .call(move |c| {
+                c.execute(
+                    "INSERT INTO sessions (token_hash, user_id, created_at, expires_at, user_agent) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![h, user_id, now, expires, ua],
+                )
+            })
+            .await;
+        if let Err(e) = saved {
+            // 메모리 세션만으로도 이번 실행 동안은 동작한다. 재시작하면 다시 로그인해야 할 뿐이다.
+            tracing::warn!(error = %e, "could not persist session");
+        }
+        self.sessions
+            .lock()
+            .unwrap()
+            .insert(hash, Session { user_id, expires });
+        token
+    }
+
+    /// 세션의 사용자 id(문자열). 회의실의 주최자 식별에 쓴다.
     pub fn session_user(&self, token: &str) -> Option<String> {
+        self.session_user_id(token).map(|id| id.to_string())
+    }
+
+    pub fn session_user_id(&self, token: &str) -> Option<i64> {
+        let hash = token_hash(token);
         let mut sessions = self.sessions.lock().unwrap();
-        match sessions.get(token) {
-            Some(s) if s.expires > Instant::now() => Some(s.username.clone()),
+        match sessions.get(&hash) {
+            Some(s) if s.expires > now_secs() => Some(s.user_id),
             Some(_) => {
-                sessions.remove(token);
+                sessions.remove(&hash);
                 None
             }
             None => None,
@@ -290,16 +436,87 @@ impl Auth {
         token_from_headers(headers).and_then(|t| self.session_user(&t))
     }
 
+    pub fn user_id_from_headers(&self, headers: &HeaderMap) -> Option<i64> {
+        token_from_headers(headers).and_then(|t| self.session_user_id(&t))
+    }
+
     pub fn logout(&self, token: &str) {
-        self.sessions.lock().unwrap().remove(token);
+        let hash = token_hash(token);
+        self.sessions.lock().unwrap().remove(&hash);
+        let db = self.db.clone();
+        tokio::spawn(async move {
+            let _ = db
+                .call(move |c| c.execute("DELETE FROM sessions WHERE token_hash = ?1", params![hash]))
+                .await;
+        });
+    }
+
+    /// 한 사용자의 세션을 모두(또는 지금 세션만 남기고) 끊는다. 비밀번호 변경·재설정·계정 삭제 때.
+    pub async fn revoke_user_sessions(&self, user_id: i64, keep_token: Option<&str>) {
+        let keep = keep_token.map(token_hash);
+        self.sessions
+            .lock()
+            .unwrap()
+            .retain(|h, s| s.user_id != user_id || Some(h) == keep.as_ref());
+        let _ = self
+            .db
+            .call(move |c| {
+                c.execute(
+                    "DELETE FROM sessions WHERE user_id = ?1 AND token_hash IS NOT ?2",
+                    params![user_id, keep],
+                )
+            })
+            .await;
     }
 
     /// 만료된 세션과 오래된 실패 기록을 정리한다(주기 작업).
     pub fn sweep(&self) {
-        let now = Instant::now();
+        let now = now_secs();
         self.sessions.lock().unwrap().retain(|_, s| s.expires > now);
-        self.throttle.lock().unwrap().sweep(now);
+        self.mfa_tickets
+            .lock()
+            .unwrap()
+            .retain(|_, (_, at)| at.elapsed() < MFA_TICKET_TTL);
+        self.throttle.lock().unwrap().sweep(Instant::now());
+        let db = self.db.clone();
+        tokio::spawn(async move {
+            let _ = db
+                .call(move |c| c.execute("DELETE FROM sessions WHERE expires_at <= ?1", params![now]))
+                .await;
+        });
     }
+}
+
+struct LoginAccount {
+    id: i64,
+    hash: Option<String>,
+    verified: bool,
+    totp: bool,
+}
+
+/// 운영자 계정(`HOST_ACCOUNTS`, 개발용 계정): 인증 완료·요금제 있음으로 넣고 비밀번호를 맞춘다.
+pub fn upsert_operator(db: &Db, email: &str, hash: &str) -> rusqlite::Result<i64> {
+    let email = normalize_username(email);
+    let now = now_secs();
+    db.blocking(|c| {
+        c.execute(
+            "INSERT INTO users (email, name, password_hash, email_verified, plan, created_at)
+             VALUES (?1, ?2, ?3, 1, 'pro', ?4)
+             ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, email_verified = 1,
+               plan = CASE WHEN users.plan = 'none' THEN 'pro' ELSE users.plan END",
+            params![email, email.split('@').next().unwrap_or(""), hash, now],
+        )?;
+        c.query_row("SELECT id FROM users WHERE email = ?1", params![email], |r| r.get(0))
+    })
+}
+
+/// 세션 토큰은 DB에 해시로만 둔다(DB가 새도 세션을 훔칠 수 없게).
+pub fn token_hash(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(token.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// 실패 기록에 쓰는 클라이언트 키. IPv6는 보통 /64 단위로 한 사용자에게 주어지므로
@@ -331,7 +548,7 @@ pub fn client_ip(peer: IpAddr, headers: &HeaderMap, trust_proxy: bool) -> IpAddr
 }
 
 /// 계정 아이디는 이메일 주소다(예전 형식의 짧은 아이디도 그대로 받는다). 비교는 소문자로 한다.
-fn is_valid_username(user: &str) -> bool {
+pub fn is_valid_username(user: &str) -> bool {
     (1..=254).contains(&user.len())
         && user
             .bytes()
@@ -339,7 +556,7 @@ fn is_valid_username(user: &str) -> bool {
 }
 
 /// 이메일은 대소문자를 가리지 않는다. 저장·비교·시도 제한 모두 이 값으로 한다.
-fn normalize_username(user: &str) -> String {
+pub fn normalize_username(user: &str) -> String {
     user.trim().to_ascii_lowercase()
 }
 
@@ -374,7 +591,7 @@ fn verify_password(password: &str, hash: &str) -> bool {
         .is_ok()
 }
 
-fn new_token() -> String {
+pub fn new_token() -> String {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).expect("OS RNG unavailable");
     bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -425,7 +642,7 @@ mod tests {
     async fn login_succeeds_with_correct_password_and_creates_session() {
         let auth = auth_with("host", "correct horse");
         let token = auth.login(IP_A, "host", "correct horse").await.unwrap();
-        assert_eq!(auth.session_user(&token).as_deref(), Some("host"));
+        assert_eq!(auth.session_user(&token).as_deref(), Some("1"));
 
         auth.logout(&token);
         assert_eq!(auth.session_user(&token), None);
@@ -440,7 +657,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             auth.session_user(&token).as_deref(),
-            Some("minjun+work@company.com")
+            Some("1")
         );
     }
 

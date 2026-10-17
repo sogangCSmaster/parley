@@ -1,4 +1,5 @@
 mod auth;
+mod db;
 mod dev;
 mod ice;
 mod limit;
@@ -134,10 +135,19 @@ async fn run() {
         tracing::warn!(user = %creds.username, file = %path.display(), "dev mode: test host account ready");
         accounts.insert(creds.username, hash);
     }
-    let auth = Arc::new(Auth::new(accounts));
-    if !auth.has_accounts() {
-        tracing::warn!("HOST_ACCOUNTS is empty: nobody can log in or create meetings");
+    let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| {
+        concat!(env!("CARGO_MANIFEST_DIR"), "/data/tolkmeet.db").to_owned()
+    });
+    if let Some(dir) = std::path::Path::new(&db_path).parent() {
+        std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("database dir {}: {e}", dir.display()));
     }
+    let db = db::Db::open(std::path::Path::new(&db_path))
+        .unwrap_or_else(|e| panic!("database {db_path}: {e}"));
+    // 운영자 계정(HOST_ACCOUNTS·개발용 계정)은 시작할 때마다 DB에 맞춘다.
+    for (email, hash) in &accounts {
+        auth::upsert_operator(&db, email, hash).unwrap_or_else(|e| panic!("operator account {email}: {e}"));
+    }
+    let auth = Arc::new(Auth::with_db(db));
     // dev 모드는 http://localhost 이므로 기본 false. 그 외에는 명시하지 않으면 항상 Secure.
     let cookie_secure = std::env::var("COOKIE_SECURE")
         .map(|v| v != "false")
@@ -240,6 +250,10 @@ async fn login(
         }
         Err(LoginError::Invalid) => StatusCode::UNAUTHORIZED.into_response(),
         Err(LoginError::Locked) => StatusCode::TOO_MANY_REQUESTS.into_response(),
+        Err(LoginError::Unverified) => {
+            (StatusCode::FORBIDDEN, Json(json!({ "code": "unverified" }))).into_response()
+        }
+        Err(LoginError::MfaRequired(ticket)) => Json(json!({ "mfa": ticket })).into_response(),
     }
 }
 
