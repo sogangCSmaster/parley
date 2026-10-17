@@ -44,6 +44,8 @@ pub struct Accounts {
     /// 초대 메일: 보내는 사람마다 하루 100통, 받는 사람마다 하루 5통.
     invites_by_user: KeyedLimiter,
     invites_by_rcpt: KeyedLimiter,
+    /// 로그인한 뒤의 2차 인증 코드 확인(끄기·복구 코드): 사용자마다 15분에 10번
+    totp_by_user: KeyedLimiter,
     /// Google 로그인 진행 중: state → (nonce, 연결할 사용자, 화면 언어, 시작 시각)
     oauth: Mutex<HashMap<String, OAuthPending>>,
 }
@@ -84,6 +86,7 @@ impl Accounts {
             by_email: KeyedLimiter::new(5, Duration::from_secs(3600)),
             invites_by_user: KeyedLimiter::new(100, Duration::from_secs(86_400)),
             invites_by_rcpt: KeyedLimiter::new(5, Duration::from_secs(86_400)),
+            totp_by_user: KeyedLimiter::new(10, Duration::from_secs(15 * 60)),
             oauth: Mutex::default(),
         }
     }
@@ -907,6 +910,53 @@ pub fn require_user(state: &AppState, headers: &HeaderMap) -> Result<i64, Respon
         .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "login"))
 }
 
+/// 민감한 작업(비밀번호·이메일 변경, 계정 삭제, 2차 인증·패스키 설정) 전에 본인인지 다시 확인한다.
+/// 비밀번호가 있으면 비밀번호로, 없으면(Google로만 가입) 최근 10분 안에 한 로그인이어야 한다.
+/// 2차 인증 코드는 여기 쓰지 않는다: 세션만 가진 사람이 2차 인증을 스스로 켜고 그 코드로 통과하지 못하게.
+async fn reauth(
+    state: &AppState,
+    uid: i64,
+    headers: &HeaderMap,
+    ip: IpAddr,
+    password: &str,
+) -> Result<(), Response> {
+    let db = state.auth.db().clone();
+    let has_password: bool = db
+        .call(move |c| {
+            c.query_row(
+                "SELECT password_hash IS NOT NULL FROM users WHERE id = ?1",
+                params![uid],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .unwrap_or(true);
+    if has_password {
+        return match state.auth.check_password(ip, uid, password).await {
+            Ok(()) => Ok(()),
+            Err(LoginError::Locked) => Err(error(StatusCode::TOO_MANY_REQUESTS, "locked")),
+            Err(_) => Err(error(StatusCode::UNAUTHORIZED, "current")),
+        };
+    }
+    let hash = auth::token_from_headers(headers)
+        .map(|t| auth::token_hash(&t))
+        .unwrap_or_default();
+    let created: i64 = db
+        .call(move |c| {
+            c.query_row(
+                "SELECT created_at FROM sessions WHERE token_hash = ?1",
+                params![hash],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .unwrap_or(0);
+    if now_secs() - created > FRESH_LOGIN {
+        return Err(error(StatusCode::UNAUTHORIZED, "reauth"));
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileReq {
@@ -1009,12 +1059,9 @@ pub async fn update_profile(
 #[derive(Deserialize)]
 pub struct EmailChangeReq {
     email: String,
-    /// 비밀번호가 있는 계정: 지금 비밀번호
+    /// 비밀번호가 있는 계정: 지금 비밀번호(없는 계정은 방금 한 로그인으로 확인)
     #[serde(default)]
     password: String,
-    /// 비밀번호가 없고 2차 인증을 켠 계정: 인증 앱 코드
-    #[serde(default)]
-    code: String,
 }
 
 /// 비밀번호도 2차 인증도 없는 계정(Google로만 가입)은 최근 10분 안에 로그인한 세션이어야
@@ -1049,50 +1096,19 @@ pub async fn email_change(
                 params![e],
                 |r| r.get(0),
             )?;
-            let (has_password, totp, locale): (bool, bool, String) = c.query_row(
-                "SELECT password_hash IS NOT NULL, totp_enabled, locale FROM users WHERE id = ?1",
+            let locale: String = c.query_row(
+                "SELECT locale FROM users WHERE id = ?1",
                 params![uid],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                |r| r.get(0),
             )?;
-            Ok((taken, has_password, totp, locale))
+            Ok((taken, locale))
         })
         .await;
-    let Ok((taken, has_password, totp, locale)) = info else {
+    let Ok((taken, locale)) = info else {
         return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
     };
-    // 다시 확인: 비밀번호 → 2차 인증 코드 → 방금 한 로그인 순으로.
-    if has_password {
-        match state.auth.check_password(ip, uid, &req.password).await {
-            Ok(()) => {}
-            Err(LoginError::Locked) => return error(StatusCode::TOO_MANY_REQUESTS, "locked"),
-            Err(_) => return error(StatusCode::UNAUTHORIZED, "current"),
-        }
-    } else if totp {
-        let code = req.code.clone();
-        let ok = db
-            .call(move |c| check_totp(c, uid, &code))
-            .await
-            .unwrap_or(false);
-        if !ok {
-            return error(StatusCode::UNAUTHORIZED, "code");
-        }
-    } else {
-        let hash = auth::token_from_headers(&headers)
-            .map(|t| auth::token_hash(&t))
-            .unwrap_or_default();
-        let created: i64 = db
-            .call(move |c| {
-                c.query_row(
-                    "SELECT created_at FROM sessions WHERE token_hash = ?1",
-                    params![hash],
-                    |r| r.get(0),
-                )
-            })
-            .await
-            .unwrap_or(0);
-        if now_secs() - created > FRESH_LOGIN {
-            return error(StatusCode::UNAUTHORIZED, "reauth");
-        }
+    if let Err(r) = reauth(&state, uid, &headers, ip, &req.password).await {
+        return r;
     }
     if taken {
         return error(StatusCode::CONFLICT, "taken");
@@ -1217,26 +1233,16 @@ pub async fn change_password(
         return error(StatusCode::BAD_REQUEST, "password");
     }
     let db = state.auth.db().clone();
-    let has_password: bool = db
-        .call(move |c| {
-            c.query_row(
-                "SELECT password_hash IS NOT NULL FROM users WHERE id = ?1",
-                params![uid],
-                |r| r.get(0),
-            )
-        })
-        .await
-        .unwrap_or(true);
-    if has_password {
-        match state
-            .auth
-            .check_password(client(&state, peer, &headers), uid, &req.current)
-            .await
-        {
-            Ok(()) => {}
-            Err(LoginError::Locked) => return error(StatusCode::TOO_MANY_REQUESTS, "locked"),
-            Err(_) => return error(StatusCode::UNAUTHORIZED, "current"),
-        }
+    if let Err(r) = reauth(
+        &state,
+        uid,
+        &headers,
+        client(&state, peer, &headers),
+        &req.current,
+    )
+    .await
+    {
+        return r;
     }
     if breached(&req.new).await {
         return error(StatusCode::BAD_REQUEST, "breached");
@@ -1324,17 +1330,19 @@ pub async fn delete_account(
     else {
         return error(StatusCode::NOT_FOUND, "missing");
     };
-    if has_password {
-        match state
-            .auth
-            .check_password(client(&state, peer, &headers), uid, &req.password)
-            .await
-        {
-            Ok(()) => {}
-            Err(LoginError::Locked) => return error(StatusCode::TOO_MANY_REQUESTS, "locked"),
-            Err(_) => return error(StatusCode::UNAUTHORIZED, "current"),
-        }
-    } else if normalize_username(&req.confirm) != email {
+    if let Err(r) = reauth(
+        &state,
+        uid,
+        &headers,
+        client(&state, peer, &headers),
+        &req.password,
+    )
+    .await
+    {
+        return r;
+    }
+    // 실수로 누르지 않게 비밀번호가 없는 계정은 이메일 주소를 다시 쓰게 한다.
+    if !has_password && normalize_username(&req.confirm) != email {
         return error(StatusCode::BAD_REQUEST, "confirm");
     }
     // 결제 중인 구독은 먼저 해지한다(실패하면 지우지 않는다: 지운 뒤에도 결제가 계속되면 안 된다).
@@ -1402,11 +1410,33 @@ pub async fn export(State(state): State<AppState>, headers: HeaderMap) -> Respon
 // ── 2차 인증(TOTP) ────────────────────────────────────
 
 /// 새 키를 만들어 저장만 하고(아직 꺼짐), 인증 앱에 넣을 QR·키를 준다.
-pub async fn totp_setup(State(state): State<AppState>, headers: HeaderMap) -> Response {
+#[derive(Deserialize, Default)]
+pub struct ReauthReq {
+    #[serde(default)]
+    password: String,
+}
+
+pub async fn totp_setup(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(req): Json<ReauthReq>,
+) -> Response {
     let uid = match require_user(&state, &headers) {
         Ok(id) => id,
         Err(r) => return r,
     };
+    if let Err(r) = reauth(
+        &state,
+        uid,
+        &headers,
+        client(&state, peer, &headers),
+        &req.password,
+    )
+    .await
+    {
+        return r;
+    }
     let secret = totp::new_secret();
     let s = secret.clone();
     let email = state
@@ -1499,6 +1529,9 @@ pub async fn totp_recovery(
         Ok(id) => id,
         Err(r) => return r,
     };
+    if !state.accounts.totp_by_user.check(&uid.to_string()) {
+        return error(StatusCode::TOO_MANY_REQUESTS, "locked");
+    }
     let code = req.code.clone();
     let codes = state
         .auth
@@ -1528,6 +1561,9 @@ pub async fn totp_disable(
         Ok(id) => id,
         Err(r) => return r,
     };
+    if !state.accounts.totp_by_user.check(&uid.to_string()) {
+        return error(StatusCode::TOO_MANY_REQUESTS, "locked");
+    }
     let code = req.code.clone();
     let ok = state
         .auth
@@ -1563,12 +1599,25 @@ pub async fn totp_disable(
 
 pub async fn passkey_register_options(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
+    Json(req): Json<ReauthReq>,
 ) -> Response {
     let uid = match require_user(&state, &headers) {
         Ok(id) => id,
         Err(r) => return r,
     };
+    if let Err(r) = reauth(
+        &state,
+        uid,
+        &headers,
+        client(&state, peer, &headers),
+        &req.password,
+    )
+    .await
+    {
+        return r;
+    }
     let info = state
         .auth
         .db()
