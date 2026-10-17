@@ -13,7 +13,9 @@ import type { TalkFailure } from '../lib/talk'
 import { downloadText, formatTranscript, Transcript, transcriptFileName } from '../lib/transcript'
 import { Icon } from './Icon'
 import { Notice } from './Meeting'
+import { LocaleSelect } from './LocaleSelect'
 import { Select } from './Select'
+import { StatusPage } from './StatusPage'
 import { ToLatest } from './ToLatest'
 
 /**
@@ -145,11 +147,11 @@ function Live({ code }: { code: string }) {
 
   if (failure) {
     return (
-      <div className="shell">
-        <main className="left">
-          <h1>{t('live.title')}</h1>
-          <p className="lead">{t(failure)}</p>
-          <div className="row">
+      <StatusPage
+        title={t('live.title')}
+        body={t(failure)}
+        actions={
+          <>
             {hasTranscript && (
               <button className="btn btn-outline" onClick={save}>
                 <Icon name="download" />
@@ -159,9 +161,9 @@ function Live({ code }: { code: string }) {
             <button className="btn btn-primary" onClick={() => navigate('/')}>
               {t('room.home')}
             </button>
-          </div>
-        </main>
-      </div>
+          </>
+        }
+      />
     )
   }
 
@@ -194,6 +196,7 @@ function Live({ code }: { code: string }) {
           {t(status)}
         </p>
         <div className="live-actions">
+          <LocaleSelect />
           {micError ? (
             <button
               className="btn btn-outline"

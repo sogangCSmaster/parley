@@ -7,21 +7,23 @@ import { useI18n } from '../lib/i18n'
 import { acquireLocalMedia, type LocalMedia } from '../lib/media'
 import { loadPrefs, savePrefs, type Prefs } from '../lib/prefs'
 import { navigate } from '../lib/router'
-import { Header } from './Header'
+import { MeetingGonePage, MicBlockedPage } from './ErrorPages'
 import { Lobby } from './Lobby'
 import { Icon } from './Icon'
-import { Room } from './Room'
+import { Room, type LeaveSummary } from './Room'
+import { StatusPage } from './StatusPage'
 
 type Stage = 'lobby' | 'room' | 'left'
 
 export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void }) {
-  const { t } = useI18n()
   const [local, setLocal] = useState<LocalMedia | null>(null)
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs)
   const [media, setMedia] = useState<MediaState>({ mic: true, cam: true, screen: false })
   const [stage, setStage] = useState<Stage>('lobby')
   // 나간 뒤에도 자막을 저장할 수 있게 회의실에서 넘겨받는다(메모리에만, 다시 참여하면 사라진다).
-  const [exportTranscript, setExportTranscript] = useState<(() => string) | null>(null)
+  const [summary, setSummary] = useState<(LeaveSummary & { leftAt: number }) | null>(null)
+  // 마이크 권한이 막힌 채로 듣기만 하고 들어가기로 했는지
+  const [listenOnly, setListenOnly] = useState(false)
   // undefined: 확인 중, null: 없는 회의
   const [room, setRoom] = useState<RoomSettings | null | undefined>(undefined)
 
@@ -69,40 +71,21 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
     savePrefs(next)
   }
 
-  function leave(exporter: (() => string) | null) {
+  function leave(next: LeaveSummary) {
     local?.stream.getTracks().forEach((t) => t.stop())
-    // 함수를 상태로 둘 때는 업데이트 함수로 오해되지 않게 감싼다.
-    setExportTranscript(() => exporter)
+    setSummary({ ...next, leftAt: Date.now() })
     setStage('left')
   }
 
-  if (room === null) {
-    return <Notice title={t('room.cannotJoin')} body={t('room.notFound')} onHome={() => navigate('/')} />
-  }
+  if (room === null) return <MeetingGonePage />
 
   if (stage === 'left') {
-    return (
-      <div className="shell">
-        <Header />
-        <main className="left">
-          <h1>{t('room.left')}</h1>
-          <div className="row">
-            {exportTranscript && (
-              <button className="btn btn-outline" onClick={() => downloadText(transcriptFileName(code, new Date()), exportTranscript())}>
-                <Icon name="download" />
-                {t('captions.download')}
-              </button>
-            )}
-            <button className="btn btn-outline" onClick={onRejoin}>
-              {t('room.rejoin')}
-            </button>
-            <button className="btn btn-primary" onClick={() => navigate('/')}>
-              {t('room.home')}
-            </button>
-          </div>
-        </main>
-      </div>
-    )
+    return <EndedPage code={code} summary={summary} onRejoin={onRejoin} />
+  }
+
+  const micBlocked = local?.error?.device === 'both' && local.error.kind === 'denied'
+  if (stage === 'lobby' && micBlocked && !listenOnly) {
+    return <MicBlockedPage onRetry={onRejoin} onListenOnly={() => setListenOnly(true)} />
   }
 
   if (stage === 'lobby' || !local) {
@@ -138,15 +121,78 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
 export function Notice({ title, body, onHome }: { title: string; body: string; onHome: () => void }) {
   const { t } = useI18n()
   return (
-    <div className="shell">
-      <Header />
-      <main className="left">
-        <h1>{title}</h1>
-        <p className="lead">{body}</p>
+    <StatusPage
+      title={title}
+      body={body}
+      actions={
         <button className="btn btn-primary" onClick={onHome}>
           {t('room.home')}
         </button>
-      </main>
-    </div>
+      }
+    />
+  )
+}
+
+/** 나간 화면: 회의 시간·번역한 문장 수, 대화 기록 저장, 다시 참여·홈으로. */
+function EndedPage({
+  code,
+  summary,
+  onRejoin,
+}: {
+  code: string
+  summary: (LeaveSummary & { leftAt: number }) | null
+  onRejoin: () => void
+}) {
+  const { t } = useI18n()
+  const exportTranscript = summary?.exportTranscript ?? null
+  const minutes = summary?.joinedAt != null ? Math.max(1, Math.round((summary.leftAt - summary.joinedAt) / 60_000)) : null
+  const duration =
+    minutes == null
+      ? null
+      : minutes < 60
+        ? t('ended.minutes', { n: String(minutes) })
+        : t('ended.hoursMinutes', { h: String(Math.floor(minutes / 60)), m: String(minutes % 60) })
+  return (
+    <StatusPage
+      eyebrow={t('lobby.meeting', { code })}
+      title={t('room.left')}
+      actions={
+        <>
+          <button className="btn btn-outline" onClick={onRejoin}>
+            {t('room.rejoin')}
+          </button>
+          <button className="btn btn-primary" onClick={() => navigate('/')}>
+            {t('room.home')}
+          </button>
+        </>
+      }
+    >
+      {duration && (
+        <dl className="ended-stats">
+          <div className="status-card">
+            <dt>{t('ended.duration')}</dt>
+            <dd>{duration}</dd>
+          </div>
+          <div className="status-card">
+            <dt>{t('ended.sentences')}</dt>
+            <dd>{summary?.sentences ?? 0}</dd>
+          </div>
+        </dl>
+      )}
+      {exportTranscript && (
+        <div className="status-card ended-save">
+          <span className="ended-save-icon" aria-hidden="true">
+            <Icon name="download" />
+          </span>
+          <div>
+            <h2>{t('ended.saveTitle')}</h2>
+            <p>{t('ended.saveBody')}</p>
+          </div>
+          <button className="btn btn-ink" onClick={() => downloadText(transcriptFileName(code, new Date()), exportTranscript())}>
+            {t('ended.save')}
+          </button>
+        </div>
+      )}
+    </StatusPage>
   )
 }

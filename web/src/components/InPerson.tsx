@@ -10,7 +10,9 @@ import { TalkSide, type TalkFailure } from '../lib/talk'
 import { downloadText, formatTranscript, Transcript, transcriptFileName } from '../lib/transcript'
 import { Icon } from './Icon'
 import { Notice } from './Meeting'
+import { LocaleSelect } from './LocaleSelect'
 import { Select } from './Select'
+import { StatusPage } from './StatusPage'
 
 /**
  * 대면 모드: 한 기기를 사이에 두고 두 사람이 서로 다른 언어로 대화한다.
@@ -161,11 +163,11 @@ function Talk({ code }: { code: string }) {
 
   if (failure) {
     return (
-      <div className="shell">
-        <main className="left">
-          <h1>{t('talk.title')}</h1>
-          <p className="lead">{t(failure)}</p>
-          <div className="row">
+      <StatusPage
+        title={t('talk.title')}
+        body={t(failure)}
+        actions={
+          <>
             {hasTranscript && (
               <button className="btn btn-outline" onClick={save}>
                 <Icon name="download" />
@@ -175,9 +177,9 @@ function Talk({ code }: { code: string }) {
             <button className="btn btn-primary" onClick={() => navigate('/')}>
               {t('room.home')}
             </button>
-          </div>
-        </main>
-      </div>
+          </>
+        }
+      />
     )
   }
 
@@ -217,6 +219,7 @@ function Talk({ code }: { code: string }) {
           </button>
         )}
         <div className="talk-bar-actions">
+          <LocaleSelect />
           {hasTranscript && (
             <button className="icon-btn" aria-label={t('captions.download')} title={t('captions.download')} onClick={save}>
               <Icon name="download" />

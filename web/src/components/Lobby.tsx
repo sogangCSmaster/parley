@@ -46,6 +46,7 @@ export function Lobby({ code, local, room, prefs, media, onPrefsChange, onMediaC
             micOn={hasMic && media.mic}
             mirror
             muted
+            offLabel={local && hasCam ? t('lobby.camOff') : undefined}
           />
           <div className="lobby-controls">
             <button
@@ -76,8 +77,10 @@ export function Lobby({ code, local, room, prefs, media, onPrefsChange, onMediaC
         </div>
 
         <form className="lobby-form" onSubmit={submit}>
-          <h1>{t('lobby.title')}</h1>
-          <p className="lead">{code}</p>
+          <div>
+            <p className="status-eyebrow">{t('lobby.meeting', { code })}</p>
+            <h1>{t('lobby.title')}</h1>
+          </div>
           <label className="field-label">
             {t('lobby.name')}
             <input
@@ -89,15 +92,15 @@ export function Lobby({ code, local, room, prefs, media, onPrefsChange, onMediaC
               placeholder={t('lobby.namePlaceholder')}
             />
           </label>
-          {room?.translation && (
-            <>
-              <LanguageSelects prefs={prefs} onChange={onPrefsChange} />
-              <p className="lobby-note save-note">{t('captions.saveNotice')}</p>
-            </>
-          )}
+          {room?.translation && <LanguageSelects prefs={prefs} onChange={onPrefsChange} />}
           <button className="btn btn-primary btn-lg" disabled={!name || !local || !room}>
             {auth.status === 'host' ? t('lobby.joinNow') : t('lobby.askToJoin')}
           </button>
+          {(auth.status !== 'host' || room?.translation) && (
+            <p className="lobby-note save-note">
+              {auth.status !== 'host' && t('lobby.guestNote')} {room?.translation && t('captions.saveNotice')}
+            </p>
+          )}
         </form>
       </main>
     </div>

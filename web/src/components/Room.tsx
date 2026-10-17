@@ -16,8 +16,10 @@ import { startSpeech, type Speech } from '../lib/speech'
 import { downloadText, formatTranscript, Transcript, transcriptFileName } from '../lib/transcript'
 import type { Grant, SegCounter, SttStatus, TokenError } from '../lib/stt'
 import { CaptionPanel } from './CaptionPanel'
-import { Header } from './Header'
+import { MeetingGonePage } from './ErrorPages'
 import { KnockPrompts } from './KnockPrompts'
+import { LocaleSelect } from './LocaleSelect'
+import { StatusPage } from './StatusPage'
 import { Icon } from './Icon'
 import { VideoTile } from './VideoTile'
 
@@ -28,11 +30,19 @@ type Props = {
   media: MediaState
   onPrefsChange: (p: Prefs) => void
   onMediaChange: (m: MediaState) => void
-  /** 나갈 때 자막 기록을 텍스트로 만드는 함수를 넘긴다(없으면 null). 나간 화면에서 저장을 누를 때만 만든다. */
-  onLeave: (exportTranscript: (() => string) | null) => void
+  /** 나갈 때 회의 요약을 넘긴다. 자막 텍스트는 나간 화면에서 저장을 누를 때만 만든다. */
+  onLeave: (summary: LeaveSummary) => void
   /** 입장이 끝내 안 됐다(거절·없는 방·가득 참 등): 카메라·마이크를 놓아도 된다. "다시 시도"는 처음부터 다시 잡는다. */
   onGiveUp: () => void
   onRejoin: () => void
+}
+
+export type LeaveSummary = {
+  /** 확정된 자막이 없으면 null */
+  exportTranscript: (() => string) | null
+  /** 처음 입장한 시각(ms). 입장하지 못하고 나가면 null */
+  joinedAt: number | null
+  sentences: number
 }
 
 type Status =
@@ -104,6 +114,8 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const [attempt, setAttempt] = useState(0)
   const resumeRef = useRef<string | null>(null)
   const everJoinedRef = useRef(false)
+  // 나간 화면에 회의 시간을 보이려고 처음 입장한 시각을 둔다(다시 연결해도 유지).
+  const joinedAtRef = useRef<number | null>(null)
   const retriesRef = useRef(0)
   // 대기 중인 재시도 타이머. 시도가 진행 중이면 null이다.
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -154,6 +166,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           )
           joinedRef.current = true
           everJoinedRef.current = true
+          joinedAtRef.current ??= Date.now()
           resumeRef.current = msg.resume
           selfIdsRef.current.add(msg.you)
           retriesRef.current = 0
@@ -431,7 +444,8 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
 
   function leave() {
     // 나가는 클릭을 늦추지 않도록 텍스트는 저장을 누를 때 만든다.
-    onLeave(transcriptRef.current.size > 0 ? transcriptText : null)
+    const size = transcriptRef.current.size
+    onLeave({ exportTranscript: size > 0 ? transcriptText : null, joinedAt: joinedAtRef.current, sentences: size })
   }
 
   function admit(id: string) {
@@ -448,37 +462,37 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
 
   if (status.kind === 'waiting') {
     return (
-      <div className="shell">
-        <Header />
-        <main className="left" aria-live="polite">
-          <span className="spinner" aria-hidden="true" />
-          <h1>{t('room.waitingTitle')}</h1>
-          <p className="lead">{t('room.waitingBody')}</p>
+      <StatusPage
+        icon="spinner"
+        live
+        title={t('room.waitingTitle')}
+        body={t('room.waitingBody')}
+        actions={
           <button className="btn btn-outline" onClick={leave}>
             {t('room.cancel')}
           </button>
-        </main>
-      </div>
+        }
+      />
     )
   }
 
   if (status.kind === 'error') {
+    if (status.message === 'room.notFound') return <MeetingGonePage />
     return (
-      <div className="shell">
-        <Header />
-        <main className="left">
-          <h1>{t('room.cannotJoin')}</h1>
-          <p className="lead">{t(status.message)}</p>
-          <div className="row">
+      <StatusPage
+        title={t('room.cannotJoin')}
+        body={t(status.message)}
+        actions={
+          <>
             <button className="btn btn-outline" onClick={onRejoin}>
               {t('room.retry')}
             </button>
             <button className="btn btn-primary" onClick={leave}>
               {t('room.leave')}
             </button>
-          </div>
-        </main>
-      </div>
+          </>
+        }
+      />
     )
   }
 
@@ -582,6 +596,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
         <Clock locale={locale} />
         <span aria-hidden="true">·</span>
         {code}
+        <LocaleSelect />
       </div>
 
       {/* 무대 아래 가운데에 뜨는 유리 캡슐: 마이크·카메라·자막·공유·링크 | 나가기 */}

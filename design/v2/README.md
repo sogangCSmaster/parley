@@ -13,6 +13,8 @@ The target look for the next version, explored on a design canvas (2026-10-17). 
 | Surfaces | Thin borders, flat panels | No borders; layers come from fill (`#F5F5F7` page, `#FFFFFF` cards), large radii (14–30px), translucent glass (`backdrop-filter`) over video |
 | Filled buttons | Ink | **Deep orange `#D4401C` with white text and white icons** (4.62:1), also for icon tiles and badges on orange. The brand orange `#F2542D` stays for non-text accents only: logo, translation pill, speaking ring, progress |
 | Admit prompt | Light card, orange admit | Dark glass card. **Admit is a white button with a check icon, deny is gray glass with an X**: orange/red next to the red leave button read as "cancel" |
+| Language switcher | Header only | **Every page has a small globe pill** (header, meeting room top-left next to the code, captions and in-person toolbars). Narrow screens show the globe only |
+| Engine credit | Footer note | "Powered by Gemini" pill under the hero and a speed/quality section ("빠르고, 정확하게"). No latency number until it is measured |
 | Camera off | Colored initial circle | Gray monogram (`#A2A6B0 → #7D818C`), speaking = orange double ring + level bars |
 | Account avatar | Initial | A generic person icon on `#E8E8ED`. No profile photo upload (people rarely add one to a work tool) |
 | Captions | Panel list, same size for every line | Recency sizing: the latest line is largest and darkest, older lines shrink and fade. Scrolling up switches to uniform reading mode with a "최신 대화로" pill |

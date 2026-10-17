@@ -8,11 +8,11 @@ import { HeroDemo } from './HeroDemo'
 import { Icon } from './Icon'
 import { NewMeetingDialog, type MeetingKind } from './NewMeetingDialog'
 
-export function Home({ invalidPath }: { invalidPath: boolean }) {
+export function Home() {
   const { t } = useI18n()
   const [input, setInput] = useState('')
   // 메시지 키를 저장해 두면 화면 언어를 바꿔도 오류 문구가 함께 바뀐다.
-  const [error, setError] = useState<MessageKey | null>(invalidPath ? 'home.invalidLink' : null)
+  const [error, setError] = useState<MessageKey | null>(null)
   const [creating, setCreating] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [createError, setCreateError] = useState<MessageKey | null>(null)

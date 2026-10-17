@@ -13,10 +13,12 @@ type Props = {
   /** 내 타일은 음소거해 에코를 막는다. */
   muted?: boolean
   presenting?: boolean
+  /** 카메라가 꺼졌을 때 모노그램 아래에 보일 문구(로비 미리보기) */
+  offLabel?: string
   className?: string
 }
 
-export function VideoTile({ name, stream, showVideo, micOn, speaking, mirror, muted, presenting, className }: Props) {
+export function VideoTile({ name, stream, showVideo, micOn, speaking, mirror, muted, presenting, offLabel, className }: Props) {
   const { t } = useI18n()
   const ref = useRef<HTMLVideoElement>(null)
 
@@ -45,6 +47,7 @@ export function VideoTile({ name, stream, showVideo, micOn, speaking, mirror, mu
             <i />
             <i />
           </span>
+          {offLabel && <span className="off-label">{offLabel}</span>}
         </div>
       )}
       <span className="name">
