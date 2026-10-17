@@ -353,7 +353,7 @@ impl Copy {
     pub fn receipt(&self, to: &str, plan: &str, amount: &str, renews: &str) -> Message {
         let (subject, title, lines) = match self.lang {
             Lang::Ko => (format!("Tolkmeet {plan} 요금제를 시작해 주셔서 감사합니다"), format!("{plan} 요금제를 시작해 주셔서 감사합니다"), vec![format!("결제 금액: {amount}"), format!("다음 결제일: {renews}"), "세금 영수증은 판매 대행사 Paddle이 따로 보냅니다. 해지와 영수증은 계정 › 요금제와 결제에서 할 수 있습니다.".to_owned()]),
-            Lang::Ja => (format!("Tolkmeet {plan} プランをご利用いただきありがとうございます"), format!("{plan} をご利用いただきありがとうございます"), vec![format!("お支払い金額: {amount}"), format!("次回のお支払い日: {renews}"), "税務上の領収書は販売代理店の Paddle から別途届きます。解約と領収書はアカウント › プランとお支払いから確認できます。".to_owned()]),
+            Lang::Ja => (format!("Tolkmeet {plan} プランをご利用いただきありがとうございます"), format!("{plan} プランをご利用いただきありがとうございます"), vec![format!("お支払い金額: {amount}"), format!("次回のお支払い日: {renews}"), "税務上の領収書は販売代理店の Paddle から別途届きます。解約と領収書はアカウント › プランとお支払いから確認できます。".to_owned()]),
             Lang::En => (format!("Thanks for starting Tolkmeet {plan}"), format!("Thanks for starting {plan}"), vec![format!("Amount: {amount}"), format!("Next payment: {renews}"), "Paddle, our reseller, sends the tax receipt separately. Cancel or see receipts in Account › Plan & billing.".to_owned()]),
         };
         Message {
