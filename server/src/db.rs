@@ -142,10 +142,11 @@ impl Db {
     fn init(conn: Connection) -> rusqlite::Result<Self> {
         // WAL: 읽기가 쓰기를 기다리지 않는다. busy_timeout: Litestream 체크포인트와 겹쳐도 잠깐 기다린다.
         // secure_delete: 지운 행을 빈 페이지에 남기지 않고 0으로 덮는다(백업 사본에 지운 개인정보가 옮겨지지 않게).
-        // FAST는 이미 메모리에 있는 페이지만 덮어 디스크 쓰기가 거의 늘지 않는다.
+        // FAST는 한 페이지를 넘는 값(초대 손님 목록이 길 때)의 넘침 페이지를 덮지 않으므로 ON을 쓴다.
+        // 큰 행을 지울 때만 쓰기가 조금 늘어 속도 영향은 거의 없다.
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
-             PRAGMA secure_delete = FAST;
+             PRAGMA secure_delete = ON;
              PRAGMA synchronous = NORMAL;
              PRAGMA foreign_keys = ON;
              PRAGMA busy_timeout = 5000;",
@@ -201,15 +202,30 @@ mod tests {
     #[test]
     fn deleted_account_leaves_no_bytes_in_the_file() {
         // 처리방침: 계정을 지우면 바로 지우고 백업(파일 스냅숏)에도 남지 않는다.
-        let path = std::env::temp_dir().join(format!("tolkmeet-secure-delete-{}.db", std::process::id()));
-        for ext in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
+        // 한 페이지를 넘는 값(넘침 페이지)도 확인한다.
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                for ext in ["", "-wal", "-shm"] {
+                    let _ = std::fs::remove_file(format!("{}{ext}", self.0.display()));
+                }
+            }
         }
+        let path = std::env::temp_dir().join(format!("tolkmeet-secure-delete-{}.db", std::process::id()));
+        let cleanup = Cleanup(path.clone());
+        drop(Cleanup(path.clone()));
         let marker = "forget-me-7f3a@example.com";
+        // 주소를 값 끝에 두어 넘침 페이지에 들어가게 한다.
+        let big = format!("[\"{}\",\"{marker}\"]", "x".repeat(6000));
         let db = Db::open(&path).unwrap();
         db.blocking(|c| {
             c.execute("INSERT INTO users (email, created_at) VALUES (?1, 1)", params![marker])?;
-            c.execute("DELETE FROM users WHERE email = ?1", params![marker])?;
+            let uid = c.last_insert_rowid();
+            c.execute(
+                "INSERT INTO meetings (code, owner_id, guests, created_at) VALUES ('aaaa-aaaa-aaaa', ?1, ?2, 1)",
+                params![uid, big],
+            )?;
+            c.execute("DELETE FROM users WHERE id = ?1", params![uid])?;
             c.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
         })
         .unwrap();
@@ -217,9 +233,7 @@ mod tests {
         let mut bytes = std::fs::read(&path).unwrap();
         bytes.extend(std::fs::read(format!("{}-wal", path.display())).unwrap_or_default());
         assert!(!bytes.windows(marker.len()).any(|w| w == marker.as_bytes()), "deleted email still in the file");
-        for ext in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
-        }
+        drop(cleanup);
     }
 
     #[tokio::test]
