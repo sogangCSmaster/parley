@@ -57,6 +57,7 @@ pub struct Accounts {
     /// 로그인 전 대기 상태를 만드는 요청(패스키 로그인 옵션·Google 시작): 클라이언트마다 1분에 30번.
     /// 한 곳에서 대기 상태를 잔뜩 만들어 다른 사람의 진행 중인 로그인을 밀어내지 못하게.
     sign_in_starts: KeyedLimiter,
+    sign_in_starts_by_net: KeyedLimiter,
     /// Google 로그인 진행 중: state → (nonce, 연결할 사용자, 화면 언어, 시작 시각)
     oauth: Mutex<HashMap<String, OAuthPending>>,
 }
@@ -96,6 +97,7 @@ impl Accounts {
             by_net: KeyedLimiter::new(200, Duration::from_secs(3600)),
             by_ip: KeyedLimiter::new(20, Duration::from_secs(3600)),
             sign_in_starts: KeyedLimiter::new(30, Duration::from_secs(60)),
+            sign_in_starts_by_net: KeyedLimiter::new(300, Duration::from_secs(60)),
             by_email: KeyedLimiter::new(5, Duration::from_secs(3600)),
             invites_by_user: KeyedLimiter::new(100, Duration::from_secs(86_400)),
             invites_by_rcpt: KeyedLimiter::new(5, Duration::from_secs(86_400)),
@@ -124,7 +126,8 @@ impl Accounts {
 
     /// 로그인 전 대기 상태를 하나 더 만들어도 되는지.
     fn may_start_sign_in(&self, ip: IpAddr) -> bool {
-        self.sign_in_starts.check(&auth::client_key(ip).to_string())
+        // /48을 먼저: 터널 하나로 받은 /64 수만 개로 나눠 피하지 못하게.
+        self.sign_in_starts_by_net.check(&net48(ip)) && self.sign_in_starts.check(&auth::client_key(ip).to_string())
     }
 
     /// 로그인 중 이 클라이언트가 이 사용자의 2차 인증 코드를 한 번 더 맞혀 봐도 되는지.

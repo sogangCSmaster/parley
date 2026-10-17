@@ -66,8 +66,8 @@ impl KeyedLimiter {
             cap,
             inner: std::sync::Mutex::new(Inner {
                 map: Default::default(),
-                // 넘침 버킷: 키 열 개 몫
-                overflow: TokenBucket::new(rate * 10.0, burst * 10.0),
+                // 넘침 버킷: 키 하나 몫. 새 키들을 다 합쳐도 키 하나의 한도를 넘지 못한다(한도가 느슨해지지 않게).
+                overflow: TokenBucket::new(rate, burst),
                 swept_at: None,
             }),
         }
@@ -117,8 +117,8 @@ mod keyed_tests {
         assert!(l.check("a") && l.check("b"));
         // 가득 차도 제한 중인 키는 풀리지 않는다.
         assert!(!l.check("a"));
-        // 새 키는 넘침 버킷(키 열 개 몫)을 함께 쓴다.
-        assert!((0..10).all(|i| l.check(&format!("new{i}"))));
-        assert!(!l.check("new10"));
+        // 새 키들은 넘침 버킷(키 하나 몫)을 함께 쓴다.
+        assert!(l.check("new0"));
+        assert!(!l.check("new1"));
     }
 }
