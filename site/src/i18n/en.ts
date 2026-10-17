@@ -84,7 +84,7 @@ export const en = {
   details: [
     { title: 'Accents are fine', body: 'Japanese spoken with a Korean accent is still written as Japanese, not as Korean sounds.' },
     { title: 'Guests need nothing', body: 'They open the link in Chrome, Safari or Edge and ask to join. You let them in.' },
-    { title: 'Screen sharing', body: 'While you present, a small caption window stays on top of your screen.' },
+    { title: 'Screen sharing', body: 'While you present, a small caption window stays on top of your screen (Chrome and Edge).' },
     { title: 'Keep the conversation', body: 'Anyone can save their own captions, original and translation, as a text file.' },
     { title: 'Eight languages', body: 'Korean, Japanese, English, Chinese (Simplified), Spanish, French, German and Vietnamese. Each person picks their own.' },
     { title: 'Open source', body: 'The code is public under AGPL-3.0, so you can check exactly what it does.' },
@@ -108,7 +108,7 @@ export const en = {
     { q: 'Can it replace a professional interpreter?', a: 'For everyday business conversation it works well. For contracts, medical or legal decisions, confirm the important points with a qualified interpreter.' },
     { q: 'What happens to my voice?', a: 'Your speech is sent to Google Gemini through its paid API to be turned into text and translated. Google does not use paid API data to train its models, and Tolkmeet does not store audio or captions.' },
     { q: 'Does the live captions screen work with any two languages?', a: 'It tells languages apart by their writing system, so it works for pairs like Korean and Japanese or Japanese and English. For two languages that share an alphabet, such as English and Spanish, use an in-person conversation instead.' },
-    { q: 'What if I use up my hours?', a: 'Add hours for $3 each in that month, or move to Pro for 30 hours a month.' },
+    { q: 'What if I use up my hours?', a: 'Add hours for $3 each. Extra hours stay on your account until you use them. Or move to Pro for 30 hours a month.' },
   ],
 
   closingLine1: 'Your next meeting,',
@@ -154,7 +154,8 @@ export const en = {
     ['', '0', ' captions left on our servers'],
     ['Saved only ', 'on your own device', ''],
   ] as [string, string, string][],
-  privacyHint: 'Hover to pause',
+  privacyPause: 'Pause animation',
+  privacyPlay: 'Play animation',
   privacyLink: 'Privacy Policy',
 
   footerLegal: 'Legal',

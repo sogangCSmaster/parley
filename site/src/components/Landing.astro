@@ -30,7 +30,7 @@ const jsonLd = [
     applicationCategory: 'CommunicationApplication',
     operatingSystem: 'Web browser',
     inLanguage: t.lang,
-    offers: t.plans.map((p) => ({ '@type': 'Offer', name: p.name, price: p.price.replace('$', ''), priceCurrency: 'USD' })),
+    offers: t.plans.map((p) => ({ '@type': 'Offer', name: p.name, price: p.price.replace('$', ''), priceCurrency: 'USD', priceSpecification: { '@type': 'UnitPriceSpecification', price: p.price.replace('$', ''), priceCurrency: 'USD', unitCode: 'MON' } })),
   },
   {
     '@context': 'https://schema.org',
@@ -224,7 +224,8 @@ const jsonLd = [
       <div class="wrap">
         <h2 id="privacy-title" class="privacy-title">{t.privacyTitle1}<br />{t.privacyTitle2}</h2>
         <p class="privacy-lead">{t.privacyLead}</p>
-        <div class="pv-stage" role="img" aria-label={t.privacyStageLabel}>
+        <div class="pv-stage" data-pv>
+          <div class="pv-scene" role="img" aria-label={t.privacyStageLabel}>
           <div class="pv-lines" aria-hidden="true">
             {privacyLines.map((l) => (
               <div class="pv-line">
@@ -245,10 +246,12 @@ const jsonLd = [
             </div>
             <div class="pv-person"><span class="pv-avatar" lang={t.otherNameLang}>{[...t.otherName][0]}</span><span lang={t.otherNameLang}>{t.otherName}</span></div>
           </div>
+          </div>
           <ul class="pv-chips">
             {t.privacyChips.map(([a, b, c]) => <li class="pv-chip">{a}<b>{b}</b>{c}</li>)}
           </ul>
-          <p class="pv-hint" aria-hidden="true">{t.privacyHint}</p>
+          {/* 계속 도는 움직임이라 멈출 수 있게 한다(WCAG 2.2.2). */}
+          <button class="pv-toggle" type="button" aria-pressed="false" data-pv-toggle data-labels={JSON.stringify({ pause: t.privacyPause, play: t.privacyPlay })}>{t.privacyPause}</button>
         </div>
         <a class="privacy-link" href={LEGAL.privacy} hreflang="en">{t.privacyLink} ›</a>
       </div>
@@ -446,6 +449,17 @@ const jsonLd = [
       addEventListener('scroll', request, { passive: true })
       addEventListener('resize', request)
       frame()
+
+      // 개인정보 장면: 화면에 보일 때만 움직이고(안 보이면 그리지 않게), 버튼으로 멈출 수 있다.
+      const pv = document.querySelector('[data-pv]')
+      const pvToggle = pv.querySelector('[data-pv-toggle]')
+      const pvLabels = JSON.parse(pvToggle.dataset.labels)
+      new IntersectionObserver(([x]) => pv.classList.toggle('pv-run', x.isIntersecting)).observe(pv)
+      pvToggle.addEventListener('click', () => {
+        const paused = pv.classList.toggle('pv-paused')
+        pvToggle.setAttribute('aria-pressed', String(paused))
+        pvToggle.textContent = paused ? pvLabels.play : pvLabels.pause
+      })
 
       // 마지막 문장: 화면에 들어오면 한 번 두 줄이 맞춰 선다
       const io = new IntersectionObserver((list) => list.forEach((x) => { if (x.isIntersecting) { x.target.classList.add('in'); io.unobserve(x.target) } }), { threshold: 0.4 })

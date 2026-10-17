@@ -24,14 +24,17 @@ const t = { ...en, metaTitle, metaDescription, path: href(page) }
 ---
 <Base t={t} noindex>
   <div class="legal">
+    <a class="skip" href="#legal-main">Skip to content</a>
+    <header>
     <nav class="legal-top" aria-label="Main">
       <a class="brand" href="/" aria-label="Tolkmeet home"><Mark size={22} /><span>tolkmeet</span></a>
       <span class="legal-links">
         {links.map(([p, label]) => <a href={href(p)} aria-current={p === page ? 'page' : undefined}>{label}</a>)}
       </span>
     </nav>
+    </header>
 
-    <main>
+    <main id="legal-main">
       {toc ? (
         <>
           <header class="legal-head">

@@ -6,7 +6,7 @@ export const SITE_URL = 'https://tolkmeet.com'
 /** 앱(회의). 로그인·가입·결제는 모두 여기서 한다. 소개 페이지는 쿠키를 쓰지 않는다. */
 export const APP_URL = 'https://meet.tolkmeet.com'
 export const SIGN_IN_URL = `${APP_URL}/login`
-// 가입·결제는 아직 앱에 없다. 이 소개 페이지는 /signup과 Paddle 결제가 생긴 뒤에 공개한다(docs/LAUNCH_PLAN.md).
+// 가입은 앱의 /signup, 결제는 앱 안의 Paddle 결제창. 이 사이트는 main에 올리면 GitHub Pages로 배포된다(docs/LAUNCH_PLAN.md).
 export const SIGNUP_URL = `${APP_URL}/signup`
 export const GITHUB_URL = 'https://github.com/sogangCSmaster/tolkmeet'
 

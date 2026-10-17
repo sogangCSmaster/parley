@@ -14,7 +14,8 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # 배포 도중 끊지 않는다(Pages 기본 예시와 같게)
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -41,6 +42,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       pages: write
