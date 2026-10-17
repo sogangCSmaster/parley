@@ -105,6 +105,13 @@ pub fn record_usage(
     let mut hosts: HashSet<String> = check.clone();
     for m in metered {
         hosts.insert(m.host.clone());
+        tx.execute(
+            "UPDATE meetings SET peak_participants = MAX(peak_participants, ?2) WHERE code = ?1",
+            params![m.code, m.peak as i64],
+        )?;
+        if m.seconds == 0 {
+            continue;
+        }
         let Ok(uid) = m.host.parse::<i64>() else {
             continue;
         };
@@ -378,10 +385,11 @@ fn meeting_json(r: &rusqlite::Row) -> rusqlite::Result<Value> {
         "endedAt": ended,
         "lengthSec": match (started, ended) { (Some(s), Some(e)) => (e - s).max(0), _ => 0 },
         "translatedSec": r.get::<_, i64>("translated_seconds")?,
+        "peak": r.get::<_, i64>("peak_participants")?,
     }))
 }
 
-const MEETING_COLUMNS: &str = "id, code, title, kind, lang_a, lang_b, starts_at, duration_min, guests, created_at, started_at, ended_at, translated_seconds";
+const MEETING_COLUMNS: &str = "id, code, title, kind, lang_a, lang_b, starts_at, duration_min, guests, created_at, started_at, ended_at, translated_seconds, peak_participants";
 
 /// 다가오는 예약 회의와 지난 회의.
 pub async fn list(State(state): State<AppState>, headers: HeaderMap) -> Response {
@@ -472,9 +480,9 @@ pub async fn schedule(
         })
         .await;
     match res {
-        Ok(Some(meeting)) => {
+        Ok(Some(mut meeting)) => {
             if req.invite {
-                send_invites(&state, uid, &meeting).await;
+                meeting["sent"] = json!(send_invites(&state, uid, &meeting).await);
             }
             (StatusCode::CREATED, Json(meeting)).into_response()
         }
@@ -529,8 +537,9 @@ pub async fn update(
     let Some(meeting) = owned(&db, uid, id).await else {
         return error(StatusCode::NOT_FOUND, "missing");
     };
+    let mut meeting = meeting;
     if req.invite {
-        send_invites(&state, uid, &meeting).await;
+        meeting["sent"] = json!(send_invites(&state, uid, &meeting).await);
     }
     Json(meeting).into_response()
 }
@@ -619,12 +628,12 @@ pub async fn invite(
         .collect();
     let mut subset = meeting.clone();
     subset["guests"] = json!(only);
-    send_invites(&state, uid, &subset).await;
+    meeting["sent"] = json!(send_invites(&state, uid, &subset).await);
     Json(meeting).into_response()
 }
 
 /// 손님마다 초대 메일. 손님의 언어를 모르므로 주최자의 화면 언어로 보낸다.
-async fn send_invites(state: &AppState, uid: i64, meeting: &Value) {
+async fn send_invites(state: &AppState, uid: i64, meeting: &Value) -> Vec<String> {
     let db = state.auth.db().clone();
     let host: Option<(String, String, String)> = db
         .call(move |c| {
@@ -639,7 +648,7 @@ async fn send_invites(state: &AppState, uid: i64, meeting: &Value) {
         .ok()
         .flatten();
     let Some((name, email, locale)) = host else {
-        return;
+        return Vec::new();
     };
     let host_name = if name.is_empty() { email } else { name };
     let lang = Lang::parse(&locale);
@@ -653,17 +662,24 @@ async fn send_invites(state: &AppState, uid: i64, meeting: &Value) {
         .as_i64()
         .map(|t| format_when(t, meeting["durationMin"].as_i64().unwrap_or(60)))
         .unwrap_or_default();
+    let mut sent = Vec::new();
     for g in meeting["guests"]
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(|v| v.as_str())
     {
+        // 초대 메일로 남에게 스팸을 보내지 못하게 보내는 사람·받는 사람마다 하루 한도를 둔다.
+        if !state.accounts.may_invite(uid, g) {
+            continue;
+        }
         state
             .accounts
             .mailer
             .send(Copy { lang }.invite(g, &host_name, title, &when, &url));
+        sent.push(g.to_owned());
     }
+    sent
 }
 
 /// 메일 속 회의 시각. 받는 사람의 시간대를 모르므로 UTC로 적는다(캘린더 파일이 현지 시각으로 바꿔 준다).
@@ -855,7 +871,7 @@ pub async fn checkout(
         "priceId": price,
         "quantity": if req.item == "hours" { req.quantity } else { 1 },
         "email": email,
-        "customData": { "user_id": uid.to_string() },
+        "customData": { "user_id": uid.to_string(), "sig": b.sign_user(uid) },
     }))
     .into_response()
 }
@@ -1082,14 +1098,7 @@ pub async fn refresh_quota(state: &AppState) {
 /// 주기 작업: 잰 번역 시간을 기록하고, 시간이 떨어진 주최자의 회의를 막는다.
 pub async fn tick(state: &AppState, metered: &[Metered]) {
     let check = state.rooms.out_of_time_hosts();
-    let metered: Vec<Metered> = metered
-        .iter()
-        .map(|m| Metered {
-            host: m.host.clone(),
-            code: m.code.clone(),
-            seconds: m.seconds,
-        })
-        .collect();
+    let metered: Vec<Metered> = metered.to_vec();
     let now = now_secs();
     match state
         .auth
@@ -1154,6 +1163,7 @@ mod tests {
                 host: host.clone(),
                 code: "abcd-efgh-ijkm".into(),
                 seconds: s,
+                peak: 2,
             }]
         };
         // 포함된 10시간 중 9시간 59분 쓰기 → 아직 남음

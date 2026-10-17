@@ -41,6 +41,9 @@ pub struct Accounts {
     /// 가입·메일 다시 보내기·재설정 요청: IP마다, 주소마다.
     by_ip: KeyedLimiter,
     by_email: KeyedLimiter,
+    /// 초대 메일: 보내는 사람마다 하루 100통, 받는 사람마다 하루 5통.
+    invites_by_user: KeyedLimiter,
+    invites_by_rcpt: KeyedLimiter,
     /// Google 로그인 진행 중: state → (nonce, 연결할 사용자, 화면 언어, 시작 시각)
     oauth: Mutex<HashMap<String, OAuthPending>>,
 }
@@ -79,8 +82,15 @@ impl Accounts {
             origin,
             by_ip: KeyedLimiter::new(20, Duration::from_secs(3600)),
             by_email: KeyedLimiter::new(5, Duration::from_secs(3600)),
+            invites_by_user: KeyedLimiter::new(100, Duration::from_secs(86_400)),
+            invites_by_rcpt: KeyedLimiter::new(5, Duration::from_secs(86_400)),
             oauth: Mutex::default(),
         }
+    }
+
+    /// 초대 메일 한 통을 보내도 되는지(보내는 사람·받는 사람 한도).
+    pub fn may_invite(&self, user_id: i64, to: &str) -> bool {
+        self.invites_by_rcpt.check(to) && self.invites_by_user.check(&user_id.to_string())
     }
 
     /// 메일을 보내는 요청의 빈도 제한. 넘으면 조용히 보내지 않는다(응답은 같게 해 계정 존재를 숨긴다).
@@ -153,6 +163,40 @@ fn clean_name(n: &str) -> String {
         .collect()
 }
 
+/// argon2 해싱은 블로킹 스레드에서.
+async fn hash_async(password: &str) -> Option<String> {
+    let password = password.to_owned();
+    tokio::task::spawn_blocking(move || hash_password(&password))
+        .await
+        .ok()
+        .and_then(Result::ok)
+}
+
+/// 유출된 비밀번호 목록(Have I Been Pwned)에 있는지. 비밀번호의 SHA-1 앞 5자만 보내고(k-익명성)
+/// 받은 목록에서 나머지를 맞춰 본다. 응답이 없거나 늦으면(3초) 막지 않는다.
+async fn breached(password: &str) -> bool {
+    use sha1::{Digest, Sha1};
+    let hex: String = Sha1::digest(password.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02X}"))
+        .collect();
+    let (prefix, suffix) = hex.split_at(5);
+    let res = reqwest::Client::new()
+        .get(format!("https://api.pwnedpasswords.com/range/{prefix}"))
+        .header("Add-Padding", "true")
+        .timeout(Duration::from_secs(3))
+        .send()
+        .await;
+    let Ok(res) = res else { return false };
+    let Ok(body) = res.text().await else {
+        return false;
+    };
+    body.lines().any(|l| {
+        l.split_once(':')
+            .is_some_and(|(s, n)| s.eq_ignore_ascii_case(suffix) && n.trim() != "0")
+    })
+}
+
 fn six_digit_code() -> String {
     let mut b = [0u8; 4];
     getrandom::fill(&mut b).expect("OS RNG unavailable");
@@ -187,10 +231,13 @@ fn user_by_email(c: &rusqlite::Connection, email: &str) -> rusqlite::Result<Opti
     .optional()
 }
 
+/// 메일 코드를 새로 만든다. `payload`는 코드와 함께 확인할 값(가입 비밀번호 해시, 바꿀 새 이메일).
+/// 인증 코드는 가입 요청마다 따로 남긴다(다른 사람이 같은 주소로 가입해도 원래 코드가 지워지지 않게).
 async fn new_email_code(
     db: &Db,
     user_id: i64,
     kind: &'static str,
+    payload: Option<String>,
 ) -> Result<String, rusqlite::Error> {
     let code = if kind == "reset" {
         new_token()
@@ -201,10 +248,19 @@ async fn new_email_code(
     let ttl = if kind == "reset" { RESET_TTL } else { CODE_TTL };
     let now = now_secs();
     db.call(move |c| {
-        c.execute("DELETE FROM email_codes WHERE user_id = ?1 AND kind = ?2", params![user_id, kind])?;
+        if kind == "verify" {
+            // 만료된 것과 오래된 것만 지우고 최근 5개는 남긴다.
+            c.execute(
+                "DELETE FROM email_codes WHERE user_id = ?1 AND kind = ?2 AND (expires_at <= ?3 OR id NOT IN
+                   (SELECT id FROM email_codes WHERE user_id = ?1 AND kind = ?2 ORDER BY id DESC LIMIT 4))",
+                params![user_id, kind, now],
+            )?;
+        } else {
+            c.execute("DELETE FROM email_codes WHERE user_id = ?1 AND kind = ?2", params![user_id, kind])?;
+        }
         c.execute(
-            "INSERT INTO email_codes (user_id, kind, code_hash, expires_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![user_id, kind, hash, now + ttl, now],
+            "INSERT INTO email_codes (user_id, kind, code_hash, expires_at, created_at, payload) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![user_id, kind, hash, now + ttl, now, payload],
         )?;
         Ok(())
     })
@@ -213,11 +269,16 @@ async fn new_email_code(
 }
 
 fn send_verify_code(state: &AppState, email: String, locale: &str, code: &str) {
+    let url = format!(
+        "{}/verify?email={}&code={code}",
+        state.accounts.origin,
+        urlencode(&email)
+    );
     state.accounts.mailer.send(
         Copy {
             lang: Lang::parse(locale),
         }
-        .verify_code(&email, code),
+        .verify_code(&email, code, &url),
     );
 }
 
@@ -234,6 +295,8 @@ pub struct SignupReq {
 }
 
 /// 가입. 이미 있는 주소여도 같은 응답(202)을 준다. 인증된 계정이면 대신 비밀번호 재설정 메일을 보낸다.
+/// 비밀번호는 인증 코드와 함께 보관했다가, 코드와 그 비밀번호가 함께 맞을 때 계정에 넣는다
+/// (같은 주소로 다른 사람이 가입해도 원래 가입자의 비밀번호를 바꿀 수 없게).
 pub async fn signup(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -247,41 +310,31 @@ pub async fn signup(
     if !valid_password(&req.password) {
         return error(StatusCode::BAD_REQUEST, "password");
     }
+    if breached(&req.password).await {
+        return error(StatusCode::BAD_REQUEST, "breached");
+    }
     let ip = client(&state, peer, &headers);
     if !state.accounts.may_mail(ip, &email) {
         return error(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
     }
     let locale = clean_locale(&req.locale).to_owned();
     let name = clean_name(&req.name);
-    let password = req.password.clone();
-    let Ok(hash) = tokio::task::spawn_blocking(move || hash_password(&password))
-        .await
-        .unwrap_or(Err(String::new()))
-    else {
+    let Some(hash) = hash_async(&req.password).await else {
         return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
     };
     let db = state.auth.db().clone();
     let e = email.clone();
     let l = locale.clone();
     let result = db
-        .call(move |c| {
-            match user_by_email(c, &e)? {
-                Some(u) if u.verified => Ok((u.id, true, u.locale)),
-                Some(u) => {
-                    // 인증 전 계정은 새 가입 정보로 덮는다(아직 아무도 로그인할 수 없는 계정).
-                    c.execute(
-                        "UPDATE users SET password_hash = ?2, name = ?3, locale = ?4 WHERE id = ?1",
-                        params![u.id, hash, name, l],
-                    )?;
-                    Ok((u.id, false, l))
-                }
-                None => {
-                    c.execute(
-                        "INSERT INTO users (email, name, password_hash, locale, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                        params![e, name, hash, l, now_secs()],
-                    )?;
-                    Ok((c.last_insert_rowid(), false, l))
-                }
+        .call(move |c| match user_by_email(c, &e)? {
+            Some(u) if u.verified => Ok((u.id, true, u.locale)),
+            Some(u) => Ok((u.id, false, u.locale)),
+            None => {
+                c.execute(
+                    "INSERT INTO users (email, name, display_name, locale, created_at) VALUES (?1, ?2, ?2, ?3, ?4)",
+                    params![e, name, l, now_secs()],
+                )?;
+                Ok((c.last_insert_rowid(), false, l))
             }
         })
         .await;
@@ -289,7 +342,7 @@ pub async fn signup(
         return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
     };
     if existing {
-        if let Ok(token) = new_email_code(&db, user_id, "reset").await {
+        if let Ok(token) = new_email_code(&db, user_id, "reset", None).await {
             let url = format!(
                 "{}/reset?token={token}&uid={user_id}",
                 state.accounts.origin
@@ -301,8 +354,8 @@ pub async fn signup(
                 .reset_link(&email, &url),
             );
         }
-    } else if let Ok(code) = new_email_code(&db, user_id, "verify").await {
-        send_verify_code(&state, email, &user_locale, &code);
+    } else if let Ok(code) = new_email_code(&db, user_id, "verify", Some(hash)).await {
+        send_verify_code(&state, email, &locale, &code);
     }
     StatusCode::ACCEPTED.into_response()
 }
@@ -311,9 +364,12 @@ pub async fn signup(
 pub struct VerifyReq {
     email: String,
     code: String,
+    /// 가입할 때 넣은 비밀번호. 코드와 함께 맞아야 한다.
+    password: String,
 }
 
-/// 이메일 인증 코드 확인. 맞으면 인증 완료로 바꾸고 바로 로그인시킨다.
+/// 이메일 인증. 코드가 맞고, 그 코드를 만든 가입의 비밀번호와 지금 넣은 비밀번호가 같으면
+/// 그 비밀번호로 계정을 열고 바로 로그인시킨다. 틀린 시도는 코드마다 5번까지.
 pub async fn verify(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -323,40 +379,67 @@ pub async fn verify(
     let code = req.code.trim().to_owned();
     let db = state.auth.db().clone();
     let now = now_secs();
-    let result = db
+    let found = db
         .call(move |c| {
             let Some(u) = user_by_email(c, &email)? else { return Ok(None) };
-            let row: Option<(i64, String, i64, i64)> = c
+            if u.verified {
+                return Ok(None);
+            }
+            let want = code_hash(u.id, &code);
+            let row: Option<(i64, Option<String>)> = c
                 .query_row(
-                    "SELECT id, code_hash, expires_at, attempts FROM email_codes WHERE user_id = ?1 AND kind = 'verify'",
-                    params![u.id],
-                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                    "SELECT id, payload FROM email_codes WHERE user_id = ?1 AND kind = 'verify' AND code_hash = ?2
+                       AND expires_at > ?3 AND attempts < ?4",
+                    params![u.id, want, now, MAX_CODE_ATTEMPTS],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
                 )
                 .optional()?;
-            let Some((id, hash, expires, attempts)) = row else { return Ok(None) };
-            if expires <= now || attempts >= MAX_CODE_ATTEMPTS {
-                return Ok(None);
+            if row.is_none() {
+                // 틀린 코드: 이 계정의 살아 있는 코드 모두에 시도를 센다(코드 맞히기 제한).
+                c.execute(
+                    "UPDATE email_codes SET attempts = attempts + 1 WHERE user_id = ?1 AND kind = 'verify'",
+                    params![u.id],
+                )?;
             }
-            if hash != code_hash(u.id, &code) {
-                c.execute("UPDATE email_codes SET attempts = attempts + 1 WHERE id = ?1", params![id])?;
-                return Ok(None);
-            }
-            c.execute("DELETE FROM email_codes WHERE user_id = ?1 AND kind = 'verify'", params![u.id])?;
-            c.execute("UPDATE users SET email_verified = 1 WHERE id = ?1", params![u.id])?;
-            Ok(Some(u.id))
+            Ok(row.map(|(id, payload)| (u.id, id, payload)))
         })
         .await;
-    match result {
-        Ok(Some(user_id)) => {
-            let token = state
-                .auth
-                .create_session(user_id, &user_agent(&headers))
-                .await;
-            with_session(&state, &token, StatusCode::NO_CONTENT, None)
-        }
-        Ok(None) => error(StatusCode::BAD_REQUEST, "code"),
-        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "failed"),
+    let Ok(Some((user_id, code_id, Some(hash)))) = found else {
+        return error(StatusCode::BAD_REQUEST, "code");
+    };
+    let password = req.password.clone();
+    let h = hash.clone();
+    let matches = tokio::task::spawn_blocking(move || auth::verify_password(&password, &h))
+        .await
+        .unwrap_or(false);
+    if !matches {
+        let _ = db
+            .call(move |c| {
+                c.execute(
+                    "UPDATE email_codes SET attempts = attempts + 1 WHERE id = ?1",
+                    params![code_id],
+                )
+            })
+            .await;
+        return error(StatusCode::BAD_REQUEST, "password");
     }
+    let opened = db
+        .call(move |c| {
+            c.execute(
+                "UPDATE users SET email_verified = 1, password_hash = ?2, password_changed_at = ?3 WHERE id = ?1 AND email_verified = 0",
+                params![user_id, hash, now],
+            )?;
+            c.execute("DELETE FROM email_codes WHERE user_id = ?1 AND kind = 'verify'", params![user_id])
+        })
+        .await;
+    if opened.is_err() {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
+    }
+    let token = state
+        .auth
+        .create_session(user_id, &user_agent(&headers))
+        .await;
+    with_session(&state, &token, StatusCode::NO_CONTENT, None)
 }
 
 #[derive(Deserialize)]
@@ -364,7 +447,7 @@ pub struct EmailReq {
     email: String,
 }
 
-/// 인증 코드 다시 보내기. 계정이 없거나 이미 인증됐어도 같은 응답.
+/// 인증 코드 다시 보내기. 가장 최근 가입 요청의 비밀번호를 그대로 이어 쓴다. 계정이 없거나 이미 인증됐어도 같은 응답.
 pub async fn resend(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -378,11 +461,27 @@ pub async fn resend(
     }
     let db = state.auth.db().clone();
     let e = email.clone();
-    if let Ok(Some(u)) = db.call(move |c| user_by_email(c, &e)).await
-        && !u.verified
-        && let Ok(code) = new_email_code(&db, u.id, "verify").await
+    let latest = db
+        .call(move |c| {
+            let Some(u) = user_by_email(c, &e)? else { return Ok(None) };
+            if u.verified {
+                return Ok(None);
+            }
+            let payload: Option<String> = c
+                .query_row(
+                    "SELECT payload FROM email_codes WHERE user_id = ?1 AND kind = 'verify' ORDER BY id DESC LIMIT 1",
+                    params![u.id],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .flatten();
+            Ok(payload.map(|p| (u.id, u.locale, p)))
+        })
+        .await;
+    if let Ok(Some((uid, locale, payload))) = latest
+        && let Ok(code) = new_email_code(&db, uid, "verify", Some(payload)).await
     {
-        send_verify_code(&state, email, &u.locale, &code);
+        send_verify_code(&state, email, &locale, &code);
     }
     StatusCode::NO_CONTENT.into_response()
 }
@@ -396,6 +495,42 @@ pub struct LoginReq {
     password: String,
 }
 
+/// "이 기기는 30일 동안 2차 인증을 묻지 않기" 쿠키.
+const TRUST_COOKIE: &str = "tolkmeet_trust";
+const TRUST_TTL: i64 = 30 * 86_400;
+
+fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .find_map(|p| {
+            p.trim()
+                .strip_prefix(name)?
+                .strip_prefix('=')
+                .map(str::to_owned)
+        })
+}
+
+/// 이 브라우저가 그 사용자의 믿는 기기인지.
+async fn trusted_device(db: &Db, headers: &HeaderMap, user_id: i64) -> bool {
+    let Some(token) = cookie_value(headers, TRUST_COOKIE) else {
+        return false;
+    };
+    let hash = auth::token_hash(&token);
+    let now = now_secs();
+    db.call(move |c| {
+        c.query_row(
+            "SELECT EXISTS(SELECT 1 FROM trusted_devices WHERE token_hash = ?1 AND user_id = ?2 AND expires_at > ?3)",
+            params![hash, user_id, now],
+            |r| r.get::<_, bool>(0),
+        )
+    })
+    .await
+    .unwrap_or(false)
+}
+
 pub async fn login(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -407,27 +542,29 @@ pub async fn login(
         Ok(token) => with_session(&state, &token, StatusCode::NO_CONTENT, None),
         Err(LoginError::Invalid) => error(StatusCode::UNAUTHORIZED, "invalid"),
         Err(LoginError::Locked) => error(StatusCode::TOO_MANY_REQUESTS, "locked"),
-        Err(LoginError::Unverified) => {
-            // 비밀번호가 맞은 인증 전 계정: 새 코드를 보내고 인증 화면으로 보낸다.
-            let email = normalize_username(&req.email);
-            let db = state.auth.db().clone();
-            let e = email.clone();
-            if state.accounts.may_mail(ip, &email)
-                && let Ok(Some(u)) = db.call(move |c| user_by_email(c, &e)).await
-                && let Ok(code) = new_email_code(&db, u.id, "verify").await
+        Err(LoginError::Unverified) => error(StatusCode::FORBIDDEN, "unverified"),
+        Err(LoginError::MfaRequired(ticket)) => {
+            // 전에 "이 기기는 묻지 않기"를 고른 브라우저면 2차 인증을 건너뛴다.
+            if let Some(uid) = state.auth.mfa_ticket_user(&ticket)
+                && trusted_device(state.auth.db(), &headers, uid).await
             {
-                send_verify_code(&state, email, &u.locale, &code);
+                state.auth.take_mfa_ticket(&ticket);
+                let token = state.auth.create_session(uid, &user_agent(&headers)).await;
+                return with_session(&state, &token, StatusCode::NO_CONTENT, None);
             }
-            error(StatusCode::FORBIDDEN, "unverified")
+            Json(json!({ "mfa": ticket })).into_response()
         }
-        Err(LoginError::MfaRequired(ticket)) => Json(json!({ "mfa": ticket })).into_response(),
     }
 }
 
 #[derive(Deserialize)]
 pub struct MfaReq {
     ticket: String,
+    /// 인증 앱의 6자리 코드 또는 복구 코드(xxxx-xxxx)
     code: String,
+    /// 이 기기는 30일 동안 다시 묻지 않기
+    #[serde(default)]
+    remember: bool,
 }
 
 /// 비밀번호 다음의 2차 인증 코드. 티켓 하나에 5번까지(넘으면 처음부터 다시 로그인).
@@ -446,7 +583,7 @@ pub async fn login_mfa(
     let ok = state
         .auth
         .db()
-        .call(move |c| check_totp(c, user_id, &code))
+        .call(move |c| Ok(check_totp(c, user_id, &code)? || use_recovery_code(c, user_id, &code)?))
         .await
         .unwrap_or(false);
     if !ok {
@@ -457,7 +594,82 @@ pub async fn login_mfa(
         .auth
         .create_session(user_id, &user_agent(&headers))
         .await;
-    with_session(&state, &token, StatusCode::NO_CONTENT, None)
+    let mut cookies = vec![(
+        header::SET_COOKIE,
+        auth::session_cookie(&token, state.cookie_secure),
+    )];
+    if req.remember {
+        let trust = new_token();
+        let hash = auth::token_hash(&trust);
+        let expires = now_secs() + TRUST_TTL;
+        let saved = state
+            .auth
+            .db()
+            .call(move |c| {
+                c.execute(
+                    "INSERT INTO trusted_devices (token_hash, user_id, expires_at) VALUES (?1, ?2, ?3)",
+                    params![hash, user_id, expires],
+                )
+            })
+            .await;
+        if saved.is_ok() {
+            let secure = if state.cookie_secure { "; Secure" } else { "" };
+            cookies.push((
+                header::SET_COOKIE,
+                format!("{TRUST_COOKIE}={trust}; Path=/api; HttpOnly; SameSite=Lax; Max-Age={TRUST_TTL}{secure}"),
+            ));
+        }
+    }
+    let mut res = StatusCode::NO_CONTENT.into_response();
+    for (k, v) in cookies {
+        if let Ok(v) = v.parse() {
+            res.headers_mut().append(k, v);
+        }
+    }
+    res
+}
+
+/// 복구 코드(한 번만 쓸 수 있음). 휴대폰을 잃어버렸을 때 2차 인증 대신.
+fn use_recovery_code(c: &rusqlite::Connection, user_id: i64, code: &str) -> rusqlite::Result<bool> {
+    let normalized: String = code
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect();
+    if normalized.len() != 10 {
+        return Ok(false);
+    }
+    let hash = code_hash(user_id, &normalized);
+    let n = c.execute(
+        "UPDATE recovery_codes SET used_at = ?3 WHERE user_id = ?1 AND code_hash = ?2 AND used_at IS NULL",
+        params![user_id, hash, now_secs()],
+    )?;
+    Ok(n == 1)
+}
+
+/// 복구 코드 10개를 새로 만든다(예전 것은 모두 버린다). 화면에는 이때 한 번만 보여 준다.
+fn new_recovery_codes(c: &rusqlite::Connection, user_id: i64) -> rusqlite::Result<Vec<String>> {
+    const ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
+    c.execute(
+        "DELETE FROM recovery_codes WHERE user_id = ?1",
+        params![user_id],
+    )?;
+    let mut out = Vec::new();
+    for _ in 0..10 {
+        let mut bytes = [0u8; 10];
+        getrandom::fill(&mut bytes).expect("OS RNG unavailable");
+        let raw: String = bytes
+            .iter()
+            .map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char)
+            .collect();
+        c.execute(
+            "INSERT INTO recovery_codes (user_id, code_hash) VALUES (?1, ?2)",
+            params![user_id, code_hash(user_id, &raw)],
+        )?;
+        out.push(format!("{}-{}", &raw[..5], &raw[5..]));
+    }
+    Ok(out)
 }
 
 /// 켜져 있는 2차 인증 코드를 확인하고, 맞으면 쓴 시간 칸을 기록한다(같은 코드 재사용 방지).
@@ -512,7 +724,7 @@ pub async fn forgot(
     let db = state.auth.db().clone();
     let e = email.clone();
     if let Ok(Some(u)) = db.call(move |c| user_by_email(c, &e)).await
-        && let Ok(token) = new_email_code(&db, u.id, "reset").await
+        && let Ok(token) = new_email_code(&db, u.id, "reset", None).await
     {
         let url = format!("{}/reset?token={token}&uid={}", state.accounts.origin, u.id);
         state.accounts.mailer.send(
@@ -533,6 +745,7 @@ pub struct ResetReq {
 }
 
 /// 재설정 링크로 새 비밀번호. 메일함을 가진 것이 확인됐으므로 인증 완료로 바꾸고, 다른 세션은 모두 끊는다.
+/// 2차 인증을 켠 계정은 바로 로그인시키지 않고 코드를 묻는다(메일함만 가진 사람이 들어오지 못하게).
 pub async fn reset(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -541,17 +754,16 @@ pub async fn reset(
     if !valid_password(&req.password) {
         return error(StatusCode::BAD_REQUEST, "password");
     }
-    let password = req.password.clone();
-    let Ok(hash) = tokio::task::spawn_blocking(move || hash_password(&password))
-        .await
-        .unwrap_or(Err(String::new()))
-    else {
+    if breached(&req.password).await {
+        return error(StatusCode::BAD_REQUEST, "breached");
+    }
+    let Some(hash) = hash_async(&req.password).await else {
         return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
     };
     let want = code_hash(req.uid, &req.token);
     let uid = req.uid;
     let now = now_secs();
-    let ok = state
+    let result = state
         .auth
         .db()
         .call(move |c| {
@@ -563,21 +775,27 @@ pub async fn reset(
                 )
                 .optional()?;
             if found.is_none() {
-                return Ok(false);
+                return Ok(None);
             }
             c.execute("DELETE FROM email_codes WHERE user_id = ?1 AND kind = 'reset'", params![uid])?;
             c.execute(
-                "UPDATE users SET password_hash = ?2, email_verified = 1 WHERE id = ?1",
-                params![uid, hash],
+                "UPDATE users SET password_hash = ?2, email_verified = 1, password_changed_at = ?3 WHERE id = ?1",
+                params![uid, hash, now],
             )?;
-            Ok(true)
+            // 비밀번호를 바꿨으니 믿는 기기 기록도 지운다.
+            c.execute("DELETE FROM trusted_devices WHERE user_id = ?1", params![uid])?;
+            c.query_row("SELECT totp_enabled FROM users WHERE id = ?1", params![uid], |r| r.get::<_, bool>(0)).map(Some)
         })
-        .await
-        .unwrap_or(false);
-    if !ok {
-        return error(StatusCode::BAD_REQUEST, "token");
-    }
+        .await;
+    let totp = match result {
+        Ok(Some(totp)) => totp,
+        Ok(None) => return error(StatusCode::BAD_REQUEST, "token"),
+        Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "failed"),
+    };
     state.auth.revoke_user_sessions(uid, None).await;
+    if totp {
+        return Json(json!({ "mfa": state.auth.new_mfa_ticket(uid) })).into_response();
+    }
     let token = state.auth.create_session(uid, &user_agent(&headers)).await;
     with_session(&state, &token, StatusCode::NO_CONTENT, None)
 }
@@ -586,8 +804,12 @@ pub async fn reset(
 
 /// 비로그인도 정상 응답(200, user: null)이다. 게스트가 매번 401 콘솔 오류를 보지 않도록.
 pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> Json<Value> {
-    let user = match state.auth.user_id_from_headers(&headers) {
-        Some(id) => user_json(state.auth.db(), id).await,
+    let token = auth::token_from_headers(&headers);
+    let user = match token.as_deref().and_then(|t| state.auth.session_user_id(t)) {
+        Some(id) => {
+            state.auth.touch(token.as_deref().unwrap_or("")).await;
+            user_json(state.auth.db(), id, token.as_deref()).await
+        }
         None => Value::Null,
     };
     Json(json!({
@@ -595,16 +817,19 @@ pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> Json<Value
         "features": {
             "google": state.accounts.google.is_some(),
             "billing": state.billing.is_some(),
+            "devBilling": state.billing.is_none() && state.dev_mode,
         },
     }))
 }
 
-pub async fn user_json(db: &Db, id: i64) -> Value {
+pub async fn user_json(db: &Db, id: i64, current_token: Option<&str>) -> Value {
+    let current = current_token.map(auth::token_hash);
     db.call(move |c| {
         let user = c
             .query_row(
                 "SELECT id, email, name, locale, email_verified, password_hash IS NOT NULL, google_sub IS NOT NULL,
-                        totp_enabled, plan, plan_renews_at, plan_canceled, operator, created_at
+                        totp_enabled, plan, plan_renews_at, plan_canceled, operator, created_at,
+                        display_name, prefs, password_changed_at
                  FROM users WHERE id = ?1",
                 params![id],
                 |r| {
@@ -622,12 +847,17 @@ pub async fn user_json(db: &Db, id: i64) -> Value {
                         "planCanceled": r.get::<_, i64>(10)? != 0,
                         "operator": r.get::<_, i64>(11)? != 0,
                         "createdAt": r.get::<_, i64>(12)?,
+                        "displayName": r.get::<_, String>(13)?,
+                        "prefs": serde_json::from_str::<Value>(&r.get::<_, String>(14)?).unwrap_or(json!({})),
+                        "passwordChangedAt": r.get::<_, Option<i64>>(15)?,
                     }))
                 },
             )
             .optional()?;
         let Some(mut user) = user else { return Ok(Value::Null) };
-        let mut stmt = c.prepare("SELECT id, name, created_at, last_used_at FROM passkeys WHERE user_id = ?1 ORDER BY created_at")?;
+        let mut stmt = c.prepare(
+            "SELECT id, name, created_at, last_used_at FROM passkeys WHERE user_id = ?1 ORDER BY created_at",
+        )?;
         let keys: Vec<Value> = stmt
             .query_map(params![id], |r| {
                 Ok(json!({
@@ -639,8 +869,29 @@ pub async fn user_json(db: &Db, id: i64) -> Value {
             })?
             .collect::<rusqlite::Result<_>>()?;
         user["passkeys"] = Value::Array(keys);
-        let sessions: i64 = c.query_row("SELECT count(*) FROM sessions WHERE user_id = ?1", params![id], |r| r.get(0))?;
-        user["sessions"] = json!(sessions);
+        // 로그인된 기기: 세션 id는 토큰 해시의 앞 16자(본인에게만 보인다).
+        let mut stmt = c.prepare(
+            "SELECT token_hash, user_agent, created_at, last_seen_at FROM sessions WHERE user_id = ?1 ORDER BY COALESCE(last_seen_at, created_at) DESC",
+        )?;
+        let devices: Vec<Value> = stmt
+            .query_map(params![id], |r| {
+                let hash: String = r.get(0)?;
+                Ok(json!({
+                    "id": hash[..16].to_owned(),
+                    "current": current.as_deref() == Some(hash.as_str()),
+                    "userAgent": r.get::<_, String>(1)?,
+                    "createdAt": r.get::<_, i64>(2)?,
+                    "lastSeenAt": r.get::<_, Option<i64>>(3)?,
+                }))
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        user["devices"] = Value::Array(devices);
+        let left: i64 = c.query_row(
+            "SELECT count(*) FROM recovery_codes WHERE user_id = ?1 AND used_at IS NULL",
+            params![id],
+            |r| r.get(0),
+        )?;
+        user["recoveryLeft"] = json!(left);
         Ok(user)
     })
     .await
@@ -657,9 +908,44 @@ pub fn require_user(state: &AppState, headers: &HeaderMap) -> Result<i64, Respon
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProfileReq {
     name: Option<String>,
+    display_name: Option<String>,
     locale: Option<String>,
+    prefs: Option<Value>,
+}
+
+/// 기본 설정은 아는 키만, 정해진 값만 남긴다.
+fn clean_prefs(v: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    let lang = |k: &str| v[k].as_str().filter(|l| room_lang(l)).map(|l| json!(l));
+    if let Some(l) = lang("lang") {
+        out.insert("lang".into(), l);
+    }
+    if let Some(l) = lang("partnerLang") {
+        out.insert("partnerLang".into(), l);
+    }
+    if let Some(t) = v["theme"]
+        .as_str()
+        .filter(|t| matches!(*t, "system" | "light" | "dark"))
+    {
+        out.insert("theme".into(), json!(t));
+    }
+    if let Some(t) = v["captionSize"]
+        .as_str()
+        .filter(|t| matches!(*t, "s" | "m" | "l"))
+    {
+        out.insert("captionSize".into(), json!(t));
+    }
+    if let Some(b) = v["savePrompt"].as_bool() {
+        out.insert("savePrompt".into(), json!(b));
+    }
+    Value::Object(out)
+}
+
+fn room_lang(l: &str) -> bool {
+    crate::room::is_valid_lang(l)
 }
 
 pub async fn update_profile(
@@ -672,12 +958,20 @@ pub async fn update_profile(
         Err(r) => return r,
     };
     let name = req.name.as_deref().map(clean_name);
+    let display = req.display_name.as_deref().map(clean_name);
     let locale = req.locale.as_deref().map(|l| clean_locale(l).to_owned());
+    let prefs = req.prefs.as_ref().map(clean_prefs);
     let db = state.auth.db().clone();
     let res = db
         .call(move |c| {
             if let Some(n) = name {
                 c.execute("UPDATE users SET name = ?2 WHERE id = ?1", params![uid, n])?;
+            }
+            if let Some(n) = display {
+                c.execute(
+                    "UPDATE users SET display_name = ?2 WHERE id = ?1",
+                    params![uid, n],
+                )?;
             }
             if let Some(l) = locale {
                 c.execute(
@@ -685,12 +979,168 @@ pub async fn update_profile(
                     params![uid, l],
                 )?;
             }
+            if let Some(p) = prefs {
+                // 보낸 키만 바꾼다(나머지는 그대로).
+                let old: String =
+                    c.query_row("SELECT prefs FROM users WHERE id = ?1", params![uid], |r| {
+                        r.get(0)
+                    })?;
+                let mut merged: Value = serde_json::from_str(&old).unwrap_or(json!({}));
+                if let (Some(m), Some(new)) = (merged.as_object_mut(), p.as_object()) {
+                    for (k, v) in new {
+                        m.insert(k.clone(), v.clone());
+                    }
+                }
+                c.execute(
+                    "UPDATE users SET prefs = ?2 WHERE id = ?1",
+                    params![uid, merged.to_string()],
+                )?;
+            }
             Ok(())
         })
         .await;
+    let token = auth::token_from_headers(&headers);
     match res {
-        Ok(()) => Json(user_json(&db, uid).await).into_response(),
+        Ok(()) => Json(user_json(&db, uid, token.as_deref()).await).into_response(),
         Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "failed"),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct EmailChangeReq {
+    email: String,
+    #[serde(default)]
+    password: String,
+}
+
+/// 이메일 바꾸기 1단계: 새 주소로 코드를 보낸다(비밀번호가 있는 계정은 비밀번호 확인).
+pub async fn email_change(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(req): Json<EmailChangeReq>,
+) -> Response {
+    let uid = match require_user(&state, &headers) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    let email = normalize_username(&req.email);
+    if !valid_email(&email) {
+        return error(StatusCode::BAD_REQUEST, "email");
+    }
+    let ip = client(&state, peer, &headers);
+    if !state.accounts.may_mail(ip, &email) {
+        return error(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
+    let db = state.auth.db().clone();
+    let e = email.clone();
+    let info = db
+        .call(move |c| {
+            let taken: bool = c.query_row(
+                "SELECT EXISTS(SELECT 1 FROM users WHERE email = ?1)",
+                params![e],
+                |r| r.get(0),
+            )?;
+            let (has_password, locale): (bool, String) = c.query_row(
+                "SELECT password_hash IS NOT NULL, locale FROM users WHERE id = ?1",
+                params![uid],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            Ok((taken, has_password, locale))
+        })
+        .await;
+    let Ok((taken, has_password, locale)) = info else {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
+    };
+    if has_password {
+        match state.auth.check_password(ip, uid, &req.password).await {
+            Ok(()) => {}
+            Err(LoginError::Locked) => return error(StatusCode::TOO_MANY_REQUESTS, "locked"),
+            Err(_) => return error(StatusCode::UNAUTHORIZED, "current"),
+        }
+    }
+    if taken {
+        return error(StatusCode::CONFLICT, "taken");
+    }
+    match new_email_code(&db, uid, "email", Some(email.clone())).await {
+        Ok(code) => {
+            state.accounts.mailer.send(
+                Copy {
+                    lang: Lang::parse(&locale),
+                }
+                .email_change_code(&email, &code),
+            );
+            StatusCode::ACCEPTED.into_response()
+        }
+        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "failed"),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct CodeOnly {
+    code: String,
+}
+
+/// 이메일 바꾸기 2단계: 새 주소로 받은 코드가 맞으면 바꾼다.
+pub async fn email_change_verify(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CodeOnly>,
+) -> Response {
+    let uid = match require_user(&state, &headers) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    let want = code_hash(uid, req.code.trim());
+    let now = now_secs();
+    let db = state.auth.db().clone();
+    let res = db
+        .call(move |c| {
+            let row: Option<(i64, Option<String>)> = c
+                .query_row(
+                    "SELECT id, payload FROM email_codes WHERE user_id = ?1 AND kind = 'email' AND code_hash = ?2
+                       AND expires_at > ?3 AND attempts < ?4",
+                    params![uid, want, now, MAX_CODE_ATTEMPTS],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            let Some((_, Some(email))) = row else {
+                c.execute("UPDATE email_codes SET attempts = attempts + 1 WHERE user_id = ?1 AND kind = 'email'", params![uid])?;
+                return Ok(Err("code"));
+            };
+            c.execute("DELETE FROM email_codes WHERE user_id = ?1 AND kind = 'email'", params![uid])?;
+            // 그사이 다른 계정이 그 주소를 가져갔으면 실패.
+            match c.execute("UPDATE users SET email = ?2, email_verified = 1 WHERE id = ?1", params![uid, email]) {
+                Ok(_) => Ok(Ok(())),
+                Err(_) => Ok(Err("taken")),
+            }
+        })
+        .await;
+    let token = auth::token_from_headers(&headers);
+    match res {
+        Ok(Ok(())) => Json(user_json(&db, uid, token.as_deref()).await).into_response(),
+        Ok(Err(code)) => error(StatusCode::BAD_REQUEST, code),
+        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "failed"),
+    }
+}
+
+/// 로그인된 기기 하나를 로그아웃시킨다(id = 세션 토큰 해시 앞 16자).
+pub async fn revoke_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let uid = match require_user(&state, &headers) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    if id.len() != 16 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return error(StatusCode::BAD_REQUEST, "id");
+    }
+    if state.auth.revoke_session_prefix(uid, &id).await {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        error(StatusCode::NOT_FOUND, "missing")
     }
 }
 
@@ -737,18 +1187,22 @@ pub async fn change_password(
             Err(_) => return error(StatusCode::UNAUTHORIZED, "current"),
         }
     }
-    let new = req.new.clone();
-    let Ok(hash) = tokio::task::spawn_blocking(move || hash_password(&new))
-        .await
-        .unwrap_or(Err(String::new()))
-    else {
+    if breached(&req.new).await {
+        return error(StatusCode::BAD_REQUEST, "breached");
+    }
+    let Some(hash) = hash_async(&req.new).await else {
         return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
     };
+    let now = now_secs();
     if db
         .call(move |c| {
             c.execute(
-                "UPDATE users SET password_hash = ?2 WHERE id = ?1",
-                params![uid, hash],
+                "UPDATE users SET password_hash = ?2, password_changed_at = ?3 WHERE id = ?1",
+                params![uid, hash, now],
+            )?;
+            c.execute(
+                "DELETE FROM trusted_devices WHERE user_id = ?1",
+                params![uid],
             )
         })
         .await
@@ -847,7 +1301,7 @@ pub async fn export(State(state): State<AppState>, headers: HeaderMap) -> Respon
         Err(r) => return r,
     };
     let db = state.auth.db().clone();
-    let user = user_json(&db, uid).await;
+    let user = user_json(&db, uid, None).await;
     let meetings = db
         .call(move |c| {
             let mut stmt = c.prepare(
@@ -928,7 +1382,7 @@ pub struct CodeReq {
     code: String,
 }
 
-/// 앱에 넣은 뒤 나온 첫 코드로 확인해야 켜진다.
+/// 앱에 넣은 뒤 나온 첫 코드로 확인해야 켜진다. 켜지면 복구 코드 10개를 한 번만 보여 준다.
 pub async fn totp_enable(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -939,7 +1393,7 @@ pub async fn totp_enable(
         Err(r) => return r,
     };
     let code = req.code.clone();
-    let ok = state
+    let codes = state
         .auth
         .db()
         .call(move |c| {
@@ -949,7 +1403,7 @@ pub async fn totp_enable(
                 |r| r.get(0),
             )?;
             let Some(secret) = secret else {
-                return Ok(false);
+                return Ok(None);
             };
             match totp::verify(&secret, &code, now_secs(), 0) {
                 Some(step) => {
@@ -957,17 +1411,46 @@ pub async fn totp_enable(
                         "UPDATE users SET totp_enabled = 1, totp_last_step = ?2 WHERE id = ?1",
                         params![uid, step],
                     )?;
-                    Ok(true)
+                    new_recovery_codes(c, uid).map(Some)
                 }
-                None => Ok(false),
+                None => Ok(None),
             }
         })
         .await
-        .unwrap_or(false);
-    if ok {
-        StatusCode::NO_CONTENT.into_response()
-    } else {
-        error(StatusCode::BAD_REQUEST, "code")
+        .ok()
+        .flatten();
+    match codes {
+        Some(codes) => Json(json!({ "recoveryCodes": codes })).into_response(),
+        None => error(StatusCode::BAD_REQUEST, "code"),
+    }
+}
+
+/// 복구 코드를 새로 만든다(지금 인증 앱 코드로 확인). 예전 코드는 쓸 수 없게 된다.
+pub async fn totp_recovery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CodeReq>,
+) -> Response {
+    let uid = match require_user(&state, &headers) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    let code = req.code.clone();
+    let codes = state
+        .auth
+        .db()
+        .call(move |c| {
+            if !check_totp(c, uid, &code)? {
+                return Ok(None);
+            }
+            new_recovery_codes(c, uid).map(Some)
+        })
+        .await
+        .ok()
+        .flatten();
+    match codes {
+        Some(codes) => Json(json!({ "recoveryCodes": codes })).into_response(),
+        None => error(StatusCode::BAD_REQUEST, "code"),
     }
 }
 
@@ -989,6 +1472,14 @@ pub async fn totp_disable(
             if !check_totp(c, uid, &code)? {
                 return Ok(false);
             }
+            c.execute(
+                "DELETE FROM recovery_codes WHERE user_id = ?1",
+                params![uid],
+            )?;
+            c.execute(
+                "DELETE FROM trusted_devices WHERE user_id = ?1",
+                params![uid],
+            )?;
             c.execute(
                 "UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?1",
                 params![uid],
@@ -1334,12 +1825,37 @@ pub async fn google_callback(
     if reset_sessions {
         state.auth.revoke_user_sessions(uid, None).await;
     }
-    if link.is_some() {
-        return Redirect::to("/account/security").into_response();
-    }
-    let token = state.auth.create_session(uid, &user_agent(&headers)).await;
     let clear =
         format!("{OAUTH_COOKIE}=; Path=/api/auth/google; HttpOnly; SameSite=Lax; Max-Age=0");
+    if link.is_some() {
+        return (
+            [(header::SET_COOKIE, clear)],
+            Redirect::to("/account/security"),
+        )
+            .into_response();
+    }
+    // 2차 인증을 켠 계정은 Google로 들어와도 코드를 한 번 더 묻는다(믿는 기기면 건너뜀).
+    let totp: bool = state
+        .auth
+        .db()
+        .call(move |c| {
+            c.query_row(
+                "SELECT totp_enabled FROM users WHERE id = ?1",
+                params![uid],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .unwrap_or(true);
+    if totp && !trusted_device(state.auth.db(), &headers, uid).await {
+        let ticket = state.auth.new_mfa_ticket(uid);
+        return (
+            [(header::SET_COOKIE, clear)],
+            Redirect::to(&format!("/login?mfa={ticket}")),
+        )
+            .into_response();
+    }
+    let token = state.auth.create_session(uid, &user_agent(&headers)).await;
     (
         [
             (

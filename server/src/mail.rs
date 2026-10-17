@@ -211,32 +211,47 @@ impl Copy {
         }
     }
 
-    pub fn verify_code(&self, to: &str, code: &str) -> Message {
-        let (subject, title, lines) = match self.lang {
+    pub fn verify_code(&self, to: &str, code: &str, url: &str) -> Message {
+        let (subject, title, lines, button) = match self.lang {
             Lang::Ko => (
                 "Tolkmeet 인증 코드",
                 "이메일 인증 코드",
-                vec![
-                    "아래 6자리 코드를 가입 화면에 입력하세요. 코드는 15분 동안 쓸 수 있습니다."
-                        .to_owned(),
-                ],
+                vec!["아래 6자리 코드를 가입 화면에 입력하거나 버튼을 누르세요. 15분 동안 쓸 수 있습니다.".to_owned()],
+                "이메일 인증하기",
             ),
             Lang::Ja => (
                 "Tolkmeet 認証コード",
                 "メール認証コード",
-                vec![
-                    "以下の6桁のコードを登録画面に入力してください。コードは15分間有効です。"
-                        .to_owned(),
-                ],
+                vec!["以下の6桁のコードを登録画面に入力するか、ボタンを押してください。15分間有効です。".to_owned()],
+                "メールアドレスを確認",
             ),
             Lang::En => (
                 "Your Tolkmeet code",
                 "Your verification code",
-                vec![
-                    "Enter this 6-digit code on the sign-up screen. It expires in 15 minutes."
-                        .to_owned(),
-                ],
+                vec!["Enter this 6-digit code on the sign-up screen, or use the button. It expires in 15 minutes.".to_owned()],
+                "Verify email",
             ),
+        };
+        Message {
+            to: to.to_owned(),
+            subject: format!("{subject}: {code}"),
+            html: layout(
+                title,
+                &lines,
+                Some(code),
+                Some((button, url)),
+                self.footer(),
+            ),
+            text: text(title, &lines, &format!("{code}\n{url}"), self.footer()),
+        }
+    }
+
+    /// 이메일 주소를 바꿀 때 새 주소로 보내는 코드.
+    pub fn email_change_code(&self, to: &str, code: &str) -> Message {
+        let (subject, title, lines) = match self.lang {
+            Lang::Ko => ("Tolkmeet 이메일 변경 코드", "새 이메일 확인", vec!["계정 화면에 아래 코드를 입력하면 이 주소로 바뀝니다. 15분 동안 쓸 수 있습니다.".to_owned()]),
+            Lang::Ja => ("Tolkmeet メールアドレス変更コード", "新しいメールアドレスの確認", vec!["アカウント画面に以下のコードを入力すると、このアドレスに変更されます。15分間有効です。".to_owned()]),
+            Lang::En => ("Confirm your new Tolkmeet email", "Confirm your new email", vec!["Enter this code on the account screen to switch to this address. It expires in 15 minutes.".to_owned()]),
         };
         Message {
             to: to.to_owned(),
@@ -326,13 +341,13 @@ mod tests {
     fn code_mail_is_in_the_users_language() {
         assert!(
             Copy { lang: Lang::Ko }
-                .verify_code("a@b.c", "123456")
+                .verify_code("a@b.c", "123456", "https://x")
                 .subject
                 .contains("인증 코드")
         );
         assert!(
             Copy { lang: Lang::Ja }
-                .verify_code("a@b.c", "123456")
+                .verify_code("a@b.c", "123456", "https://x")
                 .subject
                 .contains("認証コード")
         );

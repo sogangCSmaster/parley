@@ -87,6 +87,9 @@ struct Room {
     /// 번역 시간 측정: 마지막으로 잰 시점과 아직 보고하지 않은 초.
     metered_at: Instant,
     unreported: f64,
+    /// 측정할 때 본 최대 인원과 마지막으로 보고한 값
+    peak: usize,
+    reported_peak: usize,
 }
 
 struct Resume {
@@ -113,6 +116,8 @@ impl Room {
             idle_since: Some(now),
             metered_at: now,
             unreported: 0.0,
+            peak: 0,
+            reported_peak: 0,
         }
     }
 
@@ -195,10 +200,13 @@ pub struct Rooms {
 }
 
 /// 번역 시간 측정 한 번의 결과: 이 방에서 지난 측정 뒤로 번역이 돌아간 초.
+#[derive(Clone)]
 pub struct Metered {
     pub host: String,
     pub code: String,
     pub seconds: i64,
+    /// 지금까지 한꺼번에 입장해 있던 최대 인원(회의 기록용)
+    pub peak: usize,
 }
 
 pub struct JoinRequest {
@@ -281,10 +289,17 @@ impl Rooms {
             if room.settings.translation && room.members.len() >= 2 {
                 room.unreported += elapsed;
             }
+            room.peak = room.peak.max(room.members.len());
             let whole = room.unreported.floor();
-            if whole >= 1.0 {
+            if whole >= 1.0 || room.peak > room.reported_peak {
                 room.unreported -= whole;
-                out.push(Metered { host: room.host_account.clone(), code: code.clone(), seconds: whole as i64 });
+                room.reported_peak = room.peak;
+                out.push(Metered {
+                    host: room.host_account.clone(),
+                    code: code.clone(),
+                    seconds: whole as i64,
+                    peak: room.peak,
+                });
             }
         }
         out

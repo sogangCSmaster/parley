@@ -105,6 +105,26 @@ const MIGRATIONS: &[&str] = &[
     // 4: 회의의 마지막으로 번역이 돌아간 시각(회의 길이 계산), 번역 켜짐 여부
     "ALTER TABLE meetings ADD COLUMN last_active_at INTEGER;
      ALTER TABLE meetings ADD COLUMN translation INTEGER NOT NULL DEFAULT 1;",
+    // 5: 회의에서 보이는 이름·기본 설정·비밀번호 바꾼 때, 세션 마지막 사용, 회의 최대 인원,
+    //    2차 인증 복구 코드·믿는 기기, 메일 코드의 덧붙임 값(바꿀 새 이메일)
+    "ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT '';
+     ALTER TABLE users ADD COLUMN prefs TEXT NOT NULL DEFAULT '{}';
+     ALTER TABLE users ADD COLUMN password_changed_at INTEGER;
+     ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER;
+     ALTER TABLE meetings ADD COLUMN peak_participants INTEGER NOT NULL DEFAULT 0;
+     ALTER TABLE email_codes ADD COLUMN payload TEXT;
+     CREATE TABLE recovery_codes (
+         id INTEGER PRIMARY KEY,
+         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+         code_hash TEXT NOT NULL,
+         used_at INTEGER
+     );
+     CREATE INDEX recovery_codes_user ON recovery_codes(user_id);
+     CREATE TABLE trusted_devices (
+         token_hash TEXT PRIMARY KEY,
+         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+         expires_at INTEGER NOT NULL
+     );",
 ];
 
 impl Db {

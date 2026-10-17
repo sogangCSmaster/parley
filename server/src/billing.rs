@@ -100,6 +100,22 @@ impl Billing {
         }
     }
 
+    /// 결제창에 넘길 사용자 서명(웹훅에서 사용자 id를 믿을 수 있게).
+    pub fn sign_user(&self, uid: i64) -> String {
+        let mut mac = Hmac::<Sha256v10>::new_from_slice(self.webhook_secret.as_bytes())
+            .expect("any key length");
+        mac.update(format!("tolkmeet-user:{uid}").as_bytes());
+        mac.finalize()
+            .into_bytes()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
+    fn check_user(&self, uid: i64, sig: &str) -> bool {
+        constant_eq(self.sign_user(uid).as_bytes(), sig.as_bytes())
+    }
+
     /// 계정 삭제 때: 바로 해지(남은 기간 없이).
     pub async fn cancel_now(&self, subscription: &str) -> Result<(), String> {
         self.call(
@@ -170,11 +186,12 @@ impl Billing {
         let id = event["event_id"].as_str().ok_or("event id")?.to_owned();
         let kind = event["event_type"].as_str().unwrap_or("").to_owned();
         let data = event["data"].clone();
-        let custom_user = data["custom_data"]["user_id"].as_i64().or_else(|| {
-            data["custom_data"]["user_id"]
-                .as_str()
-                .and_then(|s| s.parse().ok())
-        });
+        // 결제창이 넘긴 사용자 id는 브라우저가 바꿀 수 있으므로 서버 서명이 맞을 때만 믿는다.
+        let custom_user = data["custom_data"]["user_id"]
+            .as_str()
+            .and_then(|s| s.parse::<i64>().ok())
+            .filter(|uid| self.check_user(*uid, data["custom_data"]["sig"].as_str().unwrap_or("")));
+        let subscription_ref = data["subscription_id"].as_str().map(str::to_owned);
         let prices: Vec<String> = data["items"]
             .as_array()
             .map(|items| {
@@ -212,16 +229,15 @@ impl Billing {
                 return Ok(None);
             }
             // 사용자는 결제할 때 넘긴 custom_data로, 없으면 이미 묶인 구독·고객 id로 찾는다.
-            let user: Option<i64> = match custom_user {
-                Some(u) => Some(u),
-                None => tx
-                    .query_row(
-                        "SELECT id FROM users WHERE paddle_subscription_id = ?1 OR paddle_customer_id = ?2",
-                        params![subscription, customer],
-                        |r| r.get(0),
-                    )
-                    .optional()?,
-            };
+            // 이미 이 구독·고객에 묶인 사용자가 있으면 그쪽이 우선이다(남의 구독을 가로채지 못하게).
+            let linked: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM users WHERE paddle_subscription_id IN (?1, ?3) OR paddle_customer_id = ?2 LIMIT 1",
+                    params![subscription, customer, subscription_ref],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let user = linked.or(custom_user);
             let Some(user) = user else {
                 tx.commit()?;
                 return Ok(None);
@@ -418,10 +434,27 @@ mod tests {
             })
             .unwrap();
         let b = billing();
+        let sig = b.sign_user(uid);
+        // 서명이 틀린 사용자 id는 무시한다(다른 사람 계정에 구독을 붙이지 못하게).
+        b.apply_event(&db, json!({
+            "event_id": "evt_0", "event_type": "subscription.activated",
+            "data": { "id": "sub_x", "status": "active", "custom_data": { "user_id": uid.to_string(), "sig": "forged" },
+                      "items": [{ "price": { "id": "pri_pro" }, "quantity": 1 }] }
+        }))
+        .await
+        .unwrap();
+        let plan: String = db
+            .blocking(|c| {
+                c.query_row("SELECT plan FROM users WHERE id = ?1", params![uid], |r| {
+                    r.get(0)
+                })
+            })
+            .unwrap();
+        assert_eq!(plan, "none");
         let event = json!({
             "event_id": "evt_1", "event_type": "subscription.activated",
             "data": { "id": "sub_1", "customer_id": "ctm_1", "status": "active",
-                      "custom_data": { "user_id": uid }, "next_billed_at": "2026-11-17T10:00:00Z",
+                      "custom_data": { "user_id": uid.to_string(), "sig": sig }, "next_billed_at": "2026-11-17T10:00:00Z",
                       "items": [{ "price": { "id": "pri_pro" }, "quantity": 1 }] }
         });
         assert!(b.apply_event(&db, event.clone()).await.unwrap().is_some());
@@ -440,7 +473,7 @@ mod tests {
             &db,
             json!({
                 "event_id": "evt_2", "event_type": "transaction.completed",
-                "data": { "id": "txn_1", "custom_data": { "user_id": uid.to_string() },
+                "data": { "id": "txn_1", "custom_data": { "user_id": uid.to_string(), "sig": b.sign_user(uid) },
                           "items": [{ "price": { "id": "pri_hour" }, "quantity": 5 }] }
             }),
         )

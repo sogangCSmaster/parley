@@ -362,7 +362,7 @@ impl Auth {
         Ok(())
     }
 
-    fn new_mfa_ticket(&self, user_id: i64) -> String {
+    pub fn new_mfa_ticket(&self, user_id: i64) -> String {
         let ticket = new_token();
         let mut tickets = self.mfa_tickets.lock().unwrap();
         let now = Instant::now();
@@ -459,6 +459,43 @@ impl Auth {
                 .call(move |c| c.execute("DELETE FROM sessions WHERE token_hash = ?1", params![hash]))
                 .await;
         });
+    }
+
+    /// 세션 마지막 사용 시각을 남긴다(로그인된 기기 목록용). 5분에 한 번만 쓴다.
+    pub async fn touch(&self, token: &str) {
+        let hash = token_hash(token);
+        let now = now_secs();
+        let _ = self
+            .db
+            .call(move |c| {
+                c.execute(
+                    "UPDATE sessions SET last_seen_at = ?2 WHERE token_hash = ?1 AND COALESCE(last_seen_at, 0) < ?2 - 300",
+                    params![hash, now],
+                )
+            })
+            .await;
+    }
+
+    /// 세션 하나를 끊는다(토큰 해시 앞부분으로 찾고, 그 사용자의 것만). 끊었으면 true.
+    pub async fn revoke_session_prefix(&self, user_id: i64, prefix: &str) -> bool {
+        let p = prefix.to_owned();
+        let removed: Vec<String> = self
+            .db
+            .call(move |c| {
+                let mut stmt = c.prepare("SELECT token_hash FROM sessions WHERE user_id = ?1 AND substr(token_hash, 1, 16) = ?2")?;
+                let hashes = stmt.query_map(params![user_id, p], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+                for h in &hashes {
+                    c.execute("DELETE FROM sessions WHERE token_hash = ?1", params![h])?;
+                }
+                Ok(hashes)
+            })
+            .await
+            .unwrap_or_default();
+        let mut sessions = self.sessions.lock().unwrap();
+        for h in &removed {
+            sessions.remove(h);
+        }
+        !removed.is_empty()
     }
 
     /// 한 사용자의 세션을 모두(또는 지금 세션만 남기고) 끊는다. 비밀번호 변경·재설정·계정 삭제 때.
@@ -632,7 +669,7 @@ pub fn hash_password(password: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
-fn verify_password(password: &str, hash: &str) -> bool {
+pub fn verify_password(password: &str, hash: &str) -> bool {
     Argon2::default()
         .verify_password(password.as_bytes(), hash)
         .is_ok()
