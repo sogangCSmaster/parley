@@ -33,7 +33,7 @@ export const en = {
   heroLine2: 'They read it in Japanese.',
   heroLead:
     'Live translated captions for video meetings, in Korean, Japanese, English and five more languages. Everyone speaks their own language and reads the others in theirs.',
-  heroPrice: 'Pro $19 a month, 10 hours of translated meetings included',
+  heroPrice: 'Basic $19 a month, 10 hours of translated meetings included',
   heroSecondary: 'See an example meeting',
   // 기능 — 결과: 로고처럼 둘째 줄이 비켜 선다
   heroPoints: [
@@ -90,8 +90,8 @@ export const en = {
   pricingTitle: 'Pricing',
   pricingLead: 'Plans are set by hours of translated meetings each month. Guests are always free.',
   plans: [
-    { name: 'Pro', price: '$19', unit: '/month', hours: '10 hours of translated meetings a month', note: '$15 a month when billed yearly.', cta: 'Start with Pro' },
-    { name: 'Business', price: '$39', unit: '/user/month', hours: '30 hours a month for each user', note: '$32 a month when billed yearly.', cta: 'Start with Business' },
+    { name: 'Basic', price: '$19', unit: '/month', hours: '10 hours of translated meetings a month', note: 'Monthly subscription. Cancel anytime.', cta: 'Start with Basic' },
+    { name: 'Pro', price: '$39', unit: '/month', hours: '30 hours of translated meetings a month', note: 'Monthly subscription. Cancel anytime.', cta: 'Start with Pro' },
   ],
   includesTitle: 'Every plan includes',
   includes: ['Video meetings, in-person conversations and the live captions screen', 'All eight languages', 'Guests join free, without an account', 'Captions you can save as a text file'],
@@ -105,8 +105,7 @@ export const en = {
     { q: 'Can it replace a professional interpreter?', a: 'For everyday business conversation it works well. For contracts, medical or legal decisions, confirm the important points with a qualified interpreter.' },
     { q: 'What happens to my voice?', a: 'Your speech is sent to Google Gemini through its paid API to be turned into text and translated. Google does not use paid API data to train its models, and Tolkmeet does not store audio or captions.' },
     { q: 'Does the live captions screen work with any two languages?', a: 'It tells languages apart by their writing system, so it works for pairs like Korean and Japanese or Japanese and English. For two languages that share an alphabet, such as English and Spanish, use an in-person conversation instead.' },
-    { q: 'Why is there no free trial?', a: 'Every translated minute has a real cost, so Tolkmeet is paid only. The example meeting on this page shows how the screen and captions work.' },
-    { q: 'What if I go over 10 hours?', a: 'Add hours for $3 each in that month, or move to Business for 30 hours per user.' },
+    { q: 'What if I use up my hours?', a: 'Add hours for $3 each in that month, or move to Pro for 30 hours a month.' },
   ],
 
   closingLine1: 'Your next meeting,',

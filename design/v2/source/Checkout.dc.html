@@ -28,17 +28,17 @@ a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
 
   <div style="flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; max-width: 1080px; width: 100%; margin: 24px auto 0; padding: 0 40px; box-sizing: border-box; align-items: start;">
     <section aria-labelledby="plan-title" style="display: flex; flex-direction: column; gap: 22px;">
-      <h1 id="plan-title" style="margin: 0; font-size: 40px; font-weight: 700; letter-spacing: -0.02em;">Pro로 시작하기</h1>
-      <div role="radiogroup" aria-label="결제 주기" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+      <h1 id="plan-title" style="margin: 0; font-size: 40px; font-weight: 700; letter-spacing: -0.02em;">Basic으로 시작하기</h1>
+      <div role="radiogroup" aria-label="요금제" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
         <label style="display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; border-radius: 16px; background: #FFFFFF; border: 2px solid #F2542D;">
-          <span style="display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 600;">연간 결제 <input type="radio" name="cycle" checked style="accent-color: #C2381A;"></span>
-          <span style="font-size: 28px; font-weight: 700; letter-spacing: -0.02em;">$15<span style="font-size: 15px; font-weight: 500; color: #6E6E73;"> /월</span></span>
-          <span style="font-size: 13px; color: #6E6E73;">1년 $180 · 월 결제보다 $48 절약</span>
+          <span style="display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 600;">Basic <input type="radio" name="plan" checked style="accent-color: #C2381A;"></span>
+          <span style="font-size: 28px; font-weight: 700; letter-spacing: -0.02em;">$19<span style="font-size: 15px; font-weight: 500; color: #6E6E73;"> /월</span></span>
+          <span style="font-size: 13px; color: #6E6E73;">매달 10시간</span>
         </label>
         <label style="display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; border-radius: 16px; background: #FFFFFF; border: 1px solid #D2D2D7;">
-          <span style="display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 600;">월간 결제 <input type="radio" name="cycle" style="accent-color: #C2381A;"></span>
-          <span style="font-size: 28px; font-weight: 700; letter-spacing: -0.02em;">$19<span style="font-size: 15px; font-weight: 500; color: #6E6E73;"> /월</span></span>
-          <span style="font-size: 13px; color: #6E6E73;">언제든 해지</span>
+          <span style="display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 600;">Pro <input type="radio" name="plan" style="accent-color: #C2381A;"></span>
+          <span style="font-size: 28px; font-weight: 700; letter-spacing: -0.02em;">$39<span style="font-size: 15px; font-weight: 500; color: #6E6E73;"> /월</span></span>
+          <span style="font-size: 13px; color: #6E6E73;">매달 30시간</span>
         </label>
       </div>
       <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 16px;">
@@ -47,7 +47,7 @@ a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
         <li style="display: flex; gap: 12px; align-items: center;"><i aria-hidden="true" style="flex: none; width: 12px; height: 4px; border-radius: 2px; background: #F2542D;"></i>8개 언어, 게스트는 가입 없이 무료</li>
         <li style="display: flex; gap: 12px; align-items: center;"><i aria-hidden="true" style="flex: none; width: 12px; height: 4px; border-radius: 2px; background: #F2542D;"></i>더 필요한 달은 시간당 $3로 추가</li>
       </ul>
-      <p style="margin: 0; font-size: 13px; line-height: 1.55; color: #6E6E73;">무료 체험은 없습니다. 결제는 판매 대행사 Paddle이 처리하며, 영수증과 해지는 계정 설정에서 언제든 할 수 있습니다. <a href="#">환불 정책</a></p>
+      <p style="margin: 0; font-size: 13px; line-height: 1.55; color: #6E6E73;">매달 자동 결제되며 언제든 해지할 수 있습니다. 결제는 판매 대행사 Paddle이 처리하며, 영수증과 해지는 계정 설정에서 언제든 할 수 있습니다. <a href="#">환불 정책</a></p>
     </section>
 
     <section aria-labelledby="pay-title" style="padding: 28px; border-radius: 24px; background: #FFFFFF; box-shadow: 0 20px 50px -24px rgba(0,0,0,0.25); display: flex; flex-direction: column; gap: 18px;">
@@ -58,11 +58,11 @@ a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
         [결제 수단 입력 칸]<br>카드 정보는 Paddle 결제창에서만 입력됩니다
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px solid #E5E5EA; font-size: 15px;">
-        <div style="display: flex; justify-content: space-between;"><span style="color: #6E6E73;">Pro 연간</span><span>$180.00</span></div>
+        <div style="display: flex; justify-content: space-between;"><span style="color: #6E6E73;">Basic 월 구독</span><span>$19.00</span></div>
         <div style="display: flex; justify-content: space-between;"><span style="color: #6E6E73;">세금</span><span style="color: #6E6E73;">주소 입력 후 계산</span></div>
-        <div style="display: flex; justify-content: space-between; font-size: 18px; font-weight: 700; margin-top: 4px;"><span>오늘 결제</span><span>$180.00</span></div>
+        <div style="display: flex; justify-content: space-between; font-size: 18px; font-weight: 700; margin-top: 4px;"><span>오늘 결제</span><span>$19.00</span></div>
       </div>
-      <button type="button" style="height: 54px; border: 0; border-radius: 14px; background: #D4401C; color: #FFFFFF; font-size: 19px; font-weight: 700;">$180 결제하고 시작하기</button>
+      <button type="button" style="height: 54px; border: 0; border-radius: 14px; background: #D4401C; color: #FFFFFF; font-size: 19px; font-weight: 700;">$19 결제하고 시작하기</button>
     </section>
   </div>
 </div>
