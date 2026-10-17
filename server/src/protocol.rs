@@ -282,6 +282,8 @@ pub enum ErrorCode {
 pub enum NoticeCode {
     /// 번역에 실패해 원문만 확정했다.
     TranslationFailed,
+    /// 주최자의 이번 달 번역 시간이 다 떨어졌다. 음성 인식이 멈춘다.
+    QuotaExceeded,
 }
 
 #[cfg(test)]

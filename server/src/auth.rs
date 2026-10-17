@@ -195,7 +195,7 @@ pub struct Auth {
     /// 유효한 세션의 메모리 사본(토큰 해시 → 세션). 회의 입장·WebSocket 확인은 DB를 읽지 않는다.
     sessions: Mutex<HashMap<String, Session>>,
     /// 비밀번호까지 맞고 2차 인증을 기다리는 로그인(티켓 → 사용자, 만료).
-    mfa_tickets: Mutex<HashMap<String, (i64, Instant)>>,
+    mfa_tickets: Mutex<HashMap<String, (i64, Instant, u32)>>,
     throttle: Mutex<Throttle>,
     verify_slots: Arc<Semaphore>,
     /// 없는 계정도 같은 시간이 걸리도록 비교에 쓰는 해시(계정 존재 여부를 응답 시간으로 알 수 없게).
@@ -366,8 +366,8 @@ impl Auth {
         let ticket = new_token();
         let mut tickets = self.mfa_tickets.lock().unwrap();
         let now = Instant::now();
-        tickets.retain(|_, (_, at)| now.duration_since(*at) < MFA_TICKET_TTL);
-        tickets.insert(ticket.clone(), (user_id, now));
+        tickets.retain(|_, (_, at, _)| now.duration_since(*at) < MFA_TICKET_TTL);
+        tickets.insert(ticket.clone(), (user_id, now, 0));
         ticket
     }
 
@@ -376,8 +376,20 @@ impl Auth {
         let tickets = self.mfa_tickets.lock().unwrap();
         tickets
             .get(ticket)
-            .filter(|(_, at)| at.elapsed() < MFA_TICKET_TTL)
-            .map(|(id, _)| *id)
+            .filter(|(_, at, _)| at.elapsed() < MFA_TICKET_TTL)
+            .map(|(id, _, _)| *id)
+    }
+
+    /// 티켓 하나에 코드 시도는 5번까지. 넘으면 티켓을 지운다(처음부터 다시 로그인).
+    pub fn count_mfa_attempt(&self, ticket: &str) -> bool {
+        let mut tickets = self.mfa_tickets.lock().unwrap();
+        let Some(entry) = tickets.get_mut(ticket) else { return false };
+        entry.2 += 1;
+        if entry.2 > 5 {
+            tickets.remove(ticket);
+            return false;
+        }
+        true
     }
 
     pub fn take_mfa_ticket(&self, ticket: &str) {
@@ -474,7 +486,7 @@ impl Auth {
         self.mfa_tickets
             .lock()
             .unwrap()
-            .retain(|_, (_, at)| at.elapsed() < MFA_TICKET_TTL);
+            .retain(|_, (_, at, _)| at.elapsed() < MFA_TICKET_TTL);
         self.throttle.lock().unwrap().sweep(Instant::now());
         let db = self.db.clone();
         tokio::spawn(async move {

@@ -27,6 +27,7 @@ sha2 = "0.11.1"
 p256 = { version = "0.14.0", features = ["ecdsa"] }
 ciborium = "0.2.2"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+sha2_v10 = { version = "0.10", package = "sha2" }
 
 [dev-dependencies]
 tokio-tungstenite = "0.29.0"

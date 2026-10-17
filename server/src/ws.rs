@@ -246,6 +246,8 @@ async fn run(
                 (Some(name), true)
                     if room::is_valid_lang(&lang) && room::is_valid_lang(&partner_lang) =>
                 {
+                    // 예약해 둔 회의는 누군가 처음 들어올 때 방을 연다.
+                    crate::meetings::ensure_room(auth.db(), &rooms, &room).await;
                     let req = JoinRequest {
                         name,
                         lang,
@@ -319,6 +321,11 @@ async fn run(
             (ClientMsg::SttToken { id: req }, Some((room, id))) => {
                 while stt_tasks.try_join_next().is_some() {}
                 match (&stt, rooms.stt_langs(room, id)) {
+                    // 주최자의 번역 시간이 떨어졌으면 다시 시도해도 소용없다. 화면에 알린다.
+                    (Some(_), Some(_)) if rooms.is_out_of_time(room) => {
+                        tx.send(ServerMsg::Notice { code: crate::protocol::NoticeCode::QuotaExceeded });
+                        tx.send(ServerMsg::SttTokenDenied { id: req, retry: false });
+                    }
                     // 발급 빈도는 참가자에 묶여 있어 다시 연결해도 새로 차지 않는다(재입장 토큰으로 연결만 바꿔 우회하지 못하게).
                     (Some(issuer), Some(langs)) if rooms.take_stt_token(room, id, Instant::now()) => {
                         // 발급은 Gemini 왕복(수백 ms)이라 연결 루프를 막지 않도록 따로 돌린다.
@@ -491,6 +498,13 @@ mod tests {
                 stt,
                 rooms: rooms.clone(),
                 auth: auth.clone(),
+                accounts: Arc::new(crate::account::Accounts::new(
+                    crate::mail::Mailer::off(),
+                    "http://localhost".into(),
+                    None,
+                )),
+                billing: None,
+                dev_mode: false,
                 cookie_secure: false,
                 trusted_proxy: false,
             };

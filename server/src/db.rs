@@ -102,6 +102,9 @@ const MIGRATIONS: &[&str] = &[
     ",
     // 3: 운영자 계정 표시(HOST_ACCOUNTS·개발용). 목록에서 빠지면 시작할 때 권한을 거둔다.
     "ALTER TABLE users ADD COLUMN operator INTEGER NOT NULL DEFAULT 0;",
+    // 4: 회의의 마지막으로 번역이 돌아간 시각(회의 길이 계산), 번역 켜짐 여부
+    "ALTER TABLE meetings ADD COLUMN last_active_at INTEGER;
+     ALTER TABLE meetings ADD COLUMN translation INTEGER NOT NULL DEFAULT 1;",
 ];
 
 impl Db {
@@ -150,7 +153,10 @@ impl Db {
     }
 
     /// 시작할 때처럼 런타임 밖에서 바로 쓸 때.
-    pub fn blocking<T>(&self, f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>) -> rusqlite::Result<T> {
+    pub fn blocking<T>(
+        &self,
+        f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>,
+    ) -> rusqlite::Result<T> {
         let mut guard = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         f(&mut guard)
     }

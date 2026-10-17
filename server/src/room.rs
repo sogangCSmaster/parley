@@ -6,7 +6,7 @@
 //!   주최자가 수락해야 입장한다.
 //! - 수락·거절·설정 변경은 그 방의 주최자 참가자만 할 수 있다. 모든 검사는 이 모듈에서 한다.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -16,7 +16,7 @@ use tokio::sync::{Notify, mpsc, watch};
 use crate::ice::Ice;
 use crate::limit::TokenBucket;
 use crate::protocol::{
-    ErrorCode, Knock, MediaState, Peer, PeerId, RoomSettings, ServerMsg, SignalData,
+    ErrorCode, Knock, MediaState, NoticeCode, Peer, PeerId, RoomSettings, ServerMsg, SignalData,
 };
 
 /// P2P mesh는 인원이 늘면 업링크가 (n-1)배가 되므로 4명으로 제한한다.
@@ -84,6 +84,9 @@ struct Room {
     idle_since: Option<Instant>,
     /// 재입장 토큰 → 참가자. 입장할 때 하나씩 발급하고, 쓰면 없어진다.
     resumes: HashMap<String, Resume>,
+    /// 번역 시간 측정: 마지막으로 잰 시점과 아직 보고하지 않은 초.
+    metered_at: Instant,
+    unreported: f64,
 }
 
 struct Resume {
@@ -97,6 +100,22 @@ struct Resume {
 }
 
 impl Room {
+    fn new(host_account: &str, settings: RoomSettings) -> Self {
+        let now = Instant::now();
+        Room {
+            host_account: host_account.to_owned(),
+            settings,
+            caption_epoch: 0,
+            caption_changes: watch::channel(0).0,
+            members: HashMap::new(),
+            waiting: HashMap::new(),
+            resumes: HashMap::new(),
+            idle_since: Some(now),
+            metered_at: now,
+            unreported: 0.0,
+        }
+    }
+
     fn issue_resume(&mut self, peer: &str, name: &str) -> String {
         let token = random_token(RESUME_LEN);
         self.resumes.insert(
@@ -171,6 +190,15 @@ impl Audience {
 pub struct Rooms {
     rooms: Mutex<HashMap<String, Room>>,
     ice: Ice,
+    /// 이번 달 번역 시간을 다 쓴 주최자(계정 id). 이들의 방은 음성 인식 토큰을 받지 못한다.
+    out_of_time: Mutex<HashSet<String>>,
+}
+
+/// 번역 시간 측정 한 번의 결과: 이 방에서 지난 측정 뒤로 번역이 돌아간 초.
+pub struct Metered {
+    pub host: String,
+    pub code: String,
+    pub seconds: i64,
 }
 
 pub struct JoinRequest {
@@ -194,6 +222,7 @@ impl Rooms {
         Self {
             rooms: Mutex::default(),
             ice,
+            out_of_time: Mutex::default(),
         }
     }
 
@@ -213,18 +242,79 @@ impl Rooms {
                 break code;
             }
         };
-        let room = Room {
-            host_account: host_account.to_owned(),
-            settings,
-            caption_epoch: 0,
-            caption_changes: watch::channel(0).0,
-            members: HashMap::new(),
-            waiting: HashMap::new(),
-            resumes: HashMap::new(),
-            idle_since: Some(Instant::now()),
-        };
-        rooms.insert(code.clone(), room);
+        rooms.insert(code.clone(), Room::new(host_account, settings));
         Ok(code)
+    }
+
+    /// 예약해 둔 코드로 방을 연다(누군가 링크를 처음 열 때). 이미 있으면 그대로 둔다.
+    pub fn open_reserved(&self, host_account: &str, code: &str, settings: RoomSettings) {
+        self.rooms
+            .lock()
+            .unwrap()
+            .entry(code.to_owned())
+            .or_insert_with(|| Room::new(host_account, settings));
+    }
+
+    pub fn exists(&self, code: &str) -> bool {
+        self.rooms.lock().unwrap().contains_key(code)
+    }
+
+    /// 새 회의 코드(메모리의 방과 겹치지 않게). 예약은 DB와도 겹치지 않는지 따로 확인한다.
+    pub fn fresh_code(&self) -> String {
+        let rooms = self.rooms.lock().unwrap();
+        loop {
+            let code = new_room_code();
+            if !rooms.contains_key(&code) {
+                return code;
+            }
+        }
+    }
+
+    /// 번역 시간을 잰다(주기 작업). 번역이 켜져 있고 두 명 이상 입장해 있는 동안만 센다.
+    /// 1초 미만은 다음 측정으로 넘긴다.
+    pub fn meter(&self, now: Instant) -> Vec<Metered> {
+        let mut rooms = self.rooms.lock().unwrap();
+        let mut out = Vec::new();
+        for (code, room) in rooms.iter_mut() {
+            let elapsed = now.saturating_duration_since(room.metered_at).as_secs_f64();
+            room.metered_at = now;
+            if room.settings.translation && room.members.len() >= 2 {
+                room.unreported += elapsed;
+            }
+            let whole = room.unreported.floor();
+            if whole >= 1.0 {
+                room.unreported -= whole;
+                out.push(Metered { host: room.host_account.clone(), code: code.clone(), seconds: whole as i64 });
+            }
+        }
+        out
+    }
+
+    /// 시간을 다 쓴 주최자 목록을 바꾼다. 새로 막힌 주최자의 방에는 모두에게 알린다.
+    pub fn set_out_of_time(&self, hosts: HashSet<String>) {
+        let newly: Vec<String> = {
+            let mut cur = self.out_of_time.lock().unwrap();
+            let newly = hosts.difference(&cur).cloned().collect();
+            *cur = hosts;
+            newly
+        };
+        if newly.is_empty() {
+            return;
+        }
+        let rooms = self.rooms.lock().unwrap();
+        for room in rooms.values().filter(|r| newly.contains(&r.host_account)) {
+            broadcast(&room.members, "", ServerMsg::Notice { code: NoticeCode::QuotaExceeded });
+        }
+    }
+
+    pub fn out_of_time_hosts(&self) -> HashSet<String> {
+        self.out_of_time.lock().unwrap().clone()
+    }
+
+    /// 이 방의 주최자가 번역 시간을 다 썼는지.
+    pub fn is_out_of_time(&self, code: &str) -> bool {
+        let host = self.rooms.lock().unwrap().get(code).map(|r| r.host_account.clone());
+        host.is_some_and(|h| self.out_of_time.lock().unwrap().contains(&h))
     }
 
     pub fn settings(&self, code: &str) -> Option<RoomSettings> {
@@ -553,17 +643,22 @@ impl Rooms {
         Some(langs)
     }
 
-    /// 오래 빈 방을 지운다(주기 작업).
-    pub fn sweep(&self, now: Instant) {
+    /// 오래 빈 방을 지운다(주기 작업). 지운 방의 코드를 돌려준다(회의 기록에 끝난 시각을 남기려고).
+    pub fn sweep(&self, now: Instant) -> Vec<String> {
         let mut rooms = self.rooms.lock().unwrap();
-        rooms.retain(|_, r| {
-            r.idle_since
-                .is_none_or(|t| now.duration_since(t) < ROOM_IDLE_TTL)
+        let mut ended = Vec::new();
+        rooms.retain(|code, r| {
+            let keep = r.idle_since.is_none_or(|t| now.duration_since(t) < ROOM_IDLE_TTL);
+            if !keep {
+                ended.push(code.clone());
+            }
+            keep
         });
         for room in rooms.values_mut() {
             room.resumes
                 .retain(|_, r| r.left_at.is_none_or(|t| now.duration_since(t) < RESUME_TTL));
         }
+        ended
     }
 }
 

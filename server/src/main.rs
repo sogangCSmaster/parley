@@ -1,5 +1,11 @@
+mod account;
 mod auth;
+mod billing;
 mod db;
+mod mail;
+mod meetings;
+mod totp;
+mod webauthn;
 mod dev;
 mod ice;
 mod limit;
@@ -14,35 +20,36 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use axum::extract::{ConnectInfo, FromRef, Path, State};
-use axum::http::{HeaderMap, StatusCode, header};
-use axum::response::{IntoResponse, Response};
+use axum::extract::FromRef;
 use axum::routing::{get, post};
-use axum::{Json, Router};
-use serde::Deserialize;
-use serde_json::{Value, json};
+use axum::Router;
 use tracing_subscriber::EnvFilter;
 
-use auth::{Auth, LoginError};
+use auth::Auth;
 use ice::Ice;
 use pipeline::Pipeline;
-use protocol::{ErrorCode, RoomSettings};
 use providers::Translator;
 use providers::gemini::{self, Gemini};
 use providers::live::{self, GeminiLive, SttTokens};
 use room::Rooms;
 
 #[derive(Clone)]
-struct AppState {
-    rooms: Arc<Rooms>,
-    auth: Arc<Auth>,
-    pipeline: Arc<Pipeline>,
+pub(crate) struct AppState {
+    pub(crate) rooms: Arc<Rooms>,
+    pub(crate) auth: Arc<Auth>,
+    pub(crate) pipeline: Arc<Pipeline>,
     /// 브라우저 음성 인식 토큰 발급. Gemini 키가 없으면 None.
-    stt: Option<Arc<dyn SttTokens>>,
+    pub(crate) stt: Option<Arc<dyn SttTokens>>,
+    /// 가입·메일·패스키·Google 로그인
+    pub(crate) accounts: Arc<account::Accounts>,
+    /// Paddle 결제. 키가 없으면 None.
+    pub(crate) billing: Option<Arc<billing::Billing>>,
+    /// `tolkmeet-server dev`(로컬 개발)
+    pub(crate) dev_mode: bool,
     /// 로컬 http 개발에서만 false. 운영(https)에서는 반드시 true.
-    cookie_secure: bool,
+    pub(crate) cookie_secure: bool,
     /// 리버스 프록시(Caddy) 뒤에서만 true. 그때만 X-Forwarded-For로 클라이언트 IP를 판단한다.
-    trusted_proxy: bool,
+    pub(crate) trusted_proxy: bool,
 }
 
 impl FromRef<AppState> for Arc<Rooms> {
@@ -177,11 +184,31 @@ async fn run() {
     }
     let rooms = Arc::new(Rooms::new(ice));
 
+    // 앱 주소: 메일 속 링크, Google 로그인 되돌아올 주소, 패스키 출처 확인에 쓴다.
+    let origin = std::env::var("APP_ORIGIN")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .map(|v| v.trim().trim_end_matches('/').to_owned())
+        .unwrap_or_else(|| if dev_mode { "http://localhost:5173".into() } else { "https://meet.tolkmeet.com".into() });
+    let mail_folder = dev_mode.then(|| std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/data/mail")));
+    let mailer = mail::Mailer::from_env(mail_folder);
+    let google = account::Google::from_env();
+    if google.is_none() {
+        tracing::info!("GOOGLE_CLIENT_ID/SECRET not set: Google sign-in is hidden");
+    }
+    let billing = billing::Billing::from_env().map(Arc::new);
+    if billing.is_none() {
+        tracing::warn!("PADDLE_* not set: checkout is disabled");
+    }
+
     let state = AppState {
         pipeline: Arc::new(Pipeline::new(rooms.clone(), translator)),
         stt,
         rooms,
         auth,
+        accounts: Arc::new(account::Accounts::new(mailer, origin, google)),
+        billing,
+        dev_mode,
         cookie_secure,
         trusted_proxy,
     };
@@ -191,18 +218,54 @@ async fn run() {
         let mut tick = tokio::time::interval(Duration::from_secs(60));
         loop {
             tick.tick().await;
-            sweeper.rooms.sweep(Instant::now());
+            let now = Instant::now();
+            // 번역 시간을 먼저 재고(지울 방 포함), 그다음 빈 방을 지워 끝난 회의로 남긴다.
+            let metered = sweeper.rooms.meter(now);
+            meetings::tick(&sweeper, &metered).await;
+            let ended = sweeper.rooms.sweep(now);
+            meetings::spawn_end(&sweeper, ended);
             sweeper.auth.sweep();
         }
     });
 
     let app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
-        .route("/api/login", post(login))
-        .route("/api/logout", post(logout))
-        .route("/api/me", get(me))
-        .route("/api/rooms", post(create_room))
-        .route("/api/rooms/{code}", get(room_info))
+        .route("/api/login", post(account::login))
+        .route("/api/login/mfa", post(account::login_mfa))
+        .route("/api/logout", post(account::logout))
+        .route("/api/me", get(account::me))
+        .route("/api/signup", post(account::signup))
+        .route("/api/verify", post(account::verify))
+        .route("/api/verify/resend", post(account::resend))
+        .route("/api/password/forgot", post(account::forgot))
+        .route("/api/password/reset", post(account::reset))
+        .route("/api/account", axum::routing::patch(account::update_profile).delete(account::delete_account))
+        .route("/api/account/password", post(account::change_password))
+        .route("/api/account/sessions/revoke", post(account::revoke_other_sessions))
+        .route("/api/account/export", get(account::export))
+        .route("/api/totp/setup", post(account::totp_setup))
+        .route("/api/totp/enable", post(account::totp_enable))
+        .route("/api/totp/disable", post(account::totp_disable))
+        .route("/api/passkeys/register/options", post(account::passkey_register_options))
+        .route("/api/passkeys/register", post(account::passkey_register))
+        .route("/api/passkeys/login/options", post(account::passkey_login_options))
+        .route("/api/passkeys/login", post(account::passkey_login))
+        .route("/api/passkeys/{id}", axum::routing::delete(account::passkey_delete))
+        .route("/api/auth/google", get(account::google_start))
+        .route("/api/auth/google/callback", get(account::google_callback))
+        .route("/api/auth/google/unlink", post(account::google_unlink))
+        .route("/api/rooms", post(meetings::create_room))
+        .route("/api/rooms/{code}", get(meetings::room_info))
+        .route("/api/meetings", get(meetings::list).post(meetings::schedule))
+        .route("/api/meetings/{id}", axum::routing::patch(meetings::update).delete(meetings::remove))
+        .route("/api/meetings/{id}/invite", post(meetings::invite))
+        .route("/api/meetings/{id}/ics", get(meetings::ics))
+        .route("/api/billing", get(meetings::billing_summary))
+        .route("/api/billing/checkout", post(meetings::checkout))
+        .route("/api/billing/dev", post(meetings::dev_activate))
+        .route("/api/billing/portal", post(meetings::portal))
+        .route("/api/billing/{action}", post(meetings::manage))
+        .route("/api/paddle/webhook", post(meetings::paddle_webhook))
         .route("/ws", get(ws::handler))
         .with_state(state);
 
@@ -219,83 +282,4 @@ async fn run() {
     })
     .await
     .expect("server error");
-}
-
-#[derive(Deserialize)]
-struct LoginReq {
-    username: String,
-    password: String,
-}
-
-// Json 추출기는 Content-Type: application/json만 받는다. 이 덕분에 다른 사이트의 단순 폼 전송(CSRF)은
-// 여기까지 오지 못하고, SameSite=Lax 쿠키와 함께 이중으로 막힌다.
-async fn login(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(req): Json<LoginReq>,
-) -> Response {
-    let client = auth::client_ip(peer.ip(), &headers, state.trusted_proxy);
-    match state.auth.login(client, &req.username, &req.password).await {
-        Ok(token) => {
-            tracing::info!(user = %req.username, "login");
-            (
-                StatusCode::NO_CONTENT,
-                [(
-                    header::SET_COOKIE,
-                    auth::session_cookie(&token, state.cookie_secure),
-                )],
-            )
-                .into_response()
-        }
-        Err(LoginError::Invalid) => StatusCode::UNAUTHORIZED.into_response(),
-        Err(LoginError::Locked) => StatusCode::TOO_MANY_REQUESTS.into_response(),
-        Err(LoginError::Unverified) => {
-            (StatusCode::FORBIDDEN, Json(json!({ "code": "unverified" }))).into_response()
-        }
-        Err(LoginError::MfaRequired(ticket)) => Json(json!({ "mfa": ticket })).into_response(),
-    }
-}
-
-async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if let Some(token) = auth::token_from_headers(&headers) {
-        state.auth.logout(&token);
-    }
-    (
-        StatusCode::NO_CONTENT,
-        [(header::SET_COOKIE, auth::clear_cookie(state.cookie_secure))],
-    )
-        .into_response()
-}
-
-/// 비로그인도 정상 응답(200, username: null)이다. 게스트가 매번 401 콘솔 오류를 보지 않도록.
-async fn me(State(state): State<AppState>, headers: HeaderMap) -> Json<Value> {
-    Json(json!({ "username": state.auth.user_from_headers(&headers) }))
-}
-
-/// 로그인한 주최자만 회의를 만들 수 있다.
-async fn create_room(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(settings): Json<RoomSettings>,
-) -> Response {
-    let Some(username) = state.auth.user_from_headers(&headers) else {
-        return StatusCode::UNAUTHORIZED.into_response();
-    };
-    match state.rooms.create(&username, settings) {
-        Ok(code) => Json(json!({ "code": code })).into_response(),
-        Err(ErrorCode::Forbidden) => StatusCode::TOO_MANY_REQUESTS.into_response(),
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    }
-}
-
-/// 로비에서 입장 전에 번역 사용 여부를 알기 위한 공개 정보. 설정 외에는 아무것도 노출하지 않는다.
-async fn room_info(State(state): State<AppState>, Path(code): Path<String>) -> Response {
-    if !room::is_valid_room_code(&code) {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    match state.rooms.settings(&code) {
-        Some(settings) => Json(settings).into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
 }

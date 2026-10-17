@@ -1,0 +1,340 @@
+//! 메일 발송. `RESEND_API_KEY`가 있으면 Resend HTTP API로 보내고, 없으면 보내지 않는다.
+//! 개발 모드에서는 키가 없을 때 `data/mail/`에 파일로 남겨 가입·재설정 흐름을 직접 확인할 수 있게 한다.
+//! 메일 본문(인증 코드·재설정 링크)은 로그에 남기지 않는다.
+
+use std::path::PathBuf;
+
+use serde_json::json;
+
+#[derive(Clone)]
+pub struct Mailer {
+    mode: Mode,
+    from: String,
+}
+
+#[derive(Clone)]
+enum Mode {
+    Resend {
+        client: reqwest::Client,
+        key: String,
+    },
+    /// 개발용: 파일로 떨어뜨린다.
+    Folder(PathBuf),
+    Off,
+}
+
+pub struct Message {
+    pub to: String,
+    pub subject: String,
+    pub html: String,
+    pub text: String,
+}
+
+impl Mailer {
+    pub fn from_env(dev_folder: Option<PathBuf>) -> Self {
+        let from = std::env::var("MAIL_FROM")
+            .unwrap_or_else(|_| "Tolkmeet <no-reply@mail.tolkmeet.com>".into());
+        let mode = match std::env::var("RESEND_API_KEY") {
+            Ok(key) if !key.trim().is_empty() => Mode::Resend {
+                client: reqwest::Client::new(),
+                key: key.trim().to_owned(),
+            },
+            _ => match dev_folder {
+                Some(dir) => {
+                    tracing::warn!(dir = %dir.display(), "RESEND_API_KEY is not set: dev mode writes mail to files");
+                    Mode::Folder(dir)
+                }
+                None => {
+                    tracing::warn!(
+                        "RESEND_API_KEY is not set: emails (verification, password reset) are not sent"
+                    );
+                    Mode::Off
+                }
+            },
+        };
+        Self { mode, from }
+    }
+
+    #[cfg(test)]
+    pub fn off() -> Self {
+        Self {
+            mode: Mode::Off,
+            from: String::new(),
+        }
+    }
+
+    /// 보내기는 요청을 붙잡지 않도록 따로 돌린다. 실패는 로그로만 남긴다(받는 주소는 남기지 않는다).
+    pub fn send(&self, msg: Message) {
+        let this = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = this.deliver(&msg).await {
+                tracing::warn!(error = %e, subject = %msg.subject, "mail not sent");
+            }
+        });
+    }
+
+    async fn deliver(&self, msg: &Message) -> Result<(), String> {
+        match &self.mode {
+            Mode::Resend { client, key } => {
+                let res = client
+                    .post("https://api.resend.com/emails")
+                    .bearer_auth(key)
+                    .json(&json!({
+                        "from": self.from,
+                        "to": [msg.to],
+                        "subject": msg.subject,
+                        "html": msg.html,
+                        "text": msg.text,
+                    }))
+                    .timeout(std::time::Duration::from_secs(15))
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                if res.status().is_success() {
+                    Ok(())
+                } else {
+                    Err(format!("resend status {}", res.status()))
+                }
+            }
+            Mode::Folder(dir) => {
+                tokio::fs::create_dir_all(dir)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let name = format!(
+                    "{}-{}.txt",
+                    crate::db::now_secs(),
+                    msg.to.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+                );
+                let body = format!("To: {}\nSubject: {}\n\n{}\n", msg.to, msg.subject, msg.text);
+                tokio::fs::write(dir.join(&name), body)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                tracing::info!(file = %name, "dev mail written");
+                Ok(())
+            }
+            Mode::Off => Err("mail is not configured".into()),
+        }
+    }
+}
+
+/// 메일 문구(받는 사람이 가입할 때 쓰던 화면 언어로).
+pub struct Copy {
+    pub lang: Lang,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Lang {
+    En,
+    Ko,
+    Ja,
+}
+
+impl Lang {
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "ko" => Lang::Ko,
+            "ja" => Lang::Ja,
+            _ => Lang::En,
+        }
+    }
+}
+
+fn escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// 공통 틀: 로고, 제목, 본문 문단, (선택) 큰 코드 또는 버튼, 꼬리말.
+fn layout(
+    title: &str,
+    paragraphs: &[String],
+    code: Option<&str>,
+    button: Option<(&str, &str)>,
+    footer: &str,
+) -> String {
+    let mut body = String::new();
+    for p in paragraphs {
+        body.push_str(&format!(
+            "<p style=\"margin:0 0 14px;font-size:15px;line-height:1.6;color:#424245\">{}</p>",
+            escape(p)
+        ));
+    }
+    if let Some(code) = code {
+        body.push_str(&format!(
+            "<p style=\"margin:8px 0 22px;font-size:34px;font-weight:700;letter-spacing:8px;color:#1D1D1F\">{}</p>",
+            escape(code)
+        ));
+    }
+    if let Some((label, url)) = button {
+        body.push_str(&format!(
+            "<p style=\"margin:8px 0 22px\"><a href=\"{}\" style=\"display:inline-block;padding:12px 22px;border-radius:22px;background:#D4401C;color:#FFFFFF;font-weight:700;text-decoration:none\">{}</a></p>",
+            escape(url),
+            escape(label)
+        ));
+    }
+    format!(
+        "<!doctype html><html><body style=\"margin:0;background:#F5F5F7;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Hiragino Sans',sans-serif\">\
+<div style=\"max-width:520px;margin:0 auto;padding:40px 24px\">\
+<div style=\"font-size:18px;font-weight:800;letter-spacing:-0.5px;color:#1D1D1F\">\
+<span style=\"display:inline-block;width:16px;height:4px;border-radius:2px;background:#1D1D1F;vertical-align:middle\"></span>\
+<span style=\"display:inline-block;width:16px;height:4px;border-radius:2px;background:#F2542D;vertical-align:middle;margin:0 8px 0 -10px;position:relative;top:5px\"></span>tolkmeet</div>\
+<div style=\"margin-top:28px;padding:32px;border-radius:22px;background:#FFFFFF\">\
+<h1 style=\"margin:0 0 18px;font-size:24px;line-height:1.3;color:#1D1D1F\">{}</h1>{}</div>\
+<p style=\"margin:18px 4px 0;font-size:12px;line-height:1.6;color:#6E6E73\">{}</p></div></body></html>",
+        escape(title),
+        body,
+        escape(footer)
+    )
+}
+
+fn text(title: &str, paragraphs: &[String], extra: &str, footer: &str) -> String {
+    format!(
+        "{title}\n\n{}\n\n{extra}\n\n{footer}\n",
+        paragraphs.join("\n\n")
+    )
+}
+
+impl Copy {
+    fn footer(&self) -> &'static str {
+        match self.lang {
+            Lang::Ko => {
+                "이 메일은 no-reply@mail.tolkmeet.com에서 보냈습니다. 요청하지 않았다면 무시하셔도 됩니다."
+            }
+            Lang::Ja => {
+                "このメールは no-reply@mail.tolkmeet.com から送信されました。心当たりがない場合は無視してください。"
+            }
+            Lang::En => {
+                "Sent from no-reply@mail.tolkmeet.com. If you didn't request this, you can ignore it."
+            }
+        }
+    }
+
+    pub fn verify_code(&self, to: &str, code: &str) -> Message {
+        let (subject, title, lines) = match self.lang {
+            Lang::Ko => (
+                "Tolkmeet 인증 코드",
+                "이메일 인증 코드",
+                vec![
+                    "아래 6자리 코드를 가입 화면에 입력하세요. 코드는 15분 동안 쓸 수 있습니다."
+                        .to_owned(),
+                ],
+            ),
+            Lang::Ja => (
+                "Tolkmeet 認証コード",
+                "メール認証コード",
+                vec![
+                    "以下の6桁のコードを登録画面に入力してください。コードは15分間有効です。"
+                        .to_owned(),
+                ],
+            ),
+            Lang::En => (
+                "Your Tolkmeet code",
+                "Your verification code",
+                vec![
+                    "Enter this 6-digit code on the sign-up screen. It expires in 15 minutes."
+                        .to_owned(),
+                ],
+            ),
+        };
+        Message {
+            to: to.to_owned(),
+            subject: format!("{subject}: {code}"),
+            html: layout(title, &lines, Some(code), None, self.footer()),
+            text: text(title, &lines, code, self.footer()),
+        }
+    }
+
+    pub fn reset_link(&self, to: &str, url: &str) -> Message {
+        let (subject, title, lines, button) = match self.lang {
+            Lang::Ko => ("Tolkmeet 비밀번호 재설정", "비밀번호 재설정", vec!["아래 버튼을 눌러 새 비밀번호를 만드세요. 링크는 30분 동안, 한 번만 쓸 수 있습니다.".to_owned()], "새 비밀번호 만들기"),
+            Lang::Ja => ("Tolkmeet パスワードの再設定", "パスワードの再設定", vec!["下のボタンから新しいパスワードを設定してください。リンクは30分間、1回だけ使えます。".to_owned()], "新しいパスワードを設定"),
+            Lang::En => ("Reset your Tolkmeet password", "Reset your password", vec!["Use the button below to set a new password. The link works once and expires in 30 minutes.".to_owned()], "Set a new password"),
+        };
+        Message {
+            to: to.to_owned(),
+            subject: subject.to_owned(),
+            html: layout(title, &lines, None, Some((button, url)), self.footer()),
+            text: text(title, &lines, url, self.footer()),
+        }
+    }
+
+    pub fn invite(&self, to: &str, host: &str, title: &str, when: &str, url: &str) -> Message {
+        let (subject, heading, lines, button) = match self.lang {
+            Lang::Ko => (
+                format!("{host}님이 회의에 초대했습니다: {title}"),
+                title.to_owned(),
+                vec![format!("{host}님이 Tolkmeet 회의에 초대했습니다."), when.to_owned(), "가입이나 설치 없이 링크를 열고 자기 언어를 고르면 됩니다. 말하는 대로 상대의 언어로 자막이 나옵니다.".to_owned()],
+                "회의 참여",
+            ),
+            Lang::Ja => (
+                format!("{host}さんから会議への招待: {title}"),
+                title.to_owned(),
+                vec![format!("{host}さんが Tolkmeet の会議に招待しています。"), when.to_owned(), "登録やインストールは不要です。リンクを開いて自分の言語を選ぶだけで、話した内容が相手の言語の字幕になります。".to_owned()],
+                "会議に参加",
+            ),
+            Lang::En => (
+                format!("{host} invited you to a meeting: {title}"),
+                title.to_owned(),
+                vec![format!("{host} invited you to a Tolkmeet meeting."), when.to_owned(), "No sign-up or install. Open the link and pick your language; what everyone says appears as captions in yours.".to_owned()],
+                "Join meeting",
+            ),
+        };
+        Message {
+            to: to.to_owned(),
+            subject,
+            html: layout(&heading, &lines, None, Some((button, url)), self.footer()),
+            text: text(&heading, &lines, url, self.footer()),
+        }
+    }
+
+    pub fn receipt(&self, to: &str, plan: &str, amount: &str, renews: &str) -> Message {
+        let (subject, title, lines) = match self.lang {
+            Lang::Ko => (format!("{plan}을 시작해 주셔서 감사합니다"), format!("{plan}을 시작해 주셔서 감사합니다"), vec![format!("결제 금액: {amount}"), format!("다음 결제일: {renews}"), "세금 영수증은 판매 대행사 Paddle이 따로 보냅니다. 해지와 영수증은 계정 › 요금제와 결제에서 할 수 있습니다.".to_owned()]),
+            Lang::Ja => (format!("{plan} をご利用いただきありがとうございます"), format!("{plan} をご利用いただきありがとうございます"), vec![format!("お支払い金額: {amount}"), format!("次回のお支払い日: {renews}"), "税務上の領収書は販売代理店の Paddle から別途届きます。解約と領収書はアカウント › プランとお支払いから確認できます。".to_owned()]),
+            Lang::En => (format!("Thanks for starting {plan}"), format!("Thanks for starting {plan}"), vec![format!("Amount: {amount}"), format!("Next payment: {renews}"), "Paddle, our reseller, sends the tax receipt separately. Cancel or see receipts in Account › Plan & billing.".to_owned()]),
+        };
+        Message {
+            to: to.to_owned(),
+            subject,
+            html: layout(&title, &lines, None, None, self.footer()),
+            text: text(&title, &lines, "", self.footer()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_text_is_escaped_in_html() {
+        let msg = Copy { lang: Lang::En }.invite(
+            "a@b.c",
+            "<b>Eve</b>",
+            "Q&A",
+            "Mon",
+            "https://x/abcd-efgh-ijkm",
+        );
+        assert!(msg.html.contains("&lt;b&gt;Eve&lt;/b&gt;"));
+        assert!(!msg.html.contains("<b>Eve</b>"));
+        assert!(msg.html.contains("Q&amp;A"));
+    }
+
+    #[test]
+    fn code_mail_is_in_the_users_language() {
+        assert!(
+            Copy { lang: Lang::Ko }
+                .verify_code("a@b.c", "123456")
+                .subject
+                .contains("인증 코드")
+        );
+        assert!(
+            Copy { lang: Lang::Ja }
+                .verify_code("a@b.c", "123456")
+                .subject
+                .contains("認証コード")
+        );
+    }
+}
