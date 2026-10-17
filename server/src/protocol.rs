@@ -284,6 +284,8 @@ pub enum NoticeCode {
     TranslationFailed,
     /// 주최자의 이번 달 번역 시간이 다 떨어졌다. 음성 인식이 멈춘다.
     QuotaExceeded,
+    /// 번역 시간이 다시 생겼다(추가 구매·새 달). 음성 인식을 다시 시작해도 된다.
+    QuotaRestored,
 }
 
 #[cfg(test)]

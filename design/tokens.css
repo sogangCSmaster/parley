@@ -42,6 +42,12 @@
   --accent-hover: #BC3816;
   --accent-text: #C2381A;        /* 링크·텍스트 버튼. 흰 배경 5.4:1 */
   --ok: #248A3D;
+  /* 진한 면(보조 강조 버튼·선택된 목록·최신 대화로 알약): 밝은 화면에서는 잉크, 어두운 화면에서는 흰색 */
+  --ink: #1D1D1F;
+  --on-ink: #FFFFFF;
+  --ink-hover: #3A3A3C;
+  --scroll-thumb: #CFCCC4;
+  --scroll-thumb-hover: #A8A59D;
   /* 입력 칸 포커스: 브랜드 주황 테두리(흰 배경 3.45:1, 테두리 기준 3:1 충족) + 애플식 부드러운 번짐 */
   --focus-border: #F2542D;
   --focus-ring: 0 0 0 4px rgb(242 84 45 / .18);
@@ -58,6 +64,7 @@
 
   /* 자막 크기 (설정에서 S 14 / M 16 / L 20) */
   --caption-size: 16px;
+  --caption-scale: 1;            /* 계정 설정의 자막 크기(작게 0.875 · 보통 1 · 크게 1.2) */
   --caption-leading: 1.5;
 
   /* 간격 */
@@ -83,4 +90,67 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root { --duration: 0ms; }
+}
+
+/*
+ * 어두운 화면. 계정 설정의 화면(시스템·라이트·다크)이 <html data-theme>으로 고른다.
+ * 값이 없으면(시스템) 운영체제 설정을 따른다. 회의 화면(무대)은 원래 어두우므로 그대로다.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --brand-ink: #F5F5F7;
+  --stage-bg: #000000;           /* 대화 기록(#1C1C1E)과 구분되게 무대는 더 어둡게 */
+  --hero-bg: linear-gradient(150deg, #3A1D14 0%, #1C1C1E 62%); /* 페이지(#000)와 같은 무대색이면 홈 첫 카드가 묻힌다 */
+  --page-bg: #000000;
+  --panel-bg: #1C1C1E;
+  --text: #F5F5F7;
+  --text-secondary: #A1A1A6;     /* #1C1C1E 위 7.0:1 */
+  --text-tertiary: #A1A1A6;
+  --divider: #38383A;
+  --border: #48484A;
+  --hover: #2C2C2E;
+  --field-bg: #1C1C1E;
+  --field-bg-hover: #232325;
+  --fill: #2C2C2E;
+  --fill-hover: #3A3A3C;
+  --accent-hover: #E04A24;
+  --accent-text: #FF8A66;        /* #1C1C1E 위 6.6:1 */
+  --danger-text: #FF6961;
+  --ok: #30D158;
+  --ink: #F5F5F7;
+  --on-ink: #1D1D1F;
+  --ink-hover: #D2D2D7;
+  --scroll-thumb: #48484A;
+  --scroll-thumb-hover: #636366;
+  --focus-ring: 0 0 0 4px rgb(242 84 45 / .3);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --brand-ink: #F5F5F7;
+    --stage-bg: #000000;
+    --hero-bg: linear-gradient(150deg, #3A1D14 0%, #1C1C1E 62%);
+    --page-bg: #000000;
+    --panel-bg: #1C1C1E;
+    --text: #F5F5F7;
+    --text-secondary: #A1A1A6;
+    --text-tertiary: #A1A1A6;
+    --divider: #38383A;
+    --border: #48484A;
+    --hover: #2C2C2E;
+    --field-bg: #1C1C1E;
+    --field-bg-hover: #232325;
+    --fill: #2C2C2E;
+    --fill-hover: #3A3A3C;
+    --accent-hover: #E04A24;
+    --accent-text: #FF8A66;
+    --danger-text: #FF6961;
+    --ok: #30D158;
+    --ink: #F5F5F7;
+    --on-ink: #1D1D1F;
+    --ink-hover: #D2D2D7;
+    --scroll-thumb: #48484A;
+    --scroll-thumb-hover: #636366;
+    --focus-ring: 0 0 0 4px rgb(242 84 45 / .3);
+  }
 }

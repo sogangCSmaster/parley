@@ -283,6 +283,7 @@ pub async fn room_info(State(state): State<AppState>, Path(code): Path<String>) 
 // ── 예약 회의 ─────────────────────────────────────────
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MeetingReq {
     title: String,
     #[serde(default)]
@@ -795,8 +796,30 @@ pub async fn billing_summary(State(state): State<AppState>, headers: HeaderMap) 
                 params![uid],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )?;
+            // 최근 6달 사용량(이번 달 포함, 오래된 달부터)
+            let mut history = Vec::new();
+            let (mut y, mut m) = year_month(now);
+            let mut months = Vec::new();
+            for _ in 0..6 {
+                months.push(format!("{y:04}-{m:02}"));
+                if m == 1 {
+                    y -= 1;
+                    m = 12;
+                } else {
+                    m -= 1;
+                }
+            }
+            for p in months.into_iter().rev() {
+                let secs: i64 = c.query_row(
+                    "SELECT COALESCE(SUM(seconds), 0) FROM usage WHERE user_id = ?1 AND period = ?2",
+                    params![uid, p],
+                    |r| r.get(0),
+                )?;
+                history.push(json!({ "period": p, "seconds": secs }));
+            }
             Ok(u.map(|u| {
                 json!({
+                    "history": history,
                     "plan": u.plan,
                     "includedSec": u.included(),
                     "usedSec": u.used,
@@ -1128,6 +1151,17 @@ fn _assert_send(_: Arc<AppState>) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn meeting_request_reads_web_field_names() {
+        // 웹은 camelCase로 보낸다. 이름이 어긋나면 예약 저장이 422로 실패한다.
+        let req: MeetingReq = serde_json::from_value(json!({
+            "title": "t", "kind": "meeting", "startsAt": 1_800_000_000i64, "durationMin": 30,
+            "langA": "ko", "langB": "ja", "guests": ["a@example.com"], "invite": true
+        }))
+        .unwrap();
+        assert_eq!((req.starts_at, req.duration_min, req.lang_b.as_str()), (1_800_000_000, 30, "ja"));
+    }
 
     #[test]
     fn calendar_month_math() {

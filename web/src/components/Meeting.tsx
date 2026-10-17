@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { MediaState } from '../protocol/MediaState'
-import type { RoomSettings } from '../protocol/RoomSettings'
-import { fetchRoom } from '../lib/api'
+import { fetchRoom, type RoomInfo } from '../lib/api'
+import { useAuth } from '../lib/auth'
 import { downloadText, transcriptFileName } from '../lib/transcript'
 import { useI18n } from '../lib/i18n'
 import { acquireLocalMedia, type LocalMedia } from '../lib/media'
@@ -25,7 +25,7 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
   // 마이크 권한이 막힌 채로 듣기만 하고 들어가기로 했는지
   const [listenOnly, setListenOnly] = useState(false)
   // undefined: 확인 중, null: 없는 회의
-  const [room, setRoom] = useState<RoomSettings | null | undefined>(undefined)
+  const [room, setRoom] = useState<RoomInfo | null | undefined>(undefined)
 
   // 회의 정보는 카메라 준비와 병렬로 가져온다(로비 표시 시간을 늘리지 않음).
   useEffect(() => {
@@ -33,7 +33,7 @@ export function Meeting({ code, onRejoin }: { code: string; onRejoin: () => void
     fetchRoom(code)
       .then((r) => !cancelled && setRoom(r))
       // 일시적 오류면 입장 시도에서 다시 판정되므로 번역 켜짐으로 가정하고 진행한다.
-      .catch(() => !cancelled && setRoom({ translation: true }))
+      .catch(() => !cancelled && setRoom({ translation: true, title: '', host: '' }))
     return () => {
       cancelled = true
     }
@@ -144,7 +144,11 @@ function EndedPage({
   onRejoin: () => void
 }) {
   const { t } = useI18n()
+  const auth = useAuth()
+  // 계정 설정에서 "저장 안내"를 끈 주최자에게는 큰 카드 대신 작은 버튼만 보인다.
+  const prompt = auth.status !== 'host' || auth.user.prefs.savePrompt !== false
   const exportTranscript = summary?.exportTranscript ?? null
+  const save = () => exportTranscript && downloadText(transcriptFileName(code, new Date()), exportTranscript())
   const minutes = summary?.joinedAt != null ? Math.max(1, Math.round((summary.leftAt - summary.joinedAt) / 60_000)) : null
   const duration =
     minutes == null
@@ -158,6 +162,12 @@ function EndedPage({
       title={t('room.left')}
       actions={
         <>
+          {exportTranscript && !prompt && (
+            <button className="btn btn-outline" onClick={save}>
+              <Icon name="download" />
+              {t('ended.save')}
+            </button>
+          )}
           <button className="btn btn-outline" onClick={onRejoin}>
             {t('room.rejoin')}
           </button>
@@ -179,7 +189,7 @@ function EndedPage({
           </div>
         </dl>
       )}
-      {exportTranscript && (
+      {exportTranscript && prompt && (
         <div className="status-card ended-save">
           <span className="ended-save-icon" aria-hidden="true">
             <Icon name="download" />
@@ -188,7 +198,7 @@ function EndedPage({
             <h2>{t('ended.saveTitle')}</h2>
             <p>{t('ended.saveBody')}</p>
           </div>
-          <button className="btn btn-ink" onClick={() => downloadText(transcriptFileName(code, new Date()), exportTranscript())}>
+          <button className="btn btn-ink" onClick={save}>
             {t('ended.save')}
           </button>
         </div>

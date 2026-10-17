@@ -1,8 +1,8 @@
-import { type FormEvent } from 'react'
+import { useEffect, type FormEvent } from 'react'
 import type { MediaState } from '../protocol/MediaState'
-import type { RoomSettings } from '../protocol/RoomSettings'
+import type { RoomInfo } from '../lib/api'
 import { useI18n } from '../lib/i18n'
-import { useAuth } from '../lib/auth'
+import { useAuth, userName } from '../lib/auth'
 import type { LocalMedia } from '../lib/media'
 import type { Prefs } from '../lib/prefs'
 import { Icon } from './Icon'
@@ -14,7 +14,7 @@ type Props = {
   code: string
   local: LocalMedia | null
   /** undefined면 아직 확인 중 */
-  room: RoomSettings | undefined
+  room: RoomInfo | undefined
   prefs: Prefs
   media: MediaState
   onPrefsChange: (p: Prefs) => void
@@ -25,6 +25,10 @@ type Props = {
 export function Lobby({ code, local, room, prefs, media, onPrefsChange, onMediaChange, onJoin }: Props) {
   const { t } = useI18n()
   const auth = useAuth()
+  // 로그인한 주최자는 처음 한 번 계정의 "회의에서 보이는 이름"을 채워 둔다(바꿀 수 있다).
+  useEffect(() => {
+    if (!prefs.name && auth.status === 'host') onPrefsChange({ ...prefs, name: userName(auth.user) })
+  }, [auth, prefs, onPrefsChange])
   const hasMic = !!local?.stream.getAudioTracks().length
   const hasCam = !!local?.stream.getVideoTracks().length
   const name = prefs.name.trim()
@@ -78,8 +82,9 @@ export function Lobby({ code, local, room, prefs, media, onPrefsChange, onMediaC
 
         <form className="lobby-form" onSubmit={submit}>
           <div>
-            <p className="status-eyebrow">{t('lobby.meeting', { code })}</p>
-            <h1>{t('lobby.title')}</h1>
+            {/* 예약 회의면 회의 이름과 주최자를, 즉석 회의면 코드를 보인다. */}
+            <p className="status-eyebrow">{room?.host ? t('lobby.hostMeeting', { host: room.host }) : t('lobby.meeting', { code })}</p>
+            <h1>{room?.title || t('lobby.title')}</h1>
           </div>
           <label className="field-label">
             {t('lobby.name')}

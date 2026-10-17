@@ -20,6 +20,7 @@ import { CaptionPanel } from './CaptionPanel'
 import { CaptionPip } from './CaptionPip'
 import { MeetingGonePage } from './ErrorPages'
 import { KnockPrompts } from './KnockPrompts'
+import { QuotaModal } from './QuotaModal'
 import { LocaleSelect } from './LocaleSelect'
 import { StatusPage } from './StatusPage'
 import { Icon } from './Icon'
@@ -94,6 +95,8 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   // 나간 참가자의 지난 자막에도 이름이 보이도록 이름은 지우지 않고 모은다.
   const [names, setNames] = useState<Record<string, string>>({})
   const [sttStatus, setSttStatus] = useState<SttStatus | null>(null)
+  const [outOfTime, setOutOfTime] = useState(false)
+  const [quotaClosed, setQuotaClosed] = useState(false)
   // 화면 공유 중 자막 창(Document PiP). 공유를 시작한 클릭 안에서 바로 열어 보고, 막히면 버튼으로 연다.
   const pip = usePipWindow(`Tolkmeet · ${t('history.title')}`)
   const pipOpenRef = useRef(pip.open)
@@ -256,6 +259,12 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           break
         case 'notice':
           if (msg.code === 'translation_failed') setToast({ key: 'captions.failed' })
+          else if (msg.code === 'quota_exceeded') setOutOfTime(true)
+          else if (msg.code === 'quota_restored') {
+            setOutOfTime(false)
+            setQuotaClosed(false)
+            setToast({ key: 'quota.restored' })
+          }
           break
         case 'error': {
           const fatal = FATAL_ERRORS[msg.code]
@@ -374,7 +383,8 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const joined = status.kind === 'joined'
   const micTrack = local.getAudioTracks()[0] ?? null
   // 내 말은 내 브라우저가 직접 인식한다. 번역이 켜진 방에 입장해 있는 동안만.
-  const sttEnabled = joined && !disconnected && settings.translation && !!micTrack
+  // 주최자의 번역 시간이 떨어지면 음성 인식을 멈추고, 다시 생기면(서버 알림) 효과가 다시 켠다.
+  const sttEnabled = joined && !disconnected && settings.translation && !!micTrack && !outOfTime
 
   useEffect(() => {
     const sig = sigRef.current
@@ -718,6 +728,12 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           onMic={() => changeMedia({ ...media, mic: !media.mic })}
           onStop={() => void screenRef.current?.toggle()}
         />
+      )}
+      {outOfTime && isHost && !quotaClosed && <QuotaModal onClose={() => setQuotaClosed(true)} />}
+      {outOfTime && !isHost && (
+        <div className="toast" role="status">
+          {t('quota.guest')}
+        </div>
       )}
       {isHost && <KnockPrompts knocks={knocks} onAdmit={admit} onDeny={deny} />}
       {toast && (

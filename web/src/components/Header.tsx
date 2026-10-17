@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { logout, useAuth } from '../lib/auth'
+import { logout, useAuth, userName } from '../lib/auth'
 import { useI18n } from '../lib/i18n'
 import { navigate, usePath } from '../lib/router'
 import { BrandMark } from './BrandMark'
@@ -23,6 +23,33 @@ export function Header() {
         <BrandMark />
         tolkmeet
       </a>
+      {auth.status === 'host' && (
+        <nav className="app-nav" aria-label={t('nav.label')}>
+          {(
+            [
+              ['/', 'nav.home'],
+              ['/meetings', 'nav.meetings'],
+              ['/account', 'nav.account'],
+            ] as const
+          ).map(([to, key]) => {
+            const current = to === '/' ? path === '/' : path.startsWith(to)
+            return (
+              <a
+                key={to}
+                href={to}
+                aria-current={current ? 'page' : undefined}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) return
+                  e.preventDefault()
+                  navigate(to)
+                }}
+              >
+                {t(key)}
+              </a>
+            )
+          })}
+        </nav>
+      )}
       <div className="header-actions">
         <LocaleSelect />
         {auth.status === 'guest' && path !== '/login' && (
@@ -30,14 +57,19 @@ export function Header() {
             {t('auth.hostLogin')}
           </button>
         )}
-        {auth.status === 'host' && <AccountMenu username={auth.username} />}
+        {auth.status === 'guest' && path !== '/signup' && (
+          <button className="btn btn-primary btn-sm" onClick={() => navigate('/signup')}>
+            {t('auth.createAccount')}
+          </button>
+        )}
+        {auth.status === 'host' && <AccountMenu name={userName(auth.user)} email={auth.user.email} />}
       </div>
     </header>
   )
 }
 
 /** 계정 버튼(사람 아이콘): 누르면 이름과 로그아웃이 펼쳐진다. 사진은 받지 않는다. */
-function AccountMenu({ username }: { username: string }) {
+function AccountMenu({ name, email }: { name: string; email: string }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -88,7 +120,20 @@ function AccountMenu({ username }: { username: string }) {
       </button>
       {open && (
         <div className="account-menu" id="account-menu">
-          <p className="account-name">{username}</p>
+          <p className="account-name">
+            {name}
+            <small>{email}</small>
+          </p>
+          <button
+            className="account-item"
+            onClick={() => {
+              setOpen(false)
+              navigate('/account')
+            }}
+          >
+            <Icon name="person" />
+            {t('nav.account')}
+          </button>
           <button className="account-item" onClick={() => void handleLogout()} disabled={loggingOut}>
             <Icon name="logout" />
             {t('auth.logout')}

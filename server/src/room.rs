@@ -305,20 +305,28 @@ impl Rooms {
         out
     }
 
-    /// 시간을 다 쓴 주최자 목록을 바꾼다. 새로 막힌 주최자의 방에는 모두에게 알린다.
+    /// 시간을 다 쓴 주최자 목록을 바꾼다. 새로 막히거나 풀린 주최자의 방에는 모두에게 알린다.
     pub fn set_out_of_time(&self, hosts: HashSet<String>) {
-        let newly: Vec<String> = {
+        let (blocked, restored): (Vec<String>, Vec<String>) = {
             let mut cur = self.out_of_time.lock().unwrap();
-            let newly = hosts.difference(&cur).cloned().collect();
+            let blocked = hosts.difference(&cur).cloned().collect();
+            let restored = cur.difference(&hosts).cloned().collect();
             *cur = hosts;
-            newly
+            (blocked, restored)
         };
-        if newly.is_empty() {
+        if blocked.is_empty() && restored.is_empty() {
             return;
         }
         let rooms = self.rooms.lock().unwrap();
-        for room in rooms.values().filter(|r| newly.contains(&r.host_account)) {
-            broadcast(&room.members, "", ServerMsg::Notice { code: NoticeCode::QuotaExceeded });
+        for room in rooms.values() {
+            let code = if blocked.contains(&room.host_account) {
+                NoticeCode::QuotaExceeded
+            } else if restored.contains(&room.host_account) {
+                NoticeCode::QuotaRestored
+            } else {
+                continue;
+            };
+            broadcast(&room.members, "", ServerMsg::Notice { code });
         }
     }
 

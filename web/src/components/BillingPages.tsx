@@ -1,0 +1,278 @@
+import { useEffect, useState } from 'react'
+import { api, createRoom, type Plan, type User } from '../lib/api'
+import { features, refreshAuth, setUser, useAuth } from '../lib/auth'
+import { useI18n, type MessageKey } from '../lib/i18n'
+import { REFUND_URL } from '../lib/links'
+import { navigate, queryParam } from '../lib/router'
+import { BrandMark } from './BrandMark'
+import { Header } from './Header'
+import { Icon } from './Icon'
+
+type Item = 'basic' | 'pro' | 'hours'
+
+type CheckoutData = {
+  clientToken: string
+  sandbox: boolean
+  priceId: string
+  quantity: number
+  email: string
+  customData: Record<string, string>
+}
+
+type PaddleGlobal = {
+  Environment: { set: (env: string) => void }
+  Initialize: (o: { token: string; eventCallback?: (e: { name: string }) => void }) => void
+  Checkout: { open: (o: object) => void }
+}
+
+/** Paddle.js는 결제 화면에서만 받는다(다른 화면의 첫 로드에 들어가지 않게). */
+let paddleLoading: Promise<PaddleGlobal> | null = null
+function loadPaddle(): Promise<PaddleGlobal> {
+  paddleLoading ??= new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdn.paddle.com/paddle/v2/paddle.js'
+    s.async = true
+    s.onload = () => {
+      const p = (window as unknown as { Paddle?: PaddleGlobal }).Paddle
+      if (p) resolve(p)
+      else reject(new Error('paddle'))
+    }
+    s.onerror = () => {
+      paddleLoading = null
+      reject(new Error('paddle'))
+    }
+    document.head.appendChild(s)
+  })
+  return paddleLoading
+}
+
+const PRICE: Record<Exclude<Item, 'hours'>, string> = { basic: '$19', pro: '$39' }
+const HOURS = [1, 5, 10]
+
+export function Checkout() {
+  const { t } = useI18n()
+  const auth = useAuth()
+  const [item, setItem] = useState<Item>(() => {
+    const q = queryParam('item') ?? queryParam('plan')
+    return q === 'pro' || q === 'hours' ? q : 'basic'
+  })
+  const [qty, setQty] = useState(5)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<MessageKey | null>(null)
+
+  useEffect(() => {
+    if (auth.status === 'guest') navigate(`/signup`)
+  }, [auth.status])
+  if (auth.status !== 'host') return <div className="shell" />
+  const user = auth.user
+  // 이미 구독 중이면 다른 요금제는 "바꾸기"(남은 기간만큼 정산)로 처리한다.
+  const changing = item !== 'hours' && user.plan !== 'none' && user.plan !== item
+  const same = item !== 'hours' && user.plan === item
+
+  async function pay() {
+    setBusy(true)
+    setError(null)
+    if (changing) {
+      const r = await api.post('/api/billing/change', { plan: item })
+      setBusy(false)
+      if (!r.ok) return setError('account.billingFailed')
+      return navigate(`/billing/done?item=${item}`)
+    }
+    const r = await api.post<CheckoutData | { dev: true }>('/api/billing/checkout', { item, quantity: item === 'hours' ? qty : 1 })
+    if (!r.ok) {
+      setBusy(false)
+      return setError('account.billingFailed')
+    }
+    if ('dev' in r.data) {
+      // 개발 모드: 결제 없이 켠다.
+      const d = await api.post('/api/billing/dev', { item, quantity: qty })
+      setBusy(false)
+      if (!d.ok) return setError('account.billingFailed')
+      return navigate(`/billing/done?item=${item}${item === 'hours' ? `&q=${qty}` : ''}`)
+    }
+    const data = r.data
+    try {
+      const paddle = await loadPaddle()
+      if (data.sandbox) paddle.Environment.set('sandbox')
+      paddle.Initialize({ token: data.clientToken })
+      paddle.Checkout.open({
+        items: [{ priceId: data.priceId, quantity: data.quantity }],
+        customer: { email: data.email },
+        customData: data.customData,
+        settings: {
+          displayMode: 'overlay',
+          theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light',
+          locale: document.documentElement.lang || 'en',
+          successUrl: `${location.origin}/billing/done?item=${item}${item === 'hours' ? `&q=${qty}` : ''}`,
+        },
+      })
+    } catch {
+      setError('checkout.loadFailed')
+    }
+    setBusy(false)
+  }
+
+  const priceLabel = item === 'hours' ? `$${qty * 3}` : PRICE[item]
+  return (
+    <div className="shell">
+      <Header />
+      <main className="checkout">
+        <section className="checkout-main" aria-labelledby="checkout-title">
+          <h1 id="checkout-title">{t(item === 'hours' ? 'checkout.hoursTitle' : item === 'pro' ? 'checkout.proTitle' : 'checkout.basicTitle')}</h1>
+          <div className="choice-grid" role="radiogroup" aria-label={t('account.plan')}>
+            {(['basic', 'pro'] as const).map((p) => (
+              <button key={p} type="button" role="radio" aria-checked={item === p} className={`choice${item === p ? ' on' : ''}`} onClick={() => setItem(p)}>
+                <span className="choice-top">
+                  {p === 'pro' ? 'Pro' : 'Basic'}
+                  {user.plan === p && <span className="badge-soft">{t('checkout.current')}</span>}
+                </span>
+                <b>
+                  {PRICE[p]}
+                  <small> / {t('checkout.month')}</small>
+                </b>
+                <small>{t(p === 'pro' ? 'checkout.proHours' : 'checkout.basicHours')}</small>
+              </button>
+            ))}
+            {user.plan !== 'none' && (
+              <button type="button" role="radio" aria-checked={item === 'hours'} className={`choice${item === 'hours' ? ' on' : ''}`} onClick={() => setItem('hours')}>
+                <span className="choice-top">{t('account.addHours')}</span>
+                <b>
+                  $3
+                  <small> / {t('checkout.hour')}</small>
+                </b>
+                <small>{t('checkout.hoursNote')}</small>
+              </button>
+            )}
+          </div>
+          {item === 'hours' && (
+            <div className="segmented" role="radiogroup" aria-label={t('checkout.howMany')}>
+              {HOURS.map((h) => (
+                <button key={h} type="button" role="radio" aria-checked={qty === h} className={qty === h ? 'on' : ''} onClick={() => setQty(h)}>
+                  {t('checkout.hours', { n: String(h) })}
+                </button>
+              ))}
+            </div>
+          )}
+          <ul className="ticks">
+            <li>{t(item === 'pro' ? 'checkout.proHours' : item === 'basic' ? 'checkout.basicHours' : 'checkout.hoursKeep')}</li>
+            <li>{t('checkout.allModes')}</li>
+            <li>{t('checkout.guestsFree')}</li>
+            <li>{t('checkout.extra')}</li>
+          </ul>
+          <p className="fine">
+            {t('checkout.fine')}{' '}
+            <a href={REFUND_URL} target="_blank" rel="noreferrer">
+              {t('checkout.refund')}
+            </a>
+          </p>
+        </section>
+        <section className="checkout-pay" aria-labelledby="pay-title">
+          <h2 id="pay-title">{t('checkout.summary')}</h2>
+          <div className="pay-line">
+            <span>{t('auth.email')}</span>
+            <span title={user.email}>{user.email}</span>
+          </div>
+          <div className="pay-line">
+            <span>{item === 'hours' ? t('checkout.hours', { n: String(qty) }) : `${item === 'pro' ? 'Pro' : 'Basic'} · ${t('account.monthly')}`}</span>
+            <span>{priceLabel}</span>
+          </div>
+          <div className="pay-line muted">
+            <span>{t('checkout.tax')}</span>
+            <span>{t('checkout.taxLater')}</span>
+          </div>
+          {error && (
+            <p className="form-error" role="alert">
+              {t(error)}
+            </p>
+          )}
+          {same ? (
+            <p className="form-note">{t('checkout.already')}</p>
+          ) : (
+            <button className="btn btn-primary btn-lg" disabled={busy || (!features().billing && !features().devBilling)} onClick={() => void pay()}>
+              {changing ? t('checkout.change', { plan: item === 'pro' ? 'Pro' : 'Basic' }) : t('checkout.pay', { price: priceLabel })}
+            </button>
+          )}
+          <p className="fine center">
+            <Icon name="lock_reset" />
+            {t('checkout.secure')}
+          </p>
+        </section>
+      </main>
+    </div>
+  )
+}
+
+export function PaidDone() {
+  const { t } = useI18n()
+  const auth = useAuth()
+  const item = queryParam('item')
+  const hours = Number(queryParam('q') ?? '0')
+  const [starting, setStarting] = useState(false)
+  const user: User | null = auth.status === 'host' ? auth.user : null
+
+  // 결제 결과는 Paddle 웹훅으로 조금 늦게 들어올 수 있다. 요금제가 켜질 때까지 잠깐 다시 확인한다.
+  useEffect(() => {
+    let tries = 0
+    let stop = false
+    async function poll() {
+      const r = await api.get<{ user: User | null }>('/api/me')
+      if (stop) return
+      if (r.ok && r.data.user) setUser(r.data.user)
+      if ((!r.ok || r.data.user?.plan === 'none') && tries++ < 10) setTimeout(() => void poll(), 1500)
+    }
+    void poll()
+    return () => {
+      stop = true
+    }
+  }, [])
+
+  async function start() {
+    setStarting(true)
+    const r = await createRoom(true)
+    if (r.kind === 'ok') navigate(`/${r.code}`)
+    else {
+      setStarting(false)
+      void refreshAuth()
+    }
+  }
+
+  const plan: Plan | null = item === 'pro' || item === 'basic' ? item : null
+  return (
+    <div className="shell">
+      <Header />
+      <main className="status-page">
+        <span className="status-brand big" aria-hidden="true">
+          <BrandMark size={96} />
+        </span>
+        <div className="status-text">
+          <h1>{plan ? t('paid.title', { plan: plan === 'pro' ? 'Pro' : 'Basic' }) : t('paid.hoursTitle', { n: String(hours || 1) })}</h1>
+          <p className="lead">{user ? t(plan ? 'paid.lead' : 'paid.hoursLead', { email: user.email, hours: plan === 'pro' ? '30' : '10' }) : ''}</p>
+        </div>
+        {plan && (
+          <ol className="steps3">
+            <li>
+              <b>{t('paid.step1')}</b>
+              <span>{t('paid.step1Body')}</span>
+            </li>
+            <li>
+              <b>{t('paid.step2')}</b>
+              <span>{t('paid.step2Body')}</span>
+            </li>
+            <li>
+              <b>{t('paid.step3')}</b>
+              <span>{t('paid.step3Body')}</span>
+            </li>
+          </ol>
+        )}
+        <div className="row status-actions">
+          <button className="btn btn-primary btn-lg" onClick={() => void start()} disabled={starting || user?.plan === 'none'}>
+            {t(plan ? 'paid.firstMeeting' : 'home.startNow')}
+          </button>
+          <button className="btn btn-outline btn-lg" onClick={() => navigate('/')}>
+            {t('room.home')}
+          </button>
+        </div>
+      </main>
+    </div>
+  )
+}

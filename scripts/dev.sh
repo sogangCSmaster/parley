@@ -26,7 +26,7 @@ stop() {
 }
 
 # API 프록시까지 실제로 동작하는지 본다(/api/me가 JSON이어야 함. HTML이면 Vite 프록시가 죽은 것).
-healthy() { curl -sf "$WEB/api/me" 2>/dev/null | grep -q '"username"'; }
+healthy() { curl -sf "$WEB/api/me" 2>/dev/null | grep -q '"features"'; }
 
 status() {
   for name in server web; do
