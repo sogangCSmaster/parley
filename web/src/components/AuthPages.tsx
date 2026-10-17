@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, login } from '../lib/api'
-import { features, refreshAuth } from '../lib/auth'
+import { refreshAuth, useFeatures } from '../lib/auth'
 import { useI18n, type MessageKey } from '../lib/i18n'
+import '../lib/i18nPages'
 import { PRIVACY_URL, TERMS_URL } from '../lib/links'
 import { loginWithPasskey, passkeySupported } from '../lib/passkey'
 import { clearPendingSignup, pendingPassword, setPendingSignup } from '../lib/pendingSignup'
@@ -51,6 +52,7 @@ export function Login() {
 
 function PasswordStep({ onMfa, googleFailed }: { onMfa: (ticket: string) => void; googleFailed: boolean }) {
   const { t } = useI18n()
+  const feat = useFeatures()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [pending, setPending] = useState(false)
@@ -110,8 +112,8 @@ function PasswordStep({ onMfa, googleFailed }: { onMfa: (ticket: string) => void
         <InLink to="/forgot" className="auth-link">
           {t('auth.forgot')}
         </InLink>
-        {(features().google || passkeySupported) && <Divider label={t('auth.or')} />}
-        {features().google && <GoogleButton />}
+        {(feat.google || passkeySupported) && <Divider label={t('auth.or')} />}
+        {feat.google && <GoogleButton />}
         {passkeySupported && (
           <button type="button" className="btn btn-lg btn-plain" onClick={() => void passkey()}>
             <Icon name="passkey" />
@@ -129,7 +131,8 @@ function MfaStep({ ticket, onRestart }: { ticket: string; onRestart: () => void 
   const { t } = useI18n()
   const [code, setCode] = useState('')
   const [recovery, setRecovery] = useState(false)
-  const [remember, setRemember] = useState(true)
+  // 같이 쓰는 컴퓨터일 수 있으니 기본은 끈다.
+  const [remember, setRemember] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<MessageKey | null>(null)
 
@@ -141,7 +144,8 @@ function MfaStep({ ticket, onRestart }: { ticket: string; onRestart: () => void 
     if (r.ok) return enterApp()
     setPending(false)
     setCode('')
-    setError(r.status === 401 && r.code === 'expired' ? 'mfa.expired' : r.status === 429 ? 'auth.locked' : 'mfa.wrong')
+    // 5번 틀리면(429) 이 로그인 시도는 끝나므로 만료와 같이 처음부터 다시 하게 한다.
+    setError((r.status === 401 && r.code === 'expired') || r.status === 429 ? 'mfa.expired' : 'mfa.wrong')
   }
 
   async function passkey() {
@@ -226,6 +230,7 @@ function MfaStep({ ticket, onRestart }: { ticket: string; onRestart: () => void 
 
 export function Signup() {
   const { t, locale } = useI18n()
+  const feat = useFeatures()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -251,7 +256,7 @@ export function Signup() {
       <form className="auth-card" onSubmit={submit}>
         <h1>{t('auth.signupTitle')}</h1>
         <p className="lead">{t('auth.signupLead')}</p>
-        {features().google && (
+        {feat.google && (
           <>
             <GoogleButton />
             <Divider label={t('auth.orEmail')} />
@@ -334,6 +339,10 @@ export function Verify() {
   const [error, setError] = useState<MessageKey | null>(null)
   const [notice, setNotice] = useState<MessageKey | null>(null)
   const [wait, setWait] = useState(RESEND_WAIT)
+  // 메일 링크의 코드가 주소창·기록에 남지 않게 지운다(값은 상태에 들고 있다).
+  useEffect(() => {
+    if (queryParam('code')) replacePath(`/verify?email=${encodeURIComponent(email)}`)
+  }, [email])
 
   useEffect(() => {
     if (wait <= 0) return
@@ -496,8 +505,9 @@ export function Reset() {
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!longEnough || !same) return
-    setPending(true)
     setError(null)
+    if (!token || !Number.isSafeInteger(uid) || uid <= 0) return setError('reset.invalid')
+    setPending(true)
     const r = await api.post<{ mfa?: string } | null>('/api/password/reset', { uid, token, password })
     setPending(false)
     if (r.ok) {

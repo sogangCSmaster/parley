@@ -3,6 +3,7 @@ import { api, type Billing, type CaptionSize, type Theme, type User } from '../l
 import { features, logout, setUser, useAuth, userName } from '../lib/auth'
 import { formatDate, formatDuration, relativeTime, deviceLabel } from '../lib/format'
 import { useI18n, type MessageKey } from '../lib/i18n'
+import '../lib/i18nPages'
 import { LANGUAGES } from '../lib/languages'
 import { registerPasskey, passkeySupported } from '../lib/passkey'
 import { navigate } from '../lib/router'
@@ -247,8 +248,8 @@ function EmailRow({ user }: { user: User }) {
   const [error, setError] = useState<MessageKey | null>(null)
   const [busy, setBusy] = useState(false)
 
-  async function send(e: FormEvent) {
-    e.preventDefault()
+  async function send(e?: FormEvent) {
+    e?.preventDefault()
     setBusy(true)
     setError(null)
     const r = await api.post('/api/account/email', { email: email.trim(), password })
@@ -304,6 +305,17 @@ function EmailRow({ user }: { user: User }) {
           <p className="form-note">{t('account.codeSent', { email: email.trim() })}</p>
           <CodeInput value={code} onChange={setCode} onComplete={(v) => void confirm(v)} label={t('verify.code')} disabled={busy} autoFocus />
           <Message error={error} />
+          <div className="row">
+            <button type="button" className="link-btn" disabled={busy} onClick={() => void send()}>
+              {t('verify.resend')}
+            </button>
+            <button type="button" className="link-btn" onClick={() => setStep('enter')}>
+              {t('verify.changeEmail')}
+            </button>
+            <button type="button" className="link-btn" onClick={() => setStep('view')}>
+              {t('room.cancel')}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -372,9 +384,12 @@ function PlanCard({ user }: { user: User }) {
                 ` · ${t(user.planCanceled ? 'account.endsOn' : 'account.renewsOn', { date: formatDate(user.planRenewsAt, locale) })}`}
             </p>
             <div className="row">
-              <button className="btn btn-primary" disabled={busy || user.operator} onClick={() => void manage('change', plan === 'pro' ? 'basic' : 'pro')}>
-                {t(plan === 'pro' ? 'account.toBasic' : 'account.toPro')}
-              </button>
+              {/* 바꾸면 남은 기간만큼 바로 정산되므로 결제 화면에서 가격을 보고 확인한 뒤 바꾼다. */}
+              {!user.operator && (
+                <InLink to={`/checkout?item=${plan === 'pro' ? 'basic' : 'pro'}`} className="btn btn-primary">
+                  {t(plan === 'pro' ? 'account.toBasic' : 'account.toPro')}
+                </InLink>
+              )}
               {billing?.hasCustomer && (
                 <button className="btn btn-outline" onClick={() => void portal()}>
                   {t('account.paymentAndReceipts')}
@@ -741,9 +756,10 @@ function TotpCard({ user }: { user: User }) {
   }
 
   async function enable(value: string) {
+    setError(null)
     const r = await api.post<{ recoveryCodes: string[] }>('/api/totp/enable', { code: value })
     setCode('')
-    if (!r.ok) return setError('mfa.wrong')
+    if (!r.ok) return setError(r.status === 429 ? 'auth.locked' : 'mfa.wrong')
     setSetup(null)
     setCodes(r.data.recoveryCodes)
     void refreshUser()

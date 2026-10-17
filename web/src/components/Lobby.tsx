@@ -1,4 +1,4 @@
-import { useEffect, type FormEvent } from 'react'
+import { useEffect, useRef, type FormEvent } from 'react'
 import type { MediaState } from '../protocol/MediaState'
 import type { RoomInfo } from '../lib/api'
 import { useI18n } from '../lib/i18n'
@@ -25,8 +25,11 @@ type Props = {
 export function Lobby({ code, local, room, prefs, media, onPrefsChange, onMediaChange, onJoin }: Props) {
   const { t } = useI18n()
   const auth = useAuth()
-  // 로그인한 주최자는 처음 한 번 계정의 "회의에서 보이는 이름"을 채워 둔다(바꿀 수 있다).
+  // 로그인한 주최자는 처음 한 번만 계정의 "회의에서 보이는 이름"을 채워 둔다(지우고 새로 써도 되돌아오지 않게).
+  const filled = useRef(false)
   useEffect(() => {
+    if (filled.current || auth.status === 'loading') return
+    filled.current = true
     if (!prefs.name && auth.status === 'host') onPrefsChange({ ...prefs, name: userName(auth.user) })
   }, [auth, prefs, onPrefsChange])
   const hasMic = !!local?.stream.getAudioTracks().length
@@ -82,7 +85,7 @@ export function Lobby({ code, local, room, prefs, media, onPrefsChange, onMediaC
 
         <form className="lobby-form" onSubmit={submit}>
           <div>
-            {/* 예약 회의면 회의 이름과 주최자를, 즉석 회의면 코드를 보인다. */}
+            {/* 주최자 이름(회의에서 보이는 이름)을 알면 함께, 없으면 회의 코드를 보인다. */}
             <p className="status-eyebrow">{room?.host ? t('lobby.hostMeeting', { host: room.host }) : t('lobby.meeting', { code })}</p>
             <h1>{room?.title || t('lobby.title')}</h1>
           </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, createRoom, type Plan, type User } from '../lib/api'
 import { features, refreshAuth, setUser, useAuth } from '../lib/auth'
 import { useI18n, type MessageKey } from '../lib/i18n'
+import '../lib/i18nPages'
 import { REFUND_URL } from '../lib/links'
 import { navigate, queryParam } from '../lib/router'
 import { BrandMark } from './BrandMark'
@@ -27,6 +28,8 @@ type PaddleGlobal = {
 
 /** Paddle.js는 결제 화면에서만 받는다(다른 화면의 첫 로드에 들어가지 않게). */
 let paddleLoading: Promise<PaddleGlobal> | null = null
+/** Paddle.js v2는 한 번만 초기화한다(결제 창을 닫았다 다시 열 때 또 부르지 않게). */
+let paddleReady = false
 function loadPaddle(): Promise<PaddleGlobal> {
   paddleLoading ??= new Promise((resolve, reject) => {
     const s = document.createElement('script')
@@ -46,6 +49,12 @@ function loadPaddle(): Promise<PaddleGlobal> {
   return paddleLoading
 }
 
+/** 지금 화면이 어두운지(시스템 설정을 따르는 경우 포함) */
+function isDark(): boolean {
+  const chosen = document.documentElement.dataset.theme
+  return chosen ? chosen === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches
+}
+
 const PRICE: Record<Exclude<Item, 'hours'>, string> = { basic: '$19', pro: '$39' }
 const HOURS = [1, 5, 10]
 
@@ -56,7 +65,10 @@ export function Checkout() {
     const q = queryParam('item') ?? queryParam('plan')
     return q === 'pro' || q === 'hours' ? q : 'basic'
   })
-  const [qty, setQty] = useState(5)
+  const [qty, setQty] = useState(() => {
+    const q = Number(queryParam('q'))
+    return HOURS.includes(q) ? q : 5
+  })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<MessageKey | null>(null)
 
@@ -93,15 +105,18 @@ export function Checkout() {
     const data = r.data
     try {
       const paddle = await loadPaddle()
-      if (data.sandbox) paddle.Environment.set('sandbox')
-      paddle.Initialize({ token: data.clientToken })
+      if (!paddleReady) {
+        if (data.sandbox) paddle.Environment.set('sandbox')
+        paddle.Initialize({ token: data.clientToken })
+        paddleReady = true
+      }
       paddle.Checkout.open({
         items: [{ priceId: data.priceId, quantity: data.quantity }],
         customer: { email: data.email },
         customData: data.customData,
         settings: {
           displayMode: 'overlay',
-          theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light',
+          theme: isDark() ? 'dark' : 'light',
           locale: document.documentElement.lang || 'en',
           successUrl: `${location.origin}/billing/done?item=${item}${item === 'hours' ? `&q=${qty}` : ''}`,
         },
@@ -209,6 +224,8 @@ export function PaidDone() {
   const hours = Number(queryParam('q') ?? '0')
   const [starting, setStarting] = useState(false)
   const user: User | null = auth.status === 'host' ? auth.user : null
+  const [round, setRound] = useState(0)
+  const [stalled, setStalled] = useState(false)
 
   // 결제 결과는 Paddle 웹훅으로 조금 늦게 들어올 수 있다. 요금제가 켜질 때까지 잠깐 다시 확인한다.
   useEffect(() => {
@@ -218,13 +235,17 @@ export function PaidDone() {
       const r = await api.get<{ user: User | null }>('/api/me')
       if (stop) return
       if (r.ok && r.data.user) setUser(r.data.user)
-      if ((!r.ok || r.data.user?.plan === 'none') && tries++ < 10) setTimeout(() => void poll(), 1500)
+      if (!r.ok || r.data.user?.plan === 'none') {
+        // 15초쯤 지나도 안 들어오면 멈추고, 다시 확인할 수 있게 알린다.
+        if (tries++ < 10) setTimeout(() => void poll(), 1500)
+        else setStalled(true)
+      }
     }
     void poll()
     return () => {
       stop = true
     }
-  }, [])
+  }, [round])
 
   async function start() {
     setStarting(true)
@@ -263,6 +284,20 @@ export function PaidDone() {
               <span>{t('paid.step3Body')}</span>
             </li>
           </ol>
+        )}
+        {stalled && user?.plan === 'none' && (
+          <p className="form-note" role="status">
+            {t('paid.pending')}{' '}
+            <button
+              className="link-btn"
+              onClick={() => {
+                setStalled(false)
+                setRound((n) => n + 1)
+              }}
+            >
+              {t('paid.checkAgain')}
+            </button>
+          </p>
         )}
         <div className="row status-actions">
           <button className="btn btn-primary btn-lg" onClick={() => void start()} disabled={starting || user?.plan === 'none'}>

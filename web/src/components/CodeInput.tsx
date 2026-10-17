@@ -26,7 +26,6 @@ export function CodeInput({ value, onChange, onComplete, label, disabled, autoFo
         inputMode="numeric"
         autoComplete="one-time-code"
         aria-label={label}
-        maxLength={6}
         value={value}
         disabled={disabled}
         autoFocus={autoFocus}

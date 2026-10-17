@@ -3,12 +3,14 @@ import { api, createRoom, type Meeting } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { formatDate, formatDuration, formatTime, timeIn } from '../lib/format'
 import { useI18n, type MessageKey } from '../lib/i18n'
+import '../lib/i18nPages'
 import { LANGUAGES, languageName } from '../lib/languages'
 import { inviteText, meetingPath, meetingUrl } from '../lib/meetings'
 import { loadPrefs } from '../lib/prefs'
 import { navigate } from '../lib/router'
 import { Header } from './Header'
 import { Icon } from './Icon'
+import { useModalDialog } from '../lib/modal'
 import { Select } from './Select'
 
 const LANG_OPTIONS = LANGUAGES.map((l) => ({ value: l.code as string, label: l.name }))
@@ -69,6 +71,8 @@ export function MeetingsPage() {
   }
 
   async function remove(m: Meeting) {
+    // 이미 링크를 받은 손님이 있을 수 있으니 한 번 확인한다.
+    if (!window.confirm(t('meetings.deleteConfirm', { title: m.title || t('meetings.untitled') }))) return
     const r = await api.del(`/api/meetings/${m.id}`)
     if (r.ok) reload()
     else setError('account.failed')
@@ -238,12 +242,10 @@ function RowMenu({ items, label }: { items: [string, () => void, boolean?][]; la
 
 function Dialog({ title, onClose, children, labelledBy = 'dialog-title' }: { title?: string; onClose: () => void; children: React.ReactNode; labelledBy?: string }) {
   const ref = useRef<HTMLDialogElement>(null)
-  useEffect(() => {
-    const d = ref.current
-    if (d && !d.open) d.showModal()
-  }, [])
+  useModalDialog(ref)
+  // Escape는 cancel 다음 close를 부르므로 close 하나에서만 닫는다.
   return (
-    <dialog ref={ref} className="sheet" aria-labelledby={labelledBy} onClose={onClose} onCancel={onClose}>
+    <dialog ref={ref} className="sheet" aria-labelledby={labelledBy} onClose={onClose}>
       {title && <h2 id={labelledBy}>{title}</h2>}
       {children}
     </dialog>
@@ -271,7 +273,8 @@ function ScheduleDialog({ meeting, onClose, onSaved }: { meeting: Meeting | null
   const [langA, setLangA] = useState(meeting?.langA || prefs.lang)
   const [langB, setLangB] = useState(meeting?.langB || prefs.partnerLang)
   const [guests, setGuests] = useState((meeting?.guests ?? []).join(', '))
-  const [sendMail, setSendMail] = useState(true)
+  // 고칠 때는 기본으로 다시 보내지 않는다(제목만 고쳐도 손님 모두에게 메일이 가지 않게).
+  const [sendMail, setSendMail] = useState(!meeting)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<MessageKey | null>(null)
 

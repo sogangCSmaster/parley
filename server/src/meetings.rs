@@ -266,7 +266,7 @@ pub async fn room_info(State(state): State<AppState>, Path(code): Path<String>) 
         .db()
         .call(move |conn| {
             conn.query_row(
-                "SELECT m.title, u.name FROM meetings m JOIN users u ON u.id = m.owner_id WHERE m.code = ?1",
+                "SELECT m.title, COALESCE(NULLIF(u.display_name, ''), u.name) FROM meetings m JOIN users u ON u.id = m.owner_id WHERE m.code = ?1",
                 params![c],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )

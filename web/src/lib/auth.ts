@@ -80,3 +80,9 @@ export function useAuth(): AuthState {
 export function userName(u: User): string {
   return u.displayName || u.name || u.email.split('@')[0]
 }
+
+/** 서버 기능(Google 로그인·결제 등). 첫 /api/me가 늦게 와도 화면이 다시 그려지게 구독한다. */
+export function useFeatures(): Features {
+  const s = useAuth()
+  return s.status === 'loading' ? NO_FEATURES : s.features
+}
