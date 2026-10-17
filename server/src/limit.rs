@@ -34,39 +34,63 @@ impl TokenBucket {
     }
 }
 
-/// 키(IP·이메일 등)마다 따로 세는 토큰 버킷. 맵은 상한을 넘으면 오래된 것부터 버린다.
+/// 키(IP·이메일 등)마다 따로 세는 토큰 버킷.
+/// 맵이 가득 차면(공격으로 키를 잔뜩 만든 경우) 아직 제한 중인 키는 버리지 않고(버리면 남의 제한이 풀린다),
+/// 새 키들은 하나의 넘침 버킷을 함께 쓴다. 그동안 새 사용자는 느려지지만 모두 막히지는 않는다.
 pub struct KeyedLimiter {
     rate: f64,
     burst: f64,
     cap: usize,
-    map: std::sync::Mutex<std::collections::HashMap<String, TokenBucket>>,
+    inner: std::sync::Mutex<Inner>,
+}
+
+struct Inner {
+    map: std::collections::HashMap<String, TokenBucket>,
+    overflow: TokenBucket,
+    /// 다 찬 버킷을 마지막으로 치운 때(가득 찬 동안 매 요청마다 맵 전체를 훑지 않게)
+    swept_at: Option<Instant>,
 }
 
 impl KeyedLimiter {
     /// `per`초 동안 `count`번(처음에 몰아서 `count`번까지).
     pub fn new(count: u32, per: std::time::Duration) -> Self {
+        Self::with_cap(count, per, 100_000)
+    }
+
+    fn with_cap(count: u32, per: std::time::Duration, cap: usize) -> Self {
+        let rate = f64::from(count) / per.as_secs_f64();
+        let burst = f64::from(count);
         KeyedLimiter {
-            rate: f64::from(count) / per.as_secs_f64(),
-            burst: f64::from(count),
-            cap: 100_000,
-            map: Default::default(),
+            rate,
+            burst,
+            cap,
+            inner: std::sync::Mutex::new(Inner {
+                map: Default::default(),
+                // 넘침 버킷: 키 열 개 몫
+                overflow: TokenBucket::new(rate * 10.0, burst * 10.0),
+                swept_at: None,
+            }),
         }
     }
 
     pub fn check(&self, key: &str) -> bool {
         let now = Instant::now();
-        let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let Inner { map, overflow, swept_at } = &mut *inner;
         if !map.contains_key(key) && map.len() >= self.cap {
-            // 가득 차면 버킷이 다 찬(오래 안 쓴) 것부터 버린다.
-            map.retain(|_, b| {
-                let mut b = b.clone();
-                b.tokens = (b.tokens + now.saturating_duration_since(b.at).as_secs_f64() * b.rate).min(b.burst);
-                b.tokens < b.burst
-            });
-            // 아직 제한 중인 키를 버리면 키를 잔뜩 만들어 남의 제한을 풀 수 있으므로 버리지 않고 새 키를 막는다.
-            // 상한은 넉넉해서(IP는 /64로 묶임) 정상 사용으로는 닿지 않는다.
+            if swept_at.is_none_or(|t| now.saturating_duration_since(t).as_secs() >= 1) {
+                *swept_at = Some(now);
+                // 버킷이 다 찬(한동안 안 쓴) 키만 버린다.
+                map.retain(|_, b| {
+                    let tokens = (b.tokens + now.saturating_duration_since(b.at).as_secs_f64() * b.rate).min(b.burst);
+                    tokens < b.burst
+                });
+                if map.len() >= self.cap {
+                    tracing::warn!(cap = self.cap, "rate limiter full: new keys share the overflow bucket");
+                }
+            }
             if map.len() >= self.cap {
-                return false;
+                return overflow.take(now);
             }
         }
         map.entry(key.to_owned())
@@ -85,5 +109,16 @@ mod keyed_tests {
         assert!(l.check("a") && l.check("a"));
         assert!(!l.check("a"));
         assert!(l.check("b"));
+    }
+
+    #[test]
+    fn full_map_keeps_limits_and_shares_overflow() {
+        let l = KeyedLimiter::with_cap(1, std::time::Duration::from_secs(3600), 2);
+        assert!(l.check("a") && l.check("b"));
+        // 가득 차도 제한 중인 키는 풀리지 않는다.
+        assert!(!l.check("a"));
+        // 새 키는 넘침 버킷(키 열 개 몫)을 함께 쓴다.
+        assert!((0..10).all(|i| l.check(&format!("new{i}"))));
+        assert!(!l.check("new10"));
     }
 }

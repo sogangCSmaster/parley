@@ -204,6 +204,10 @@ impl WebAuthn {
             .and_then(Value::as_bytes)
             .ok_or("auth data")?;
         let (flags, sign_count) = self.check_rp(auth_data)?;
+        // 로그인에 UV가 필요하므로 등록 때 미리 확인한다(쓸 수 없는 패스키가 등록되지 않게).
+        if flags & FLAG_UV == 0 {
+            return Err("user verification");
+        }
         if flags & FLAG_AT == 0 || auth_data.len() < 55 {
             return Err("credential data");
         }
@@ -357,7 +361,7 @@ mod tests {
         let challenge = opts["challenge"].as_str().unwrap().to_owned();
         let ad = auth_data(
             "meet.example.com",
-            FLAG_UP | FLAG_AT,
+            FLAG_UP | FLAG_UV | FLAG_AT,
             0,
             Some((cred_id, &cose_for(&key))),
         );

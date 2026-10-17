@@ -38,7 +38,8 @@ pub struct Accounts {
     pub google: Option<Google>,
     /// 앱 주소(메일 속 링크, Google 되돌아올 주소, 패스키 출처 확인).
     pub origin: String,
-    /// 가입·메일 다시 보내기·재설정 요청: IP마다, 주소마다.
+    /// 가입·메일 다시 보내기·재설정 요청: 망(IPv6 /48)마다, IP마다, 주소마다.
+    by_net: KeyedLimiter,
     by_ip: KeyedLimiter,
     by_email: KeyedLimiter,
     /// 초대 메일: 보내는 사람마다 하루 100통, 받는 사람마다 하루 5통.
@@ -53,6 +54,9 @@ pub struct Accounts {
     mfa_by_client: KeyedLimiter,
     mfa_daily_by_client: KeyedLimiter,
     mfa_daily: KeyedLimiter,
+    /// 로그인 전 대기 상태를 만드는 요청(패스키 로그인 옵션·Google 시작): 클라이언트마다 1분에 30번.
+    /// 한 곳에서 대기 상태를 잔뜩 만들어 다른 사람의 진행 중인 로그인을 밀어내지 못하게.
+    sign_in_starts: KeyedLimiter,
     /// Google 로그인 진행 중: state → (nonce, 연결할 사용자, 화면 언어, 시작 시각)
     oauth: Mutex<HashMap<String, OAuthPending>>,
 }
@@ -89,7 +93,9 @@ impl Accounts {
             webauthn: WebAuthn::new(&origin),
             google,
             origin,
+            by_net: KeyedLimiter::new(200, Duration::from_secs(3600)),
             by_ip: KeyedLimiter::new(20, Duration::from_secs(3600)),
+            sign_in_starts: KeyedLimiter::new(30, Duration::from_secs(60)),
             by_email: KeyedLimiter::new(5, Duration::from_secs(3600)),
             invites_by_user: KeyedLimiter::new(100, Duration::from_secs(86_400)),
             invites_by_rcpt: KeyedLimiter::new(5, Duration::from_secs(86_400)),
@@ -112,7 +118,13 @@ impl Accounts {
     /// IPv6는 /64로 묶는다(주소를 바꿔 가며 피하지 못하게).
     // IP 한도를 먼저 본다(&&): 아무 값이나 넣을 수 있는 주소 키는 IP 한도를 넘지 않은 요청만 맵에 쌓인다.
     fn may_mail(&self, ip: IpAddr, email: &str) -> bool {
-        self.by_ip.check(&auth::client_key(ip).to_string()) && self.by_email.check(email)
+        // 터널 하나로 /48(/64 65,536개)을 받을 수 있으므로 더 넓은 단위를 먼저 본다.
+        self.by_net.check(&net48(ip)) && self.by_ip.check(&auth::client_key(ip).to_string()) && self.by_email.check(email)
+    }
+
+    /// 로그인 전 대기 상태를 하나 더 만들어도 되는지.
+    fn may_start_sign_in(&self, ip: IpAddr) -> bool {
+        self.sign_in_starts.check(&auth::client_key(ip).to_string())
     }
 
     /// 로그인 중 이 클라이언트가 이 사용자의 2차 인증 코드를 한 번 더 맞혀 봐도 되는지.
@@ -127,6 +139,14 @@ impl Accounts {
     pub fn may_try_totp(&self, user_id: i64) -> bool {
         let key = user_id.to_string();
         self.totp_by_user.check(&key) && self.totp_daily.check(&key)
+    }
+}
+
+/// 빈도 제한의 넓은 단위: IPv6는 /48(보통 한 사이트·터널에 주는 크기), IPv4는 그대로.
+fn net48(ip: IpAddr) -> String {
+    match auth::client_key(ip) {
+        IpAddr::V6(v6) => std::net::Ipv6Addr::from_bits(v6.to_bits() & (u128::MAX << 80)).to_string(),
+        v4 => v4.to_string(),
     }
 }
 
@@ -1754,7 +1774,14 @@ pub async fn passkey_register(
     }
 }
 
-pub async fn passkey_login_options(State(state): State<AppState>) -> Response {
+pub async fn passkey_login_options(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Response {
+    if !state.accounts.may_start_sign_in(client(&state, peer, &headers)) {
+        return error(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
     Json(state.accounts.webauthn.login_options()).into_response()
 }
 
@@ -1849,7 +1876,15 @@ pub struct GoogleStart {
     locale: String,
 }
 
-pub async fn google_start(State(state): State<AppState>, Query(q): Query<GoogleStart>) -> Response {
+pub async fn google_start(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(q): Query<GoogleStart>,
+) -> Response {
+    if !state.accounts.may_start_sign_in(client(&state, peer, &headers)) {
+        return Redirect::to("/login?error=google").into_response();
+    }
     let Some((url, cookie)) = google_begin(&state, None, &q.locale) else {
         return Redirect::to("/login?error=google").into_response();
     };

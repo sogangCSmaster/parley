@@ -128,13 +128,15 @@ impl Room {
     }
 
     /// 지난 측정부터 지금까지를 쌓는다. 번역이 켜져 있고, 두 명 이상이거나 혼자라도 방금 번역을 썼으면 센다.
-    fn accrue(&mut self, now: Instant) {
+    /// `blocked`: 주최자의 번역 시간이 떨어져 자막을 막는 중이면 세지 않는다(쓴 시간을 부풀리지 않게).
+    fn accrue(&mut self, now: Instant, blocked: bool) {
         let elapsed = now.saturating_duration_since(self.metered_at).as_secs_f64();
         self.metered_at = now;
         let solo_active = self
             .used_at
             .is_some_and(|t| now.saturating_duration_since(t) < SOLO_ACTIVE);
-        if self.settings.translation
+        if !blocked
+            && self.settings.translation
             && !self.members.is_empty()
             && (self.members.len() >= 2 || solo_active)
         {
@@ -302,10 +304,11 @@ impl Rooms {
     /// 번역 시간을 잰다(주기 작업). 번역이 켜져 있고 두 명 이상 입장해 있거나, 혼자라도 번역을 쓰는 동안 센다.
     /// 1초 미만은 다음 측정으로 넘긴다.
     pub fn meter(&self, now: Instant) -> Vec<Metered> {
+        let blocked = self.out_of_time_hosts();
         let mut rooms = self.rooms.lock().unwrap();
         let mut out = Vec::new();
         for (code, room) in rooms.iter_mut() {
-            room.accrue(now);
+            room.accrue(now, blocked.contains(&room.host_account));
             room.peak = room.peak.max(room.members.len());
             let whole = room.unreported.floor();
             if whole >= 1.0 || room.peak > room.reported_peak {
@@ -427,7 +430,7 @@ impl Rooms {
                 &id,
                 ServerMsg::PeerJoined { peer: peer.clone() },
             );
-            room.accrue(now);
+            room.accrue(now, self.out_of_time.lock().unwrap().contains(&room.host_account));
             room.members.insert(
                 id.clone(),
                 Member {
@@ -496,7 +499,7 @@ impl Rooms {
                 peer: member.peer.clone(),
             },
         );
-        room.accrue(Instant::now());
+        room.accrue(Instant::now(), self.out_of_time.lock().unwrap().contains(&room.host_account));
         room.members.insert(guest.to_owned(), member);
         room.caption_changes.send_modify(|v| *v += 1);
         room.notify_hosts(ServerMsg::KnockResolved {
@@ -530,7 +533,7 @@ impl Rooms {
         if !room.is_host_member(by) {
             return Err(ErrorCode::Forbidden);
         }
-        room.accrue(Instant::now());
+        room.accrue(Instant::now(), self.out_of_time.lock().unwrap().contains(&room.host_account));
         if room.settings.translation != settings.translation {
             room.caption_epoch += 1;
             room.caption_changes.send_modify(|v| *v += 1);
@@ -615,7 +618,7 @@ impl Rooms {
         let Some(room) = rooms.get_mut(code) else {
             return;
         };
-        room.accrue(Instant::now());
+        room.accrue(Instant::now(), self.out_of_time.lock().unwrap().contains(&room.host_account));
         if let Some(member) = room.members.remove(id) {
             room.caption_changes.send_modify(|v| *v += 1);
             broadcast(&room.members, id, ServerMsg::PeerLeft { id: id.to_owned() });
