@@ -261,6 +261,43 @@ impl Copy {
         }
     }
 
+    /// 이메일이 바뀌었다는 알림(예전 주소로).
+    pub fn email_changed_notice(&self, old: &str, new: &str) -> Message {
+        let (subject, title, lines) = match self.lang {
+            Lang::Ko => (
+                "Tolkmeet 계정 이메일이 바뀌었습니다",
+                "계정 이메일이 바뀌었습니다",
+                vec![
+                    format!("이 계정의 로그인 이메일이 {new}(으)로 바뀌었습니다."),
+                    "직접 바꾸지 않았다면 support@tolkmeet.com으로 바로 알려 주세요.".to_owned(),
+                ],
+            ),
+            Lang::Ja => (
+                "Tolkmeet アカウントのメールアドレスが変更されました",
+                "メールアドレスが変更されました",
+                vec![
+                    format!("このアカウントのログイン用メールアドレスが {new} に変更されました。"),
+                    "心当たりがない場合は、すぐに support@tolkmeet.com までご連絡ください。"
+                        .to_owned(),
+                ],
+            ),
+            Lang::En => (
+                "Your Tolkmeet email was changed",
+                "Your account email was changed",
+                vec![
+                    format!("The sign-in email for this account is now {new}."),
+                    "If you didn't do this, contact support@tolkmeet.com right away.".to_owned(),
+                ],
+            ),
+        };
+        Message {
+            to: old.to_owned(),
+            subject: subject.to_owned(),
+            html: layout(title, &lines, None, None, self.footer()),
+            text: text(title, &lines, "", self.footer()),
+        }
+    }
+
     pub fn reset_link(&self, to: &str, url: &str) -> Message {
         let (subject, title, lines, button) = match self.lang {
             Lang::Ko => ("Tolkmeet 비밀번호 재설정", "비밀번호 재설정", vec!["아래 버튼을 눌러 새 비밀번호를 만드세요. 링크는 30분 동안, 한 번만 쓸 수 있습니다.".to_owned()], "새 비밀번호 만들기"),

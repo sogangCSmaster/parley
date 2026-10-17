@@ -1009,9 +1009,17 @@ pub async fn update_profile(
 #[derive(Deserialize)]
 pub struct EmailChangeReq {
     email: String,
+    /// 비밀번호가 있는 계정: 지금 비밀번호
     #[serde(default)]
     password: String,
+    /// 비밀번호가 없고 2차 인증을 켠 계정: 인증 앱 코드
+    #[serde(default)]
+    code: String,
 }
+
+/// 비밀번호도 2차 인증도 없는 계정(Google로만 가입)은 최근 10분 안에 로그인한 세션이어야
+/// 민감한 변경을 할 수 있다(오래 열어 둔 남의 컴퓨터에서 계정을 넘기지 못하게).
+const FRESH_LOGIN: i64 = 10 * 60;
 
 /// 이메일 바꾸기 1단계: 새 주소로 코드를 보낸다(비밀번호가 있는 계정은 비밀번호 확인).
 pub async fn email_change(
@@ -1041,22 +1049,49 @@ pub async fn email_change(
                 params![e],
                 |r| r.get(0),
             )?;
-            let (has_password, locale): (bool, String) = c.query_row(
-                "SELECT password_hash IS NOT NULL, locale FROM users WHERE id = ?1",
+            let (has_password, totp, locale): (bool, bool, String) = c.query_row(
+                "SELECT password_hash IS NOT NULL, totp_enabled, locale FROM users WHERE id = ?1",
                 params![uid],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )?;
-            Ok((taken, has_password, locale))
+            Ok((taken, has_password, totp, locale))
         })
         .await;
-    let Ok((taken, has_password, locale)) = info else {
+    let Ok((taken, has_password, totp, locale)) = info else {
         return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
     };
+    // 다시 확인: 비밀번호 → 2차 인증 코드 → 방금 한 로그인 순으로.
     if has_password {
         match state.auth.check_password(ip, uid, &req.password).await {
             Ok(()) => {}
             Err(LoginError::Locked) => return error(StatusCode::TOO_MANY_REQUESTS, "locked"),
             Err(_) => return error(StatusCode::UNAUTHORIZED, "current"),
+        }
+    } else if totp {
+        let code = req.code.clone();
+        let ok = db
+            .call(move |c| check_totp(c, uid, &code))
+            .await
+            .unwrap_or(false);
+        if !ok {
+            return error(StatusCode::UNAUTHORIZED, "code");
+        }
+    } else {
+        let hash = auth::token_from_headers(&headers)
+            .map(|t| auth::token_hash(&t))
+            .unwrap_or_default();
+        let created: i64 = db
+            .call(move |c| {
+                c.query_row(
+                    "SELECT created_at FROM sessions WHERE token_hash = ?1",
+                    params![hash],
+                    |r| r.get(0),
+                )
+            })
+            .await
+            .unwrap_or(0);
+        if now_secs() - created > FRESH_LOGIN {
+            return error(StatusCode::UNAUTHORIZED, "reauth");
         }
     }
     if taken {
@@ -1110,15 +1145,30 @@ pub async fn email_change_verify(
             };
             c.execute("DELETE FROM email_codes WHERE user_id = ?1 AND kind = 'email'", params![uid])?;
             // 그사이 다른 계정이 그 주소를 가져갔으면 실패.
+            let (old, locale): (String, String) =
+                c.query_row("SELECT email, locale FROM users WHERE id = ?1", params![uid], |r| Ok((r.get(0)?, r.get(1)?)))?;
             match c.execute("UPDATE users SET email = ?2, email_verified = 1 WHERE id = ?1", params![uid, email]) {
-                Ok(_) => Ok(Ok(())),
+                Ok(_) => {
+                    c.execute("DELETE FROM trusted_devices WHERE user_id = ?1", params![uid])?;
+                    Ok(Ok((old, email, locale)))
+                }
                 Err(_) => Ok(Err("taken")),
             }
         })
         .await;
     let token = auth::token_from_headers(&headers);
     match res {
-        Ok(Ok(())) => Json(user_json(&db, uid, token.as_deref()).await).into_response(),
+        Ok(Ok((old, new, locale))) => {
+            // 예전 주소로 알린다(본인이 아니면 바로 알아차리게). 다른 기기의 로그인은 끊는다.
+            state.accounts.mailer.send(
+                Copy {
+                    lang: Lang::parse(&locale),
+                }
+                .email_changed_notice(&old, &new),
+            );
+            state.auth.revoke_user_sessions(uid, token.as_deref()).await;
+            Json(user_json(&db, uid, token.as_deref()).await).into_response()
+        }
         Ok(Err(code)) => error(StatusCode::BAD_REQUEST, code),
         Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "failed"),
     }
@@ -1138,6 +1188,7 @@ pub async fn revoke_session(
         return error(StatusCode::BAD_REQUEST, "id");
     }
     if state.auth.revoke_session_prefix(uid, &id).await {
+        forget_trusted_devices(state.auth.db(), uid).await;
         StatusCode::NO_CONTENT.into_response()
     } else {
         error(StatusCode::NOT_FOUND, "missing")
@@ -1223,7 +1274,20 @@ pub async fn revoke_other_sessions(State(state): State<AppState>, headers: Heade
     };
     let token = auth::token_from_headers(&headers);
     state.auth.revoke_user_sessions(uid, token.as_deref()).await;
+    forget_trusted_devices(state.auth.db(), uid).await;
     StatusCode::NO_CONTENT.into_response()
+}
+
+/// 2차 인증을 건너뛰던 기기 기록을 모두 지운다(다른 기기를 로그아웃시킬 때 함께).
+async fn forget_trusted_devices(db: &Db, uid: i64) {
+    let _ = db
+        .call(move |c| {
+            c.execute(
+                "DELETE FROM trusted_devices WHERE user_id = ?1",
+                params![uid],
+            )
+        })
+        .await;
 }
 
 #[derive(Deserialize)]

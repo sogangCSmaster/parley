@@ -228,16 +228,33 @@ impl Billing {
             if tx.execute("INSERT OR IGNORE INTO paddle_events (id, received_at) VALUES (?1, ?2)", params![id, now_secs()])? == 0 {
                 return Ok(None);
             }
-            // 사용자는 결제할 때 넘긴 custom_data로, 없으면 이미 묶인 구독·고객 id로 찾는다.
-            // 이미 이 구독·고객에 묶인 사용자가 있으면 그쪽이 우선이다(남의 구독을 가로채지 못하게).
-            let linked: Option<i64> = tx
-                .query_row(
-                    "SELECT id FROM users WHERE paddle_subscription_id IN (?1, ?3) OR paddle_customer_id = ?2 LIMIT 1",
-                    params![subscription, customer, subscription_ref],
+            // 사용자: 서버가 서명한 custom_data가 기준이다. 서명이 없으면 구독 이벤트는 구독 id로만,
+            // 결제(추가 시간) 이벤트는 고객 id로 이미 묶인 사용자를 찾는다.
+            let is_subscription = kind.starts_with("subscription.");
+            let by_sub: Option<i64> = if is_subscription {
+                tx.query_row(
+                    "SELECT id FROM users WHERE paddle_subscription_id = ?1",
+                    params![subscription],
                     |r| r.get(0),
                 )
-                .optional()?;
-            let user = linked.or(custom_user);
+                .optional()?
+            } else {
+                tx.query_row(
+                    "SELECT id FROM users WHERE paddle_customer_id = ?1 OR paddle_subscription_id = ?2 LIMIT 1",
+                    params![customer, subscription_ref],
+                    |r| r.get(0),
+                )
+                .optional()?
+            };
+            let user = match (custom_user, by_sub) {
+                // 이 구독이 이미 다른 사용자에게 묶여 있으면 반영하지 않는다(가로채기 방지).
+                (Some(u), Some(l)) if u != l => {
+                    tracing::warn!(event = %id, "paddle event user mismatch: ignored");
+                    None
+                }
+                (Some(u), _) => Some(u),
+                (None, l) => l,
+            };
             let Some(user) = user else {
                 tx.commit()?;
                 return Ok(None);
