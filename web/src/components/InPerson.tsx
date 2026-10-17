@@ -274,20 +274,23 @@ function TalkHalf({ side, lang, selfId, captions, speaking, ready, micError, stt
         {visible.length === 0 && (
           <p className="feed-empty">{t(micError ? 'talk.noMic' : ready ? 'talk.empty' : 'talk.connecting')}</p>
         )}
-        {visible.map((c) => {
+        {visible.map((c, i) => {
           const mine = c.speaker === selfId
           const main = mine ? c.src : (c.text ?? (c.final ? c.src : null))
           const sub = mine ? c.text : c.src
+          // 최신순 크기: 방금 문장이 가장 크고, 지난 문장일수록 작고 흐려진다.
+          const age = Math.min(3, visible.length - 1 - i)
           return (
-            <div key={c.seg} className={`talk-line${mine ? ' mine' : ''}${c.final ? '' : ' pending'}`} aria-hidden={!c.final}>
-              <p className={`talk-main${!mine && (c.text != null || !c.final) ? ' tr-mark' : ''}`} lang={mine ? c.src_lang : c.tgt_lang}>
-                {main ?? t('captions.translating')}
-              </p>
+            <div key={c.seg} className={`talk-line age-${age}${mine ? ' mine' : ''}${c.final ? '' : ' pending'}`} aria-hidden={!c.final}>
+              {/* 작은 회색 줄(상대 원문·내 말의 번역)이 위, 읽을 줄이 아래에 크게 */}
               {sub && sub !== main && (
                 <p className={`talk-sub${mine ? ' tr-mark' : ''}`} lang={mine ? c.tgt_lang : c.src_lang}>
                   {sub}
                 </p>
               )}
+              <p className={`talk-main${!mine && (c.text != null || !c.final) ? ' tr-mark' : ''}`} lang={mine ? c.src_lang : c.tgt_lang}>
+                {main ?? t('captions.translating')}
+              </p>
             </div>
           )
         })}
@@ -297,7 +300,7 @@ function TalkHalf({ side, lang, selfId, captions, speaking, ready, micError, stt
         onClick={onTalk}
         disabled={!ready}
       >
-        <Icon name={speaking ? 'mic' : 'mic_off'} />
+        <Icon name="mic" />
         {speaking ? t('talk.listening') : t('talk.tapToSpeak')}
       </button>
     </section>

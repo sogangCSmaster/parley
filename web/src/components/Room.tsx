@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Knock } from '../protocol/Knock'
 import type { MediaState } from '../protocol/MediaState'
 import type { Peer } from '../protocol/Peer'
@@ -11,6 +11,7 @@ import { Mesh } from '../lib/mesh'
 import type { Prefs } from '../lib/prefs'
 import { Signaling } from '../lib/signaling'
 import { ScreenShare } from '../lib/screen'
+import { useSpeakingPeers } from '../lib/speaking'
 import { startSpeech, type Speech } from '../lib/speech'
 import { downloadText, formatTranscript, Transcript, transcriptFileName } from '../lib/transcript'
 import type { Grant, SegCounter, SttStatus, TokenError } from '../lib/stt'
@@ -41,6 +42,9 @@ type Status =
   | { kind: 'error'; message: MessageKey }
 
 /** 다시 연결할 때 WebSocket이 열리기를 기다리는 시간. 넘으면 이 시도를 버리고 다음 시도로 넘어간다. */
+/** 휴대폰 브라우저는 화면 공유(getDisplayMedia)를 지원하지 않으므로 버튼을 숨긴다. */
+const canShare = typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
+
 const RECONNECT_TIMEOUT_MS = 5000
 /** 처음 입장할 때는 재시도 없이 오류를 보이므로, 느린 모바일 망의 TLS 연결까지 기다리도록 넉넉히 둔다. */
 const FIRST_CONNECT_TIMEOUT_MS = 10_000
@@ -380,6 +384,9 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   useEffect(() => {
     speechRef.current?.setLang(sttKey)
   }, [sttKey, sttEnabled])
+  // 받은 오디오 레벨로 말하는 상대를 표시한다. 함수는 effect 의존성이라 고정해 둔다.
+  const peerReceivers = useCallback(() => meshRef.current?.audioReceiversByPeer() ?? [], [])
+  const speaking = useSpeakingPeers(peerReceivers, joined && !disconnected && Object.keys(peers).length > 0)
   const showPanel = joined && panelOpen && (settings.translation || isHost)
   const selfStream = useMemo(() => (screenTrack ? new MediaStream([screenTrack]) : local), [screenTrack, local])
 
@@ -501,6 +508,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
       stream={streams[p.id] ?? null}
       showVideo={!!streams[p.id]?.getVideoTracks().length && (p.media.cam || p.media.screen)}
       micOn={p.media.mic}
+      speaking={p.media.mic && speaking.has(p.id)}
       presenting={p.media.screen}
       className={presenterId === p.id ? 'main' : undefined}
     />
@@ -509,7 +517,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   const mainTile = tiles.find((t) => t.key === (presenterId ?? ''))
 
   return (
-    <div className="room">
+    <div className={`room${showPanel ? ' with-panel' : ''}`}>
       {disconnected && (
         <div className="banner" role="status">
           <span className="spinner spinner-sm" aria-hidden="true" />
@@ -529,7 +537,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           >
             {tiles}
             {alone && !inviteClosed && (
-              // 내 화면은 무대를 다 쓰고, 초대 카드는 그 위 왼쪽 아래에 띄운다(닫을 수 있음, 링크 복사는 아래 막대에도 있다).
+              // 내 화면은 무대를 다 쓰고, 초대 카드는 그 위 왼쪽 아래에 띄운다(닫을 수 있음, 링크 복사는 아래 캡슐에도 있다).
               // 내 화면을 감싸지 않는다: 감싸면 혼자 ↔ 상대 있음이 바뀔 때 영상이 다시 마운트돼 깜박인다.
               <div className="invite" role="region" aria-labelledby="invite-title">
                 <button
@@ -537,7 +545,7 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
                   aria-label={t('room.closeInvite')}
                   onClick={() => {
                     setInviteClosed(true)
-                    // 닫으면 이 버튼이 사라진다. 키보드 포커스를 같은 일을 하는 아래 막대의 링크 복사 버튼으로 옮긴다.
+                    // 닫으면 이 버튼이 사라진다. 키보드 포커스를 같은 일을 하는 아래 캡슐의 링크 복사 버튼으로 옮긴다.
                     copyLinkRef.current?.focus()
                   }}
                 >
@@ -570,31 +578,44 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
         )}
       </div>
 
-      <footer className="bar">
-        <div className="bar-left">
-          <Clock locale={locale} />
-          <span className="sep">|</span>
-          {code}
-        </div>
-        <div className="controls">
+      <div className="room-meta">
+        <Clock locale={locale} />
+        <span aria-hidden="true">·</span>
+        {code}
+      </div>
+
+      {/* 무대 아래 가운데에 뜨는 유리 캡슐: 마이크·카메라·자막·공유·링크 | 나가기 */}
+      <div className="capsule" role="toolbar" aria-label={t('room.controls')}>
+        <button
+          className={`ctl ${hasMic && media.mic ? '' : 'off'}`}
+          disabled={!joined || disconnected || !hasMic}
+          aria-pressed={media.mic}
+          aria-label={media.mic ? t('ctl.micOff') : t('ctl.micOn')}
+          onClick={() => changeMedia({ ...media, mic: !media.mic })}
+        >
+          <Icon name={hasMic && media.mic ? 'mic' : 'mic_off'} />
+        </button>
+        <button
+          className={`ctl ${hasCam && media.cam ? '' : 'off'}`}
+          disabled={!joined || disconnected || !hasCam}
+          aria-pressed={media.cam}
+          aria-label={media.cam ? t('ctl.camOff') : t('ctl.camOn')}
+          onClick={() => changeMedia({ ...media, cam: !media.cam })}
+        >
+          <Icon name={hasCam && media.cam ? 'videocam' : 'videocam_off'} />
+        </button>
+        {/* 번역이 꺼지면 게스트에게는 자막 패널이 없다. 주최자는 다시 켤 수 있도록 남긴다. */}
+        {joined && (settings.translation || isHost) && (
           <button
-            className={`ctl ${hasMic && media.mic ? '' : 'off'}`}
-            disabled={!joined || disconnected || !hasMic}
-            aria-pressed={media.mic}
-            aria-label={media.mic ? t('ctl.micOff') : t('ctl.micOn')}
-            onClick={() => changeMedia({ ...media, mic: !media.mic })}
+            className={`ctl ${showPanel ? 'on' : ''}`}
+            aria-pressed={showPanel}
+            aria-label={t('ctl.captions')}
+            onClick={() => setPanelOpen((o) => !o)}
           >
-            <Icon name={hasMic && media.mic ? 'mic' : 'mic_off'} />
+            <Icon name="subtitles" />
           </button>
-          <button
-            className={`ctl ${hasCam && media.cam ? '' : 'off'}`}
-            disabled={!joined || disconnected || !hasCam}
-            aria-pressed={media.cam}
-            aria-label={media.cam ? t('ctl.camOff') : t('ctl.camOn')}
-            onClick={() => changeMedia({ ...media, cam: !media.cam })}
-          >
-            <Icon name={hasCam && media.cam ? 'videocam' : 'videocam_off'} />
-          </button>
+        )}
+        {canShare && (
           <button
             className={`ctl ${screenTrack ? 'on' : ''}`}
             disabled={!joined || disconnected || screenBusy || (!!presenterId && !screenTrack)}
@@ -604,27 +625,15 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
           >
             <Icon name={screenTrack ? 'cancel_presentation' : 'present_to_all'} />
           </button>
-          <button className="ctl leave" aria-label={t('ctl.leave')} onClick={leave}>
-            <Icon name="call_end" />
-          </button>
-        </div>
-        <div className="bar-right">
-          <button ref={copyLinkRef} className="ctl plain copy-link" aria-label={t('ctl.copyLink')} onClick={copyLink}>
-            <Icon name="link" />
-          </button>
-          {/* 번역이 꺼지면 게스트에게는 자막 패널이 없다. 주최자는 다시 켤 수 있도록 남긴다. */}
-          {joined && (settings.translation || isHost) && (
-            <button
-              className={`ctl plain ${showPanel ? 'on' : ''}`}
-              aria-pressed={showPanel}
-              aria-label={t('ctl.captions')}
-              onClick={() => setPanelOpen((o) => !o)}
-            >
-              <Icon name="translate" />
-            </button>
-          )}
-        </div>
-      </footer>
+        )}
+        <button ref={copyLinkRef} className="ctl" aria-label={t('ctl.copyLink')} onClick={copyLink}>
+          <Icon name="link" />
+        </button>
+        <span className="capsule-sep" aria-hidden="true" />
+        <button className="ctl leave" aria-label={t('ctl.leave')} onClick={leave}>
+          <Icon name="call_end" />
+        </button>
+      </div>
 
       {isHost && <KnockPrompts knocks={knocks} onAdmit={admit} onDeny={deny} />}
       {toast && (

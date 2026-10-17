@@ -143,6 +143,14 @@ const en = {
   'captions.echo': 'Your mic is picking up other people’s voices. Headphones make captions more accurate.',
   'captions.sttPaused': 'Your speech isn’t being captioned right now. Reconnecting…',
   'captions.sttUnavailable': 'Speech recognition isn’t available here, so your voice won’t be captioned.',
+  'history.title': 'Conversation',
+  'history.listening': 'Listening',
+  'history.latest': 'Jump to latest',
+  'history.newCount': '{n} new',
+  'history.settings': 'Caption settings',
+  'knock.speaks': 'Speaks {lang}',
+  'knock.waiting': '{n} more waiting',
+  'room.controls': 'Call controls',
 } as const
 
 export type MessageKey = keyof typeof en
@@ -286,6 +294,15 @@ const ko: Messages = {
   'captions.echo': '마이크에 상대방 목소리가 들어가고 있어요. 헤드폰을 쓰면 자막이 더 정확해져요.',
   'captions.sttPaused': '지금은 내 말이 자막으로 나오지 않아요. 다시 연결하는 중…',
   'captions.sttUnavailable': '여기서는 음성 인식을 쓸 수 없어서 내 말은 자막으로 나오지 않아요.',
+  'history.title': '대화 기록',
+  'history.listening': '듣는 중',
+  'history.latest': '최신 대화로',
+  'history.newCount': '새 문장 {n}',
+  'history.settings': '자막 설정',
+  'knock.speaks': '말하는 언어: {lang}',
+  'knock.waiting': '외 {n}명 대기 중',
+  'room.controls': '통화 조작',
+
 }
 
 const ja: Messages = {
@@ -426,6 +443,15 @@ const ja: Messages = {
   'captions.echo': 'マイクに相手の声が入っています。ヘッドホンを使うと字幕がより正確になります。',
   'captions.sttPaused': '現在、あなたの発言は字幕になっていません。再接続しています…',
   'captions.sttUnavailable': 'ここでは音声認識を使えないため、あなたの発言は字幕になりません。',
+  'history.title': '会話の記録',
+  'history.listening': '聞き取り中',
+  'history.latest': '最新の会話へ',
+  'history.newCount': '新着 {n}',
+  'history.settings': '字幕の設定',
+  'knock.speaks': '話す言語：{lang}',
+  'knock.waiting': 'ほか{n}人が待機中',
+  'room.controls': '通話の操作',
+
 }
 
 const DICTS = { en, ko, ja } as const

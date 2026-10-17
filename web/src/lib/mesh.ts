@@ -85,6 +85,17 @@ export class Mesh {
     )
   }
 
+  /** 상대별 받는 오디오 수신기. 누가 말하고 있는지(말하는 테두리) 표시에 쓴다. */
+  audioReceiversByPeer(): [string, RTCRtpReceiver[]][] {
+    return [...this.links.entries()].map(([id, link]) => [
+      id,
+      link.pc
+        .getTransceivers()
+        .filter((t) => t.receiver.track.kind === 'audio' && (t.currentDirection === 'recvonly' || t.currentDirection === 'sendrecv'))
+        .map((t) => t.receiver),
+    ])
+  }
+
   remove(peerId: string) {
     this.links.get(peerId)?.pc.close()
     this.links.delete(peerId)

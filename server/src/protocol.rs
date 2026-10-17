@@ -33,6 +33,8 @@ pub struct RoomSettings {
 pub struct Knock {
     pub id: PeerId,
     pub name: String,
+    /// 이 사람이 말하는 언어. 주최자가 누구인지 가늠하도록 알림에 함께 보인다.
+    pub lang: String,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]

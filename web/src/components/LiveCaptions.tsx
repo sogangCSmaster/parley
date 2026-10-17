@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../lib/auth'
 import { applyCaption, type Caption, type CaptionMsg } from '../lib/captions'
 import { useI18n, type MessageKey } from '../lib/i18n'
@@ -6,6 +6,7 @@ import { canAutoDetect } from '../lib/langdetect'
 import { LANGUAGES, languageName } from '../lib/languages'
 import { loadPrefs, savePrefs } from '../lib/prefs'
 import { navigate } from '../lib/router'
+import { useReviewScroll } from '../lib/reviewScroll'
 import type { SttStatus } from '../lib/stt'
 import { AutoTalk } from '../lib/autotalk'
 import type { TalkFailure } from '../lib/talk'
@@ -13,6 +14,7 @@ import { downloadText, formatTranscript, Transcript, transcriptFileName } from '
 import { Icon } from './Icon'
 import { Notice } from './Meeting'
 import { Select } from './Select'
+import { ToLatest } from './ToLatest'
 
 /**
  * 자막 화면: 대면 미팅 탁자 위 태블릿 한 대가 듣고, 누가 어떤 언어로 말하든 원문과 번역을 크게 쌓아 보여 준다.
@@ -53,6 +55,8 @@ function Live({ code }: { code: string }) {
   const [captions, setCaptions] = useState<Caption[]>([])
   const [stt, setStt] = useState<SttStatus | null>(null)
   const [listening, setListening] = useState(true)
+  // 언어 설정은 처음에 펼쳐 두어 확인하게 한다. 닫으면 자막만 크게 보인다.
+  const [settingsOpen, setSettingsOpen] = useState(true)
   const [failure, setFailure] = useState<MessageKey | null>(null)
   const [transcript] = useState(() => new Transcript())
   const [hasTranscript, setHasTranscript] = useState(false)
@@ -176,16 +180,17 @@ function Live({ code }: { code: string }) {
               ? 'live.listening'
               : 'talk.connecting'
 
+  const on = hearing && stt === 'live' && !micError
   return (
     <div className="live">
       <header className="live-bar">
-        <div className="live-langs">
-          <Select ariaLabel={t('live.langA')} value={langs.a} options={LANG_OPTIONS} onChange={(l) => changeLang('a', l)} variant="pill" icon="language" />
-          <Icon name="sync_alt" />
-          <Select ariaLabel={t('live.langB')} value={langs.b} options={LANG_OPTIONS} onChange={(l) => changeLang('b', l)} variant="pill" icon="language" />
-        </div>
-        <p className={`live-status${hearing && stt === 'live' && !micError ? ' on' : ''}`} role="status">
-          <span className="live-dot" aria-hidden="true" />
+        <p className={`live-status${on ? ' on' : ''}`} role="status">
+          <span className={`levels${on ? ' on' : ''}`} aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
           {t(status)}
         </p>
         <div className="live-actions">
@@ -200,9 +205,14 @@ function Live({ code }: { code: string }) {
               {t('room.retry')}
             </button>
           ) : (
-            <button className="btn btn-outline" onClick={toggleListening} disabled={!ready || !pairOk}>
-              <Icon name={listening ? 'mic_off' : 'mic'} />
-              {t(listening ? 'live.pause' : 'live.resume')}
+            <button
+              className="icon-btn"
+              onClick={toggleListening}
+              disabled={!ready || !pairOk}
+              aria-label={t(listening ? 'live.pause' : 'live.resume')}
+              title={t(listening ? 'live.pause' : 'live.resume')}
+            >
+              <Icon name={listening ? 'mic' : 'mic_off'} />
             </button>
           )}
           {hasTranscript && (
@@ -210,10 +220,28 @@ function Live({ code }: { code: string }) {
               <Icon name="download" />
             </button>
           )}
-          <button className="btn btn-primary" onClick={() => navigate('/')}>
+          <button
+            className={`icon-btn${settingsOpen ? ' on' : ''}`}
+            aria-label={t('history.settings')}
+            title={t('history.settings')}
+            aria-expanded={settingsOpen}
+            aria-controls="live-settings"
+            onClick={() => setSettingsOpen((o) => !o)}
+          >
+            <Icon name="tune" />
+          </button>
+          <button className="btn btn-outline" onClick={() => navigate('/')}>
             {t('talk.end')}
           </button>
         </div>
+        {settingsOpen && (
+          // 언어는 처음에 한 번 고르면 되므로 평소에는 접어 두고 자막만 크게 보인다.
+          <div className="live-settings" id="live-settings">
+            <Select ariaLabel={t('live.langA')} value={langs.a} options={LANG_OPTIONS} onChange={(l) => changeLang('a', l)} variant="pill" icon="language" />
+            <Icon name="sync_alt" />
+            <Select ariaLabel={t('live.langB')} value={langs.b} options={LANG_OPTIONS} onChange={(l) => changeLang('b', l)} variant="pill" icon="language" />
+          </div>
+        )}
       </header>
       {!pairOk && (
         <p className="live-warning" role="alert">
@@ -225,63 +253,40 @@ function Live({ code }: { code: string }) {
   )
 }
 
-/** 쌓여 가는 자막. 사용자가 위로 스크롤해 지난 말을 보는 중이면 따라 내려가지 않는다. */
+/**
+ * 쌓여 가는 자막(아래에서 위로). 방금 문장이 가장 크고 진하며 지난 문장일수록 작고 흐려진다.
+ * 위로 스크롤해 지난 말을 읽는 동안에는 모두 같은 크기로 바뀌고 "최신 대화로" 버튼이 뜬다.
+ */
 function LiveFeed({ captions }: { captions: Caption[] }) {
-  const { t, locale } = useI18n()
-  const ref = useRef<HTMLDivElement>(null)
-  const stick = useRef(true)
+  const { t } = useI18n()
   const visible = captions.filter((c) => !(c.final && c.src === ''))
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (el && stick.current) el.scrollTop = el.scrollHeight
-  }, [captions])
+  const { ref, reviewing, onScroll, toLatest, newCount } = useReviewScroll<HTMLElement>(visible.length, captions)
 
   return (
-    <main
-      className="live-feed"
-      ref={ref}
-      role="log"
-      aria-live="polite"
-      onScroll={() => {
-        const el = ref.current
-        if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
-      }}
-    >
-      <div className="live-feed-inner">
-        {visible.length === 0 && <p className="feed-empty">{t('live.empty')}</p>}
-        {visible.map((c) => {
-          const time = new Date(c.at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })
-          // 언어·시각은 원문 줄 앞에 붙여 줄 수를 아낀다. 번역이 없는 확정 줄(번역 실패 등)은 원문을 크게 보인다.
-          const translated = c.tgt_lang !== c.src_lang && (c.text != null || !c.final)
-          const meta = (
-            <span className="live-meta">
-              <b lang={c.src_lang}>{languageName(c.src_lang)}</b> {time}
-            </span>
-          )
-          return (
-            <article key={c.seg} className={`live-entry${c.final ? '' : ' pending'}`} aria-hidden={!c.final}>
-              {translated ? (
-                <>
-                  <p className="live-src">
-                    {meta}
-                    <span lang={c.src_lang}>{c.src}</span>
-                  </p>
-                  <p className="live-tgt tr-mark" lang={c.text != null ? c.tgt_lang : undefined}>
-                    {c.text ?? t('captions.translating')}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="live-src">{meta}</p>
-                  <p className="live-tgt" lang={c.src_lang}>
+    <div className="live-feed-wrap">
+      <main className={`live-feed${reviewing ? ' reviewing' : ''}`} ref={ref} role="log" aria-live="polite" onScroll={onScroll}>
+        <div className="live-feed-inner">
+          {visible.length === 0 && <p className="feed-empty">{t('live.empty')}</p>}
+          {visible.map((c, i) => {
+            const age = Math.min(3, visible.length - 1 - i)
+            // 번역이 없는 확정 줄(번역 실패 등)은 원문을 크게 보인다.
+            const translated = c.tgt_lang !== c.src_lang && (c.text != null || !c.final)
+            return (
+              <article key={c.seg} className={`live-entry age-${age}${c.final ? '' : ' pending'}`} aria-hidden={!c.final}>
+                {translated && (
+                  <p className="live-src" lang={c.src_lang}>
                     {c.src}
                   </p>
-                </>
-              )}
-            </article>
-          )
-        })}
-      </div>
-    </main>
+                )}
+                <p className="live-tgt" lang={translated ? (c.text != null ? c.tgt_lang : undefined) : c.src_lang}>
+                  {translated ? (c.text ?? t('captions.translating')) : c.src}
+                </p>
+              </article>
+            )
+          })}
+        </div>
+      </main>
+      {reviewing && <ToLatest newCount={newCount} onClick={toLatest} />}
+    </div>
   )
 }

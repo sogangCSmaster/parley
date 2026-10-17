@@ -129,6 +129,7 @@ impl Room {
             .map(|w| Knock {
                 id: w.peer.id.clone(),
                 name: w.peer.name.clone(),
+                lang: w.peer.lang.clone(),
             })
             .collect()
     }
@@ -314,6 +315,7 @@ impl Rooms {
             knock: Knock {
                 id: id.clone(),
                 name: peer.name.clone(),
+                lang: peer.lang.clone(),
             },
         });
         room.waiting.insert(

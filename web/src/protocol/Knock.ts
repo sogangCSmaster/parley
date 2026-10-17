@@ -3,4 +3,8 @@
 /**
  * 입장 대기 중인 게스트. 주최자에게만 보인다.
  */
-export type Knock = { id: string, name: string, };
+export type Knock = { id: string, name: string, 
+/**
+ * 이 사람이 말하는 언어. 주최자가 누구인지 가늠하도록 알림에 함께 보인다.
+ */
+lang: string, };

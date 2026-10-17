@@ -7,6 +7,8 @@ type Props = {
   stream: MediaStream | null
   showVideo: boolean
   micOn: boolean
+  /** 지금 말하고 있다(받은 오디오 레벨 기준). 주황 테두리와 음성 막대를 보인다. */
+  speaking?: boolean
   mirror?: boolean
   /** 내 타일은 음소거해 에코를 막는다. */
   muted?: boolean
@@ -14,7 +16,7 @@ type Props = {
   className?: string
 }
 
-export function VideoTile({ name, stream, showVideo, micOn, mirror, muted, presenting, className }: Props) {
+export function VideoTile({ name, stream, showVideo, micOn, speaking, mirror, muted, presenting, className }: Props) {
   const { t } = useI18n()
   const ref = useRef<HTMLVideoElement>(null)
 
@@ -23,7 +25,7 @@ export function VideoTile({ name, stream, showVideo, micOn, mirror, muted, prese
   }, [stream])
 
   return (
-    <div className={`tile ${className ?? ''}`}>
+    <div className={`tile${speaking ? ' speaking' : ''}${showVideo ? ' has-video' : ''} ${className ?? ''}`}>
       {/* 카메라가 꺼져도 상대 음성은 계속 들려야 하므로 video 요소는 숨기기만 한다. */}
       <video
         ref={ref}
@@ -33,9 +35,16 @@ export function VideoTile({ name, stream, showVideo, micOn, mirror, muted, prese
         className={mirror ? 'mirror' : undefined}
         style={{ visibility: showVideo ? 'visible' : 'hidden' }}
       />
+      {/* 카메라가 꺼지면 회색 모노그램(이니셜)과 이름을 가운데에. 사진은 받지 않는다. */}
       {!showVideo && (
-        <div className="avatar" style={{ background: avatarColor(name) }} aria-hidden="true">
-          {[...name][0] ?? '?'}
+        <div className="monogram-wrap" aria-hidden="true">
+          <span className="monogram">{[...name][0] ?? '?'}</span>
+          <span className="levels">
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
         </div>
       )}
       <span className="name">
@@ -49,13 +58,4 @@ export function VideoTile({ name, stream, showVideo, micOn, mirror, muted, prese
       )}
     </div>
   )
-}
-
-// 흰 이니셜 대비 4.5:1 이상인 브랜드 계열 색
-const AVATAR_COLORS = ['#C2381A', '#2459D6', '#0E7F6A', '#6D44D8', '#A45A12', '#B02F86']
-
-function avatarColor(name: string): string {
-  let h = 0
-  for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0
-  return AVATAR_COLORS[h % AVATAR_COLORS.length]
 }
