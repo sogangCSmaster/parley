@@ -72,7 +72,9 @@ export function MeetingsPage() {
 
   async function remove(m: Meeting) {
     // 이미 링크를 받은 손님이 있을 수 있으니 한 번 확인한다.
-    if (!window.confirm(t('meetings.deleteConfirm', { title: m.title || t('meetings.untitled') }))) return
+    const title = m.title || t('meetings.untitled')
+    const ended = m.endedAt != null || m.startedAt != null
+    if (!window.confirm(t(ended ? 'meetings.deletePastConfirm' : 'meetings.deleteConfirm', { title }))) return
     const r = await api.del(`/api/meetings/${m.id}`)
     if (r.ok) reload()
     else setError('account.failed')
@@ -168,6 +170,8 @@ export function MeetingsPage() {
                             />
                           </>
                         )}
+                        {/* 지난 회의 기록(이름·초대한 사람 주소 등)도 지울 수 있게(개인정보 처리방침과 같게). */}
+                        {tab === 'past' && <RowMenu items={[[t('meetings.delete'), () => void remove(m), true]]} label={t('meetings.actions')} />}
                       </td>
                     </tr>
                   )

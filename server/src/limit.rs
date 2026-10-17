@@ -67,6 +67,7 @@ impl KeyedLimiter {
             inner: std::sync::Mutex::new(Inner {
                 map: Default::default(),
                 // 넘침 버킷: 키 하나 몫. 새 키들을 다 합쳐도 키 하나의 한도를 넘지 못한다(한도가 느슨해지지 않게).
+                // 맵을 채우기는 어렵다: 아무 값이나 넣을 수 있는 키(주소)는 요청한 쪽(IP·/48·사용자) 한도를 통과한 뒤에만 쌓인다.
                 overflow: TokenBucket::new(rate, burst),
                 swept_at: None,
             }),

@@ -97,7 +97,7 @@ impl Accounts {
             by_net: KeyedLimiter::new(200, Duration::from_secs(3600)),
             by_ip: KeyedLimiter::new(20, Duration::from_secs(3600)),
             sign_in_starts: KeyedLimiter::new(30, Duration::from_secs(60)),
-            sign_in_starts_by_net: KeyedLimiter::new(300, Duration::from_secs(60)),
+            sign_in_starts_by_net: KeyedLimiter::new(120, Duration::from_secs(60)),
             by_email: KeyedLimiter::new(5, Duration::from_secs(3600)),
             invites_by_user: KeyedLimiter::new(100, Duration::from_secs(86_400)),
             invites_by_rcpt: KeyedLimiter::new(5, Duration::from_secs(86_400)),
@@ -120,14 +120,16 @@ impl Accounts {
     /// IPv6는 /64로 묶는다(주소를 바꿔 가며 피하지 못하게).
     // IP 한도를 먼저 본다(&&): 아무 값이나 넣을 수 있는 주소 키는 IP 한도를 넘지 않은 요청만 맵에 쌓인다.
     fn may_mail(&self, ip: IpAddr, email: &str) -> bool {
-        // 터널 하나로 /48(/64 65,536개)을 받을 수 있으므로 더 넓은 단위를 먼저 본다.
-        self.by_net.check(&net48(ip)) && self.by_ip.check(&auth::client_key(ip).to_string()) && self.by_email.check(email)
+        // 터널 하나로 /48(/64 65,536개)을 받을 수 있으므로 /48도 센다. 한도를 넘은 기기가 같은 /48의 몫을 쓰지 않게
+        // /64를 먼저, 아무 값이나 넣을 수 있는 주소 키는 맨 나중에 본다.
+        self.by_ip.check(&auth::client_key(ip).to_string()) && self.by_net.check(&net48(ip)) && self.by_email.check(email)
     }
 
     /// 로그인 전 대기 상태를 하나 더 만들어도 되는지.
     fn may_start_sign_in(&self, ip: IpAddr) -> bool {
-        // /48을 먼저: 터널 하나로 받은 /64 수만 개로 나눠 피하지 못하게.
-        self.sign_in_starts_by_net.check(&net48(ip)) && self.sign_in_starts.check(&auth::client_key(ip).to_string())
+        // /64 다음 /48: 터널 하나로 받은 /64 수만 개로 나눠 피하지 못하게. 이미 자기 한도를 넘은 기기가
+        // 같은 /48의 다른 사람 몫까지 쓰지 않도록 /64를 먼저 본다.
+        self.sign_in_starts.check(&auth::client_key(ip).to_string()) && self.sign_in_starts_by_net.check(&net48(ip))
     }
 
     /// 로그인 중 이 클라이언트가 이 사용자의 2차 인증 코드를 한 번 더 맞혀 봐도 되는지.

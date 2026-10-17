@@ -257,6 +257,7 @@ const en = {
   'paid.pending': 'Your payment is still being confirmed. This can take a minute.',
   'paid.checkAgain': 'Check again',
   'checkout.changeNote': 'The new plan starts now. The prorated difference for the rest of this billing period is charged right away to your saved payment method.',
+  'meetings.deletePastConfirm': 'Delete the record of “{title}”? Its title, time and invited guests’ addresses will be removed.',
 } as const
 
 export type PageKey = keyof typeof en
@@ -515,6 +516,7 @@ const ko: Messages = {
   'paid.pending': '결제를 아직 확인하고 있어요. 1분쯤 걸릴 수 있어요.',
   'paid.checkAgain': '다시 확인',
   'checkout.changeNote': '새 요금제는 바로 시작돼요. 이번 결제 기간에 남은 날만큼의 차액이 등록된 결제 수단으로 바로 청구돼요.',
+  'meetings.deletePastConfirm': '“{title}” 회의 기록을 삭제할까요? 회의 이름, 시간, 초대한 사람의 주소가 지워져요.',
 
 }
 
@@ -771,6 +773,7 @@ const ja: Messages = {
   'paid.pending': 'お支払いをまだ確認しています。1分ほどかかることがあります。',
   'paid.checkAgain': 'もう一度確認',
   'checkout.changeNote': '新しいプランはすぐに始まります。今の請求期間の残り日数分の差額が、登録済みのお支払い方法にすぐ請求されます。',
+  'meetings.deletePastConfirm': '「{title}」の記録を削除しますか？会議名、日時、招待した人のアドレスが消えます。',
 
 }
 
