@@ -104,11 +104,13 @@ impl Accounts {
 
     /// 초대 메일 한 통을 보내도 되는지(보내는 사람·받는 사람 한도).
     pub fn may_invite(&self, user_id: i64, to: &str) -> bool {
-        self.invites_by_rcpt.check(to) && self.invites_by_user.check(&user_id.to_string())
+        // 보내는 사람 한도를 먼저 본다: 받는 주소(아무 값이나 넣을 수 있음)는 그 한도를 넘지 않은 요청만 맵에 쌓인다.
+        self.invites_by_user.check(&user_id.to_string()) && self.invites_by_rcpt.check(to)
     }
 
     /// 메일을 보내는 요청의 빈도 제한. 넘으면 조용히 보내지 않는다(응답은 같게 해 계정 존재를 숨긴다).
     /// IPv6는 /64로 묶는다(주소를 바꿔 가며 피하지 못하게).
+    // IP 한도를 먼저 본다(&&): 아무 값이나 넣을 수 있는 주소 키는 IP 한도를 넘지 않은 요청만 맵에 쌓인다.
     fn may_mail(&self, ip: IpAddr, email: &str) -> bool {
         self.by_ip.check(&auth::client_key(ip).to_string()) && self.by_email.check(email)
     }
