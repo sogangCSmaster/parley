@@ -1,0 +1,50 @@
+# 소개 페이지(site/)만 GitHub Pages(tolkmeet.com)에 올린다.
+# 공개 저장소이므로 앱(server/·web/)은 여기서 빌드·배포하지 않고, 배포 비밀정보도 두지 않는다(docs/LAUNCH_PLAN.md).
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'design/tokens.css', '.github/workflows/site.yml']
+  workflow_dispatch:
+
+# Pages 배포에 필요한 권한만
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: site
+      - run: pnpm build
+        working-directory: site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
