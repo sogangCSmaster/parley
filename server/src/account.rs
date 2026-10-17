@@ -1486,16 +1486,24 @@ pub async fn totp_enable(
         Ok(id) => id,
         Err(r) => return r,
     };
+    // 6자리 코드를 무차별로 맞혀 보지 못하게 다른 인증 앱 확인과 같은 한도를 둔다.
+    if !state.accounts.totp_by_user.check(&uid.to_string()) {
+        return error(StatusCode::TOO_MANY_REQUESTS, "locked");
+    }
     let code = req.code.clone();
     let codes = state
         .auth
         .db()
         .call(move |c| {
-            let secret: Option<String> = c.query_row(
-                "SELECT totp_secret FROM users WHERE id = ?1",
-                params![uid],
-                |r| r.get(0),
-            )?;
+            // 켜는 중인(아직 꺼진) 비밀 키에만. 이미 켜져 있으면 복구 코드 다시 만들기를 쓴다.
+            let secret: Option<String> = c
+                .query_row(
+                    "SELECT totp_secret FROM users WHERE id = ?1 AND totp_enabled = 0",
+                    params![uid],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .flatten();
             let Some(secret) = secret else {
                 return Ok(None);
             };

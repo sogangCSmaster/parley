@@ -1160,7 +1160,10 @@ mod tests {
             "langA": "ko", "langB": "ja", "guests": ["a@example.com"], "invite": true
         }))
         .unwrap();
-        assert_eq!((req.starts_at, req.duration_min, req.lang_b.as_str()), (1_800_000_000, 30, "ja"));
+        assert_eq!(
+            (req.starts_at, req.duration_min, req.lang_b.as_str()),
+            (1_800_000_000, 30, "ja")
+        );
     }
 
     #[test]
