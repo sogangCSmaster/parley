@@ -105,7 +105,8 @@ export function Checkout() {
     })
     if (!r.ok) {
       setBusy(false)
-      return setError('account.billingFailed')
+      // 업데이트 전에 열어 둔 화면은 동의 값을 보내지 않으므로 새로고침을 안내한다.
+      return setError(r.code === 'consent' ? 'checkout.consentNeeded' : 'account.billingFailed')
     }
     if ('dev' in r.data) {
       // 개발 모드: 결제 없이 켠다.
