@@ -12,7 +12,7 @@ use std::io::Write;
 use std::net::SocketAddr;
 use std::path::Path;
 
-pub const USERNAME: &str = "dev";
+pub const USERNAME: &str = "dev@tolkmeet.test";
 
 pub struct Credentials {
     pub username: String,
@@ -26,14 +26,16 @@ pub fn allowed_bind(addr: &SocketAddr) -> bool {
 
 /// 파일에 저장된 테스트 계정을 읽고, 없으면 새로 만들어 저장한다.
 pub fn ensure_credentials(path: &Path) -> std::io::Result<Credentials> {
-    if let Ok(text) = fs::read_to_string(path)
-        && let Some(creds) = parse(&text)
+    let saved = fs::read_to_string(path).ok().and_then(|text| parse(&text));
+    if let Some(creds) = &saved
+        && creds.username == USERNAME
     {
-        return Ok(creds);
+        return Ok(saved.unwrap());
     }
+    // 예전 아이디(`dev`)로 저장된 파일은 비밀번호는 그대로 두고 아이디만 이메일로 바꾼다.
     let creds = Credentials {
         username: USERNAME.to_owned(),
-        password: random_password(),
+        password: saved.map(|c| c.password).unwrap_or_else(random_password),
     };
     write_private(
         path,
@@ -115,6 +117,22 @@ mod tests {
                 0o600
             );
         }
+        fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn old_id_file_keeps_password_and_moves_to_email() {
+        let path = std::env::temp_dir().join(format!("tolkmeet-dev-old-{}", std::process::id()));
+        write_private(&path, "username: dev\npassword: keepme123\n").unwrap();
+        let creds = ensure_credentials(&path).unwrap();
+        assert_eq!(
+            (creds.username.as_str(), creds.password.as_str()),
+            (USERNAME, "keepme123")
+        );
+        assert_eq!(
+            parse(&fs::read_to_string(&path).unwrap()).unwrap().username,
+            USERNAME
+        );
         fs::remove_file(&path).unwrap();
     }
 

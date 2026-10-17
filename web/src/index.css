@@ -35,7 +35,7 @@ h1 { text-wrap: balance; }
 .btn-quiet:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .btn-outline:disabled { color: var(--text-tertiary); background: var(--fill); opacity: .6; }
 /*
- * 입력 칸: 흰 면 + 얇은 회색 테두리. 포커스되면 테두리가 잉크로 진해지고(안쪽 그림자로 2px처럼) 크기는 그대로다.
+ * 입력 칸: 흰 면 + 얇은 회색 테두리. 포커스되면 테두리가 브랜드 주황이 되고 바깥으로 옅은 주황 번짐(애플식 포커스 링)이 생긴다. 크기는 그대로다.
  */
 .input, .field, .select-trigger { height: 48px; border: 1px solid var(--border); border-radius: var(--radius-field); background: var(--field-bg); color: var(--text); font-size: var(--text-md); transition: background var(--duration), border-color var(--duration), box-shadow var(--duration); }
 .input { width: 100%; padding: 0 var(--space-4); }
@@ -43,10 +43,12 @@ h1 { text-wrap: balance; }
 .field input { border: 0; outline: 0; color: var(--text); min-width: 0; flex: 1; background: none; font-size: var(--text-md); }
 .input::placeholder, .field input::placeholder { color: var(--text-tertiary); }
 .input:hover, .field:hover, .select-trigger:hover { background: var(--field-bg-hover); }
-.input:focus, .field:focus-within, .select-trigger:focus-visible, .select-trigger[aria-expanded="true"] { background: var(--panel-bg); border-color: var(--brand-ink); box-shadow: inset 0 0 0 1px var(--brand-ink); outline: none; }
+.input:focus, .field:focus-within, .select-trigger:focus-visible, .select-trigger[aria-expanded="true"] { background: var(--panel-bg); border-color: var(--focus-border); box-shadow: var(--focus-ring); outline: none; }
+.field:focus-within > .icon { color: var(--accent-text); }
 .input[aria-invalid="true"], .field[aria-invalid="true"] { border-color: var(--danger); }
+.input[aria-invalid="true"]:focus, .field[aria-invalid="true"]:focus-within { box-shadow: 0 0 0 4px rgb(255 59 48 / .16); }
 .input, .field input { caret-color: var(--brand-accent); }
-.field-label:focus-within { color: var(--text); }
+.field-label:focus-within, .select:focus-within .select-label { color: var(--accent-text); }
 .input:focus-visible, .field input:focus-visible, .select-trigger:focus-visible { outline: none; }
 .field-label { display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary); }
 .form-error { color: var(--danger-text); font-size: var(--text-sm); margin: var(--space-3) 0 0; line-height: 1.5; }
@@ -110,7 +112,10 @@ h1 { text-wrap: balance; }
 .field-stack { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 14px; background: var(--field-bg); overflow: hidden; text-align: left; }
 .field-stack label { display: flex; flex-direction: column; gap: 2px; padding: 10px 16px; transition: box-shadow var(--duration); }
 .field-stack label + label { border-top: 1px solid var(--divider); }
-.field-stack label:focus-within { box-shadow: inset 0 0 0 2px var(--brand-ink); }
+/* 묶음 칸은 칸 전체에 링, 지금 쓰는 줄은 이름표만 주황으로 */
+.field-stack { transition: border-color var(--duration), box-shadow var(--duration); }
+.field-stack:focus-within { border-color: var(--focus-border); box-shadow: var(--focus-ring); }
+.field-stack label:focus-within span { color: var(--accent-text); }
 .field-stack span { font-size: var(--text-xs); color: var(--text-secondary); }
 .field-stack input { border: 0; padding: 0; height: 26px; background: none; font-size: var(--text-md); color: var(--text); outline: none; }
 .auth-foot { margin: 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.5; }
@@ -213,11 +218,10 @@ h1 { text-wrap: balance; }
 /* ── Select (드롭다운) ──────────────────────── */
 .select { position: relative; display: flex; flex-direction: column; gap: var(--space-2); }
 .select-label { font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary); }
-.select:focus-within .select-label { color: var(--text); }
 .select-trigger { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 0 var(--space-3) 0 var(--space-4); text-align: left; }
 .select-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-chevron { display: grid; color: var(--text-secondary); transition: transform var(--duration), color var(--duration); }
-.select-trigger[aria-expanded="true"] .select-chevron { color: var(--brand-ink); }
+.select-trigger[aria-expanded="true"] .select-chevron { color: var(--accent-text); }
 .select-chevron .icon { font-size: 20px; }
 .select-trigger[aria-expanded="true"] .select-chevron { transform: rotate(180deg); }
 .select-list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 100%; max-height: 280px; overflow-y: auto; margin: 0; padding: 6px; list-style: none; background: var(--panel-bg); border-radius: 14px; box-shadow: 0 0 0 1px rgb(22 24 29 / .06), 0 12px 32px rgb(22 24 29 / .14); outline: none; animation: select-in var(--duration) ease-out; }
@@ -236,7 +240,7 @@ h1 { text-wrap: balance; }
 .select-pill .select-trigger { height: 36px; background: var(--panel-bg); border: 1px solid var(--border); padding: 0 var(--space-2) 0 var(--space-3); border-radius: var(--radius-full); font-size: var(--text-sm); font-weight: 500; }
 .select-pill .select-trigger > .icon { font-size: 20px; color: var(--text-secondary); }
 .select-pill .select-trigger:hover { background: var(--hover); }
-.select-pill .select-trigger[aria-expanded="true"], .select-pill .select-trigger:focus-visible { background: var(--panel-bg); border-color: var(--brand-ink); }
+.select-pill .select-trigger[aria-expanded="true"], .select-pill .select-trigger:focus-visible { background: var(--panel-bg); border-color: var(--focus-border); box-shadow: var(--focus-ring); }
 .select-pill .select-list { left: auto; right: 0; min-width: 160px; }
 
 /* 회의 중 자막 패널 안: 조금 작게 */
@@ -416,6 +420,36 @@ h1 { text-wrap: balance; }
 .banner { top: var(--space-4); }
 .toast { bottom: calc(var(--control-size) + 16px + var(--space-5) + var(--space-3)); max-width: calc(100% - 2 * var(--space-4)); word-break: break-all; }
 .banner .spinner { border-color: rgb(255 255 255 / .2); border-top-color: var(--brand-accent); }
+
+/* ── 화면 공유 중 자막 창(Document PiP) ── */
+.pip-body { margin: 0; background: #1C1C1E; color: var(--on-stage); overflow: hidden; }
+.pip { height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; }
+.pip-head { display: flex; align-items: center; gap: 8px; }
+.pip-live { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--on-stage-muted); }
+.pip-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); animation: live-pulse 1.6s ease-in-out infinite; }
+@keyframes live-pulse { 50% { opacity: .35; } }
+.pip-mic { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--control-bg); color: var(--on-stage); }
+.pip-mic .icon { font-size: 16px; }
+.pip-mic.off { background: var(--danger); color: #fff; }
+.pip-stop { height: 30px; padding: 0 12px; border-radius: var(--radius-full); background: var(--danger); color: #fff; font-size: 12px; font-weight: 700; }
+.pip-lines { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; }
+.pip-line { display: flex; align-items: flex-start; gap: 10px; opacity: .5; }
+.pip-line.latest { opacity: 1; }
+.pip-avatar { flex: none; width: 30px; height: 30px; margin-top: 2px; border-radius: 50%; display: grid; place-items: center; background: var(--monogram); color: #fff; font-size: 13px; font-weight: 600; }
+.pip-text { min-width: 0; }
+.pip-src { margin: 0; font-size: 11px; color: var(--on-stage-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pip-src b { font-weight: 600; color: var(--on-stage); }
+.pip-tgt { margin: 2px 0 0; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.pip-line.latest .pip-tgt { font-size: clamp(17px, 5.4vw, 26px); font-weight: 700; letter-spacing: -0.01em; }
+.pip-line.pending .pip-tgt { color: var(--on-stage-muted); }
+.pip-empty { margin: 0; color: var(--on-stage-muted); font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { .pip-live i { animation: none; } }
+
+/* 공유를 시작했는데 자막 창이 막혔을 때: 캡슐 위 오른쪽의 작은 안내 카드 */
+.pip-prompt { position: absolute; right: calc(var(--panel-space) + var(--space-5)); bottom: calc(var(--control-size) + 16px + var(--space-5) + var(--space-3)); z-index: 6; width: min(340px, calc(100% - 2 * var(--space-4))); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-panel); background: var(--glass); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); color: var(--on-stage); box-shadow: 0 16px 40px -12px rgb(0 0 0 / .5); }
+.pip-prompt p { margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); line-height: 1.5; color: var(--on-stage-muted); }
+.pip-prompt b { color: var(--on-stage); font-size: var(--text-md); }
+.pip-prompt .btn { align-self: flex-start; }
 
 /* 태블릿: 대화 기록을 좁게 */
 @media (max-width: 1100px) {

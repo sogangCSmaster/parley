@@ -11,11 +11,13 @@ import { Mesh } from '../lib/mesh'
 import type { Prefs } from '../lib/prefs'
 import { Signaling } from '../lib/signaling'
 import { ScreenShare } from '../lib/screen'
+import { pipSupported, usePipWindow } from '../lib/pip'
 import { useSpeakingPeers } from '../lib/speaking'
 import { startSpeech, type Speech } from '../lib/speech'
 import { downloadText, formatTranscript, Transcript, transcriptFileName } from '../lib/transcript'
 import type { Grant, SegCounter, SttStatus, TokenError } from '../lib/stt'
 import { CaptionPanel } from './CaptionPanel'
+import { CaptionPip } from './CaptionPip'
 import { MeetingGonePage } from './ErrorPages'
 import { KnockPrompts } from './KnockPrompts'
 import { LocaleSelect } from './LocaleSelect'
@@ -92,6 +94,14 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   // 나간 참가자의 지난 자막에도 이름이 보이도록 이름은 지우지 않고 모은다.
   const [names, setNames] = useState<Record<string, string>>({})
   const [sttStatus, setSttStatus] = useState<SttStatus | null>(null)
+  // 화면 공유 중 자막 창(Document PiP). 공유를 시작한 클릭 안에서 바로 열어 보고, 막히면 버튼으로 연다.
+  const pip = usePipWindow(`Tolkmeet · ${t('history.title')}`)
+  const pipOpenRef = useRef(pip.open)
+  useEffect(() => {
+    pipOpenRef.current = pip.open
+  }, [pip.open])
+  // 자막 창을 못 여는 브라우저 안내는 회의에 한 번만.
+  const pipHintedRef = useRef(false)
 
   const sigRef = useRef<Signaling | null>(null)
   const meshRef = useRef<Mesh | null>(null)
@@ -156,6 +166,11 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
             local.getVideoTracks()[0] ?? null,
             (track) => {
               setScreenTrack(track)
+              if (track && pipSupported) void pipOpenRef.current()
+              else if (track && !pipHintedRef.current) {
+                pipHintedRef.current = true
+                setToast({ key: 'pip.unsupported', ms: 7000 })
+              }
               const next = { ...mediaRef.current, screen: !!track }
               mediaRef.current = next
               onMediaChangeRef.current(next)
@@ -400,6 +415,11 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
   // 받은 오디오 레벨로 말하는 상대를 표시한다. 함수는 effect 의존성이라 고정해 둔다.
   const peerReceivers = useCallback(() => meshRef.current?.audioReceiversByPeer() ?? [], [])
   const speaking = useSpeakingPeers(peerReceivers, joined && !disconnected && Object.keys(peers).length > 0)
+  // 공유가 끝나면(직접 중지·연결 끊김 모두) 자막 창도 닫는다.
+  const pipClose = pip.close
+  useEffect(() => {
+    if (!screenTrack) pipClose()
+  }, [screenTrack, pipClose])
   const showPanel = joined && panelOpen && (settings.translation || isHost)
   const selfStream = useMemo(() => (screenTrack ? new MediaStream([screenTrack]) : local), [screenTrack, local])
 
@@ -644,12 +664,47 @@ export function Room({ code, local, prefs, media, onPrefsChange, onMediaChange, 
         <button ref={copyLinkRef} className="ctl" aria-label={t('ctl.copyLink')} onClick={copyLink}>
           <Icon name="link" />
         </button>
+        {screenTrack && pipSupported && (
+          <button
+            className={`ctl ${pip.win ? 'on' : ''}`}
+            aria-pressed={!!pip.win}
+            aria-label={pip.win ? t('pip.close') : t('pip.open')}
+            title={pip.win ? t('pip.close') : t('pip.open')}
+            onClick={() => (pip.win ? pip.close() : void pip.open())}
+          >
+            <Icon name="picture_in_picture_alt" />
+          </button>
+        )}
         <span className="capsule-sep" aria-hidden="true" />
         <button className="ctl leave" aria-label={t('ctl.leave')} onClick={leave}>
           <Icon name="call_end" />
         </button>
       </div>
 
+      {/* 공유를 시작한 클릭에서 자막 창이 열리지 않았으면(브라우저가 막음) 한 번 더 누르게 안내한다. */}
+      {screenTrack && pipSupported && !pip.win && (
+        <div className="pip-prompt" role="status">
+          <p>
+            <b>{t('pip.prompt')}</b>
+            {t('pip.hint')}
+          </p>
+          <button className="btn btn-primary" onClick={() => void pip.open()}>
+            <Icon name="picture_in_picture_alt" />
+            {t('pip.open')}
+          </button>
+        </div>
+      )}
+      {pip.win && screenTrack && (
+        <CaptionPip
+          win={pip.win}
+          captions={captions}
+          speakerName={speakerName}
+          hasMic={hasMic}
+          micOn={hasMic && media.mic}
+          onMic={() => changeMedia({ ...media, mic: !media.mic })}
+          onStop={() => void screenRef.current?.toggle()}
+        />
+      )}
       {isHost && <KnockPrompts knocks={knocks} onAdmit={admit} onDeny={deny} />}
       {toast && (
         <div className="toast" role="status">

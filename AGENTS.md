@@ -26,7 +26,7 @@ Speed is part of product quality. Every change is judged first on whether it mak
 ## Running the app and checking the screen (AI included)
 
 - Start: `scripts/dev.sh` (stop with `scripts/dev.sh stop`, check with `status`). It runs the Rust server in `dev` mode and Vite together, and waits until the API proxy and login are actually working.
-- Test host account: user `dev`, password in `server/.dev-host-password` (git-ignored, mode 0600, auto-created on first run and reused after). Never paste the password into chat or logs.
+- Test host account: email `dev@tolkmeet.test`, password in `server/.dev-host-password` (git-ignored, mode 0600, auto-created on first run and reused after). Never paste the password into chat or logs.
 - `tolkmeet-server dev` refuses to start unless bound to loopback (127.0.0.1/::1). Never use it on a deployed server.
 - Checking the screen (works without a browser pane):
 

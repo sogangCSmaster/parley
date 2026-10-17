@@ -215,6 +215,7 @@ impl Auth {
         username: &str,
         password: &str,
     ) -> Result<String, LoginError> {
+        let username = &normalize_username(username);
         // 형식에 맞지 않는 아이디는 어떤 계정과도 일치할 수 없다(형식은 공개 정보).
         // 해싱도 기록도 하지 않아 큰 키가 기록 맵에 쌓이지 않는다.
         if !is_valid_username(username) {
@@ -329,14 +330,21 @@ pub fn client_ip(peer: IpAddr, headers: &HeaderMap, trust_proxy: bool) -> IpAddr
         .unwrap_or(peer)
 }
 
+/// 계정 아이디는 이메일 주소다(예전 형식의 짧은 아이디도 그대로 받는다). 비교는 소문자로 한다.
 fn is_valid_username(user: &str) -> bool {
-    (1..=32).contains(&user.len())
+    (1..=254).contains(&user.len())
         && user
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+            .all(|b| b.is_ascii_alphanumeric() || b"._-@+".contains(&b))
 }
 
-/// `HOST_ACCOUNTS` 형식: 공백·줄바꿈으로 구분한 `아이디:argon2 PHC 해시` 목록.
+/// 이메일은 대소문자를 가리지 않는다. 저장·비교·시도 제한 모두 이 값으로 한다.
+fn normalize_username(user: &str) -> String {
+    user.trim().to_ascii_lowercase()
+}
+
+/// `HOST_ACCOUNTS` 형식: 공백·줄바꿈으로 구분한 `이메일:argon2 PHC 해시` 목록.
+/// 이메일에는 `:`가 들어가지 않으므로 첫 `:`에서 나눈다.
 /// PHC 문자열에는 쉼표가 들어가므로 구분자로 공백을 쓴다.
 pub fn parse_accounts(raw: &str) -> Result<HashMap<String, String>, String> {
     let mut accounts = HashMap::new();
@@ -348,7 +356,7 @@ pub fn parse_accounts(raw: &str) -> Result<HashMap<String, String>, String> {
             return Err(format!("invalid username `{user}`"));
         }
         PasswordHash::new(hash).map_err(|e| format!("invalid hash for `{user}`: {e}"))?;
-        accounts.insert(user.to_owned(), hash.to_owned());
+        accounts.insert(normalize_username(user), hash.to_owned());
     }
     Ok(accounts)
 }
@@ -421,6 +429,19 @@ mod tests {
 
         auth.logout(&token);
         assert_eq!(auth.session_user(&token), None);
+    }
+
+    #[tokio::test]
+    async fn email_login_ignores_case_and_surrounding_spaces() {
+        let auth = auth_with("Minjun+work@Company.com", "correct horse");
+        let token = auth
+            .login(IP_A, " minjun+WORK@company.com ", "correct horse")
+            .await
+            .unwrap();
+        assert_eq!(
+            auth.session_user(&token).as_deref(),
+            Some("minjun+work@company.com")
+        );
     }
 
     #[tokio::test]

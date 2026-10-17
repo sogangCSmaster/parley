@@ -40,7 +40,7 @@ Requires Rust (stable) and Node 20+ / pnpm. The quickest way:
 scripts/dev.sh
 ```
 
-Starts the server in `dev` mode and the web app together (http://localhost:5173). In `dev` mode the server creates a test host account `dev` on first run, with its password saved in `server/.dev-host-password` (excluded from git). It only runs when bound to localhost.
+Starts the server in `dev` mode and the web app together (http://localhost:5173). In `dev` mode the server creates a test host account `dev@tolkmeet.test` on first run, with its password saved in `server/.dev-host-password` (excluded from git). It only runs when bound to localhost.
 
 To capture screens headlessly (for cloud sessions or AI checks):
 
@@ -74,7 +74,7 @@ Accounts are registered by the server operator via an environment variable (no D
 cargo run -q --manifest-path server/Cargo.toml -- hash-password
 ```
 
-Put the output into `HOST_ACCOUNTS` as `id:hash` (separate multiple accounts with spaces or newlines). Sessions live in server memory, so a server restart means logging in again.
+Put the output into `HOST_ACCOUNTS` as `email:hash` (separate multiple accounts with spaces or newlines). Sessions live in server memory, so a server restart means logging in again.
 
 Open http://localhost:5173, log in via **Host login**, click **New meeting**, and open the generated link in a different browser (or a private window).
 The Vite dev server proxies `/api` and `/ws` to the Rust server on `127.0.0.1:8080`.
@@ -94,7 +94,7 @@ Server environment variables:
 | `TURN_URLS` | (none) | Space-separated `turn:`/`turns:` URLs of your coturn server. Set together with `TURN_SECRET` |
 | `TURN_SECRET` | (none) | coturn `static-auth-secret` (32+ characters). Each admitted participant gets their own 12-hour TURN credential; without TURN, some participants behind strict NATs can't connect |
 | `RUST_LOG` | `info` | Log filter |
-| `HOST_ACCOUNTS` | (none) | Host accounts: `id:argon2-hash`, space-separated. If empty, nobody can create meetings |
+| `HOST_ACCOUNTS` | (none) | Host accounts: `email:argon2-hash`, space-separated (emails are case-insensitive). If empty, nobody can create meetings |
 | `COOKIE_SECURE` | `true` | Session cookie `Secure` flag. Use `false` only for local http development |
 | `GEMINI_API_KEY` | (none) | Translation API key (server only, never sent to browsers). If empty, captions show the original only |
 | `GEMINI_TRANSLATE_MODEL` | `gemini-3.5-flash-lite` | Translation model |

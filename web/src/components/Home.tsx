@@ -15,7 +15,8 @@ export function Home() {
   return (
     <div className="shell">
       <Header />
-      {auth.status === 'host' ? <HostHome name={auth.username} /> : <GuestHome />}
+      {/* 계정은 이메일이다. 인사에는 @ 앞부분만 쓴다(이름은 2단계 계정에서 받는다). */}
+      {auth.status === 'host' ? <HostHome name={auth.username.split('@')[0]} /> : <GuestHome />}
     </div>
   )
 }

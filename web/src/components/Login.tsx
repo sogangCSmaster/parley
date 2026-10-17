@@ -14,7 +14,7 @@ const ERRORS: Record<Exclude<LoginResult, 'ok'>, MessageKey> = {
 
 export function Login() {
   const { t } = useI18n()
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<MessageKey | null>(null)
@@ -23,7 +23,7 @@ export function Login() {
     e.preventDefault()
     setPending(true)
     setError(null)
-    const result = await login(username.trim(), password)
+    const result = await login(email.trim(), password)
     if (result === 'ok') {
       await refreshAuth()
       navigate('/')
@@ -41,16 +41,18 @@ export function Login() {
         <form className="auth-card" onSubmit={submit}>
           <BrandMark size={56} />
           <h1>{t('auth.loginTitle')}</h1>
-          {/* 아이디·비밀번호를 한 덩어리 칸으로: 칸마다 위에 작은 이름표 */}
+          {/* 이메일·비밀번호를 한 덩어리 칸으로: 칸마다 위에 작은 이름표 */}
           <div className="field-stack">
             <label>
-              <span>{t('auth.username')}</span>
+              <span>{t('auth.email')}</span>
               <input
-                autoComplete="username"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
                 autoFocus
                 required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </label>
             <label>
@@ -69,7 +71,7 @@ export function Login() {
               {t(error)}
             </p>
           )}
-          <button className="btn btn-primary btn-lg" disabled={pending || !username.trim() || !password}>
+          <button className="btn btn-primary btn-lg" disabled={pending || !email.trim() || !password}>
             {pending ? t('auth.loggingIn') : t('auth.submit')}
           </button>
           <p className="auth-foot">{t('auth.guestNote')}</p>

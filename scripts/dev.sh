@@ -61,7 +61,7 @@ for _ in $(seq 1 300); do
   if healthy; then
     echo
     status
-    echo "login: user 'dev', password in server/.dev-host-password (created on first run)"
+    echo "login: dev@tolkmeet.test, password in server/.dev-host-password (created on first run)"
     exit 0
   fi
   if ! running server || ! running web; then break; fi

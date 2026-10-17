@@ -65,11 +65,11 @@ const en = {
 
   'auth.hostLogin': 'Host login',
   'auth.loginTitle': 'Host login',
-  'auth.username': 'ID',
+  'auth.email': 'Email',
   'auth.password': 'Password',
   'auth.submit': 'Log in',
   'auth.loggingIn': 'Logging in…',
-  'auth.invalid': 'Incorrect ID or password.',
+  'auth.invalid': 'Incorrect email or password.',
   'auth.locked': 'Too many failed attempts. Try again in 15 minutes.',
   'auth.failed': 'Couldn’t log in. Please try again in a moment.',
   'auth.logout': 'Log out',
@@ -166,6 +166,14 @@ const en = {
   'home.onThisDevice': 'Right on this device',
   'home.inPersonShort': 'Face to face over one phone',
   'home.liveShort': 'A tablet on the table',
+  'pip.open': 'Pop out captions',
+  'pip.close': 'Close caption window',
+  'pip.sharing': 'Presenting',
+  'pip.stop': 'Stop sharing',
+  'pip.prompt': 'Keep captions on top while you present',
+  'pip.hint': 'The caption window floats above other apps. If you share a tab or window, others won’t see it.',
+  'pip.unsupported': 'This browser can’t pop out captions. Put the meeting window next to what you share to keep reading them.',
+  'pip.empty': 'Captions will appear here.',
 } as const
 
 export type MessageKey = keyof typeof en
@@ -231,11 +239,11 @@ const ko: Messages = {
 
   'auth.hostLogin': '주최자 로그인',
   'auth.loginTitle': '주최자 로그인',
-  'auth.username': '아이디',
+  'auth.email': '이메일',
   'auth.password': '비밀번호',
   'auth.submit': '로그인',
   'auth.loggingIn': '로그인 중…',
-  'auth.invalid': '아이디 또는 비밀번호가 맞지 않아요.',
+  'auth.invalid': '이메일 또는 비밀번호가 맞지 않아요.',
   'auth.locked': '실패가 너무 많아요. 15분 뒤에 다시 시도해 주세요.',
   'auth.failed': '로그인하지 못했어요. 잠시 후 다시 시도해 주세요.',
   'auth.logout': '로그아웃',
@@ -332,6 +340,14 @@ const ko: Messages = {
   'home.onThisDevice': '이 기기에서 바로',
   'home.inPersonShort': '휴대폰 하나로 마주 보고',
   'home.liveShort': '탁자 위 태블릿으로',
+  'pip.open': '자막 창 띄우기',
+  'pip.close': '자막 창 닫기',
+  'pip.sharing': '화면 공유 중',
+  'pip.stop': '공유 중지',
+  'pip.prompt': '발표하는 동안 자막을 화면 위에 띄워 두세요',
+  'pip.hint': '자막 창은 다른 앱 위에도 떠 있어요. 탭이나 창을 공유하면 상대에게는 보이지 않아요.',
+  'pip.unsupported': '이 브라우저는 자막 창을 띄울 수 없어요. 회의 창을 공유하는 화면 옆에 두면 자막을 함께 볼 수 있어요.',
+  'pip.empty': '자막이 여기에 나타나요.',
 
 }
 
@@ -395,11 +411,11 @@ const ja: Messages = {
 
   'auth.hostLogin': '主催者ログイン',
   'auth.loginTitle': '主催者ログイン',
-  'auth.username': 'ID',
+  'auth.email': 'メールアドレス',
   'auth.password': 'パスワード',
   'auth.submit': 'ログイン',
   'auth.loggingIn': 'ログイン中…',
-  'auth.invalid': 'IDまたはパスワードが正しくありません。',
+  'auth.invalid': 'メールアドレスまたはパスワードが正しくありません。',
   'auth.locked': '失敗回数が多すぎます。15分後にもう一度お試しください。',
   'auth.failed': 'ログインできませんでした。しばらくしてからもう一度お試しください。',
   'auth.logout': 'ログアウト',
@@ -496,6 +512,14 @@ const ja: Messages = {
   'home.onThisDevice': 'この端末ですぐに',
   'home.inPersonShort': 'スマホ1台で向かい合って',
   'home.liveShort': 'テーブルの上のタブレットで',
+  'pip.open': '字幕ウィンドウを表示',
+  'pip.close': '字幕ウィンドウを閉じる',
+  'pip.sharing': '画面共有中',
+  'pip.stop': '共有を停止',
+  'pip.prompt': '発表中も字幕を画面の手前に表示できます',
+  'pip.hint': '字幕ウィンドウは他のアプリの上にも表示されます。タブやウィンドウを共有すれば、相手には見えません。',
+  'pip.unsupported': 'このブラウザでは字幕ウィンドウを表示できません。会議ウィンドウを共有画面の横に置くと字幕を一緒に見られます。',
+  'pip.empty': '字幕はここに表示されます。',
 
 }
 
