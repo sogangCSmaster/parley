@@ -256,6 +256,7 @@ const en = {
   'meetings.deleteConfirm': 'Delete “{title}”? Anyone you sent the link to won’t be able to join.',
   'paid.pending': 'Your payment is still being confirmed. This can take a minute.',
   'paid.checkAgain': 'Check again',
+  'checkout.changeNote': 'The new plan starts now. The prorated difference for the rest of this billing period is charged right away to your saved payment method.',
 } as const
 
 export type PageKey = keyof typeof en
@@ -513,6 +514,8 @@ const ko: Messages = {
   'meetings.deleteConfirm': '“{title}” 회의를 삭제할까요? 링크를 받은 사람은 들어올 수 없게 돼요.',
   'paid.pending': '결제를 아직 확인하고 있어요. 1분쯤 걸릴 수 있어요.',
   'paid.checkAgain': '다시 확인',
+  'checkout.changeNote': '새 요금제는 바로 시작돼요. 이번 결제 기간에 남은 날만큼의 차액이 등록된 결제 수단으로 바로 청구돼요.',
+
 }
 
 const ja: Messages = {
@@ -767,6 +770,8 @@ const ja: Messages = {
   'meetings.deleteConfirm': '「{title}」を削除しますか？リンクを受け取った人は参加できなくなります。',
   'paid.pending': 'お支払いをまだ確認しています。1分ほどかかることがあります。',
   'paid.checkAgain': 'もう一度確認',
+  'checkout.changeNote': '新しいプランはすぐに始まります。今の請求期間の残り日数分の差額が、登録済みのお支払い方法にすぐ請求されます。',
+
 }
 
 registerMessages({ en, ko, ja })

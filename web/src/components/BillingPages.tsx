@@ -77,30 +77,32 @@ export function Checkout() {
   }, [auth.status])
   if (auth.status !== 'host') return <div className="shell" />
   const user = auth.user
+  // 요금제가 없으면 시간 추가는 살 수 없다(구독부터).
+  const sel: Item = item === 'hours' && user.plan === 'none' ? 'basic' : item
   // 이미 구독 중이면 다른 요금제는 "바꾸기"(남은 기간만큼 정산)로 처리한다.
-  const changing = item !== 'hours' && user.plan !== 'none' && user.plan !== item
-  const same = item !== 'hours' && user.plan === item
+  const changing = sel !== 'hours' && user.plan !== 'none' && user.plan !== sel
+  const same = sel !== 'hours' && user.plan === sel
 
   async function pay() {
     setBusy(true)
     setError(null)
     if (changing) {
-      const r = await api.post('/api/billing/change', { plan: item })
+      const r = await api.post('/api/billing/change', { plan: sel })
       setBusy(false)
       if (!r.ok) return setError('account.billingFailed')
-      return navigate(`/billing/done?item=${item}`)
+      return navigate(`/billing/done?item=${sel}`)
     }
-    const r = await api.post<CheckoutData | { dev: true }>('/api/billing/checkout', { item, quantity: item === 'hours' ? qty : 1 })
+    const r = await api.post<CheckoutData | { dev: true }>('/api/billing/checkout', { item: sel, quantity: sel === 'hours' ? qty : 1 })
     if (!r.ok) {
       setBusy(false)
       return setError('account.billingFailed')
     }
     if ('dev' in r.data) {
       // 개발 모드: 결제 없이 켠다.
-      const d = await api.post('/api/billing/dev', { item, quantity: qty })
+      const d = await api.post('/api/billing/dev', { item: sel, quantity: qty })
       setBusy(false)
       if (!d.ok) return setError('account.billingFailed')
-      return navigate(`/billing/done?item=${item}${item === 'hours' ? `&q=${qty}` : ''}`)
+      return navigate(`/billing/done?item=${sel}${sel === 'hours' ? `&q=${qty}` : ''}`)
     }
     const data = r.data
     try {
@@ -118,7 +120,7 @@ export function Checkout() {
           displayMode: 'overlay',
           theme: isDark() ? 'dark' : 'light',
           locale: document.documentElement.lang || 'en',
-          successUrl: `${location.origin}/billing/done?item=${item}${item === 'hours' ? `&q=${qty}` : ''}`,
+          successUrl: `${location.origin}/billing/done?item=${sel}${sel === 'hours' ? `&q=${qty}` : ''}`,
         },
       })
     } catch {
@@ -127,16 +129,16 @@ export function Checkout() {
     setBusy(false)
   }
 
-  const priceLabel = item === 'hours' ? `$${qty * 3}` : PRICE[item]
+  const priceLabel = sel === 'hours' ? `$${qty * 3}` : PRICE[sel]
   return (
     <div className="shell">
       <Header />
       <main className="checkout">
         <section className="checkout-main" aria-labelledby="checkout-title">
-          <h1 id="checkout-title">{t(item === 'hours' ? 'checkout.hoursTitle' : item === 'pro' ? 'checkout.proTitle' : 'checkout.basicTitle')}</h1>
+          <h1 id="checkout-title">{t(sel === 'hours' ? 'checkout.hoursTitle' : sel === 'pro' ? 'checkout.proTitle' : 'checkout.basicTitle')}</h1>
           <div className="choice-grid" role="radiogroup" aria-label={t('account.plan')}>
             {(['basic', 'pro'] as const).map((p) => (
-              <button key={p} type="button" role="radio" aria-checked={item === p} className={`choice${item === p ? ' on' : ''}`} onClick={() => setItem(p)}>
+              <button key={p} type="button" role="radio" aria-checked={sel === p} className={`choice${sel === p ? ' on' : ''}`} onClick={() => setItem(p)}>
                 <span className="choice-top">
                   {p === 'pro' ? 'Pro' : 'Basic'}
                   {user.plan === p && <span className="badge-soft">{t('checkout.current')}</span>}
@@ -149,7 +151,7 @@ export function Checkout() {
               </button>
             ))}
             {user.plan !== 'none' && (
-              <button type="button" role="radio" aria-checked={item === 'hours'} className={`choice${item === 'hours' ? ' on' : ''}`} onClick={() => setItem('hours')}>
+              <button type="button" role="radio" aria-checked={sel === 'hours'} className={`choice${sel === 'hours' ? ' on' : ''}`} onClick={() => setItem('hours')}>
                 <span className="choice-top">{t('account.addHours')}</span>
                 <b>
                   $3
@@ -159,7 +161,7 @@ export function Checkout() {
               </button>
             )}
           </div>
-          {item === 'hours' && (
+          {sel === 'hours' && (
             <div className="segmented" role="radiogroup" aria-label={t('checkout.howMany')}>
               {HOURS.map((h) => (
                 <button key={h} type="button" role="radio" aria-checked={qty === h} className={qty === h ? 'on' : ''} onClick={() => setQty(h)}>
@@ -169,7 +171,7 @@ export function Checkout() {
             </div>
           )}
           <ul className="ticks">
-            <li>{t(item === 'pro' ? 'checkout.proHours' : item === 'basic' ? 'checkout.basicHours' : 'checkout.hoursKeep')}</li>
+            <li>{t(sel === 'pro' ? 'checkout.proHours' : sel === 'basic' ? 'checkout.basicHours' : 'checkout.hoursKeep')}</li>
             <li>{t('checkout.allModes')}</li>
             <li>{t('checkout.guestsFree')}</li>
             <li>{t('checkout.extra')}</li>
@@ -188,13 +190,18 @@ export function Checkout() {
             <span title={user.email}>{user.email}</span>
           </div>
           <div className="pay-line">
-            <span>{item === 'hours' ? t('checkout.hours', { n: String(qty) }) : `${item === 'pro' ? 'Pro' : 'Basic'} · ${t('account.monthly')}`}</span>
+            <span>{sel === 'hours' ? t('checkout.hours', { n: String(qty) }) : `${sel === 'pro' ? 'Pro' : 'Basic'} · ${t('account.monthly')}`}</span>
             <span>{priceLabel}</span>
           </div>
-          <div className="pay-line muted">
-            <span>{t('checkout.tax')}</span>
-            <span>{t('checkout.taxLater')}</span>
-          </div>
+          {changing ? (
+            // 요금제 바꾸기는 결제창 없이 등록된 결제 수단으로 남은 기간만큼 바로 정산된다.
+            <p className="form-note">{t('checkout.changeNote')}</p>
+          ) : (
+            <div className="pay-line muted">
+              <span>{t('checkout.tax')}</span>
+              <span>{t('checkout.taxLater')}</span>
+            </div>
+          )}
           {error && (
             <p className="form-error" role="alert">
               {t(error)}
@@ -204,13 +211,15 @@ export function Checkout() {
             <p className="form-note">{t('checkout.already')}</p>
           ) : (
             <button className="btn btn-primary btn-lg" disabled={busy || (!features().billing && !features().devBilling)} onClick={() => void pay()}>
-              {changing ? t('checkout.change', { plan: item === 'pro' ? 'Pro' : 'Basic' }) : t('checkout.pay', { price: priceLabel })}
+              {changing ? t('checkout.change', { plan: sel === 'pro' ? 'Pro' : 'Basic' }) : t('checkout.pay', { price: priceLabel })}
             </button>
           )}
-          <p className="fine center">
-            <Icon name="lock_reset" />
-            {t('checkout.secure')}
-          </p>
+          {!changing && (
+            <p className="fine center">
+              <Icon name="lock_reset" />
+              {t('checkout.secure')}
+            </p>
+          )}
         </section>
       </main>
     </div>
@@ -225,6 +234,9 @@ export function PaidDone() {
   const [starting, setStarting] = useState(false)
   const user: User | null = auth.status === 'host' ? auth.user : null
   const [round, setRound] = useState(0)
+  // 요금제를 샀거나 바꿨으면 그 요금제가 될 때까지, 시간만 샀으면 요금제가 있을 때까지 확인한다.
+  const want = item === 'pro' || item === 'basic' ? item : null
+  const waiting = (plan: string | undefined) => (want ? plan !== want : plan === 'none')
   const [stalled, setStalled] = useState(false)
 
   // 결제 결과는 Paddle 웹훅으로 조금 늦게 들어올 수 있다. 요금제가 켜질 때까지 잠깐 다시 확인한다.
@@ -235,7 +247,7 @@ export function PaidDone() {
       const r = await api.get<{ user: User | null }>('/api/me')
       if (stop) return
       if (r.ok && r.data.user) setUser(r.data.user)
-      if (!r.ok || r.data.user?.plan === 'none') {
+      if (!r.ok || waiting(r.data.user?.plan)) {
         // 15초쯤 지나도 안 들어오면 멈추고, 다시 확인할 수 있게 알린다.
         if (tries++ < 10) setTimeout(() => void poll(), 1500)
         else setStalled(true)
@@ -245,6 +257,7 @@ export function PaidDone() {
     return () => {
       stop = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- want은 주소에서 한 번 정해진다
   }, [round])
 
   async function start() {
@@ -285,7 +298,7 @@ export function PaidDone() {
             </li>
           </ol>
         )}
-        {stalled && user?.plan === 'none' && (
+        {stalled && waiting(user?.plan) && (
           <p className="form-note" role="status">
             {t('paid.pending')}{' '}
             <button

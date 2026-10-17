@@ -144,8 +144,8 @@ function MfaStep({ ticket, onRestart }: { ticket: string; onRestart: () => void 
     if (r.ok) return enterApp()
     setPending(false)
     setCode('')
-    // 5번 틀리면(429) 이 로그인 시도는 끝나므로 만료와 같이 처음부터 다시 하게 한다.
-    setError((r.status === 401 && r.code === 'expired') || r.status === 429 ? 'mfa.expired' : 'mfa.wrong')
+    // 시도 한도(429)는 기다리라고 알리고, 처음부터 다시 할 수 있게 버튼도 보인다.
+    setError(r.status === 401 && r.code === 'expired' ? 'mfa.expired' : r.status === 429 ? 'auth.locked' : 'mfa.wrong')
   }
 
   async function passkey() {
@@ -216,7 +216,7 @@ function MfaStep({ ticket, onRestart }: { ticket: string; onRestart: () => void 
         >
           {recovery ? t('mfa.useApp') : t('mfa.useRecovery')}
         </button>
-        {error === 'mfa.expired' && (
+        {(error === 'mfa.expired' || error === 'auth.locked') && (
           <button type="button" className="btn btn-outline" onClick={onRestart}>
             {t('mfa.otherAccount')}
           </button>

@@ -246,16 +246,19 @@ function EmailRow({ user }: { user: User }) {
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [error, setError] = useState<MessageKey | null>(null)
+  const [note, setNote] = useState<MessageKey | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function send(e?: FormEvent) {
     e?.preventDefault()
     setBusy(true)
     setError(null)
+    setNote(null)
     const r = await api.post('/api/account/email', { email: email.trim(), password })
     setBusy(false)
     if (r.ok) setStep('code')
     else setError(errorKey(r.code))
+    return r.ok
   }
 
   async function confirm(value: string) {
@@ -304,9 +307,9 @@ function EmailRow({ user }: { user: User }) {
         <div className="stack-form">
           <p className="form-note">{t('account.codeSent', { email: email.trim() })}</p>
           <CodeInput value={code} onChange={setCode} onComplete={(v) => void confirm(v)} label={t('verify.code')} disabled={busy} autoFocus />
-          <Message error={error} />
+          <Message error={error} note={note} />
           <div className="row">
-            <button type="button" className="link-btn" disabled={busy} onClick={() => void send()}>
+            <button type="button" className="link-btn" disabled={busy} onClick={() => void send().then((ok) => ok && setNote('verify.resent'))}>
               {t('verify.resend')}
             </button>
             <button type="button" className="link-btn" onClick={() => setStep('enter')}>
@@ -870,9 +873,12 @@ function PasswordCard({ user }: { user: User }) {
 
   // Google 연결은 비밀번호 없이 들어올 길이 하나 더 생기므로 한 번 더 확인한 뒤 Google로 보낸다.
   async function link(password: string) {
+    if (busy) return
+    setBusy(true)
     setError(null)
     const r = await api.post<{ url: string }>('/api/auth/google/link', { password, locale })
     if (r.ok) return location.assign(r.data.url)
+    setBusy(false)
     setLinking(false)
     setError(errorKey(r.code))
   }
