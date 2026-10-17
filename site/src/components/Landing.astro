@@ -181,7 +181,8 @@ const jsonLd = [
     <section id="pricing" class="wrap section" aria-labelledby="pricing-title">
       <h2 id="pricing-title" class="section-title">{t.pricingTitle}</h2>
       <p class="section-lead">{t.pricingLead}</p>
-      <div class="plans">
+      {/* 넓은 화면: 요금제 두 장 + 포함 항목 한 칸. 중간 폭: 두 장 아래에 포함 항목. 휴대폰: 한 줄씩. */}
+      <div class="pricing-grid">
         {t.plans.map((p, i) => (
           <div class={`plan${i === 0 ? ' plan-main' : ''}`}>
             <h3>{p.name}</h3>
@@ -191,13 +192,13 @@ const jsonLd = [
             <a class={`btn ${i === 0 ? 'btn-ink' : 'btn-outline'}`} href={SIGNUP_URL}>{p.cta}</a>
           </div>
         ))}
+        <div class="includes">
+          <h3>{t.includesTitle}</h3>
+          <ul>{t.includes.map((x) => <li class="tr-mark">{x}</li>)}</ul>
+          <p class="plans-extra">{t.pricingExtra}</p>
+          <p class="plans-fine">{t.pricingFine}</p>
+        </div>
       </div>
-      <div class="includes">
-        <h3>{t.includesTitle}</h3>
-        <ul>{t.includes.map((x) => <li class="tr-mark">{x}</li>)}</ul>
-      </div>
-      <p class="plans-extra">{t.pricingExtra}</p>
-      <p class="plans-fine">{t.pricingFine}</p>
     </section>
 
     <section id="faq" class="wrap section" aria-labelledby="faq-title">

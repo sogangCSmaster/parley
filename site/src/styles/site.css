@@ -201,7 +201,7 @@ svg { display: block; }
 .details dd { margin-top: 8px; color: var(--text-secondary); }
 
 /* ── 요금 ── */
-.plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 880px; margin-top: 48px; }
+.pricing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, .9fr); gap: 16px; margin-top: 48px; }
 .plan { display: flex; flex-direction: column; padding: 32px; border: 1.5px solid var(--border); border-radius: 24px; }
 .plan h3 { font-size: 18px; font-weight: 700; }
 .plan-price { display: flex; align-items: baseline; gap: 6px; margin-top: 20px; }
@@ -215,12 +215,12 @@ svg { display: block; }
 .plan-main .btn-ink { background: var(--page-bg); color: var(--text); }
 .plan-main .btn-ink:hover { background: var(--field-bg); }
 .plan-main :focus-visible { outline-color: var(--page-bg); }
-.includes { max-width: 880px; margin-top: 36px; }
-.includes h3 { font-size: 16px; font-weight: 700; }
-.includes ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 32px; margin-top: 14px; }
+.includes { display: flex; flex-direction: column; padding: 32px 8px 32px 28px; }
+.includes h3 { font-size: 18px; font-weight: 700; }
+.includes ul { display: grid; gap: 12px; margin-top: 22px; }
 .includes li { color: var(--text-secondary); }
-.plans-extra { margin-top: 32px; font-weight: 600; }
-.plans-fine { margin-top: 4px; color: var(--text-secondary); font-size: 15px; }
+.plans-extra { margin-top: auto; padding-top: 28px; font-weight: 600; }
+.plans-fine { margin-top: 6px; color: var(--text-secondary); font-size: 14px; }
 
 /* ── 질문 ── */
 .faq { max-width: 860px; margin-top: 40px; border-top: 1px solid var(--border); }
@@ -254,6 +254,9 @@ svg { display: block; }
 /* ── 좁은 화면 ── */
 @media (max-width: 1080px) {
   .top-nav { display: none; }
+  .pricing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .includes { grid-column: 1 / -1; padding: 28px 0 0; }
+  .includes ul { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
   .details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 860px) {
@@ -269,7 +272,7 @@ svg { display: block; }
   .motion .modes-grid { height: min(640px, 72svh); }
   .motion .mode { align-content: start; }
   .motion .mode .device { height: min(360px, 42svh); aspect-ratio: auto; }
-  .plans { grid-template-columns: 1fr; max-width: 520px; }
+
   .foot-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) {
@@ -286,7 +289,7 @@ svg { display: block; }
   .story-steps h2 { font-size: 24px; }
   .story-steps p, .mode p { font-size: 16px; }
   .details { grid-template-columns: 1fr; }
-  .includes ul { grid-template-columns: 1fr; }
+  .pricing-grid, .includes ul { grid-template-columns: 1fr; }
   .statement { padding-bottom: 140px; }
   .hero-points { grid-template-columns: 1fr; gap: 18px; margin-top: 48px; }
   .foot-grid { grid-template-columns: 1fr; }
