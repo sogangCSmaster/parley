@@ -658,11 +658,12 @@ pub async fn login_mfa(
     };
     let ip = client(&state, peer, &headers);
     // 이 로그인 시도(티켓)의 횟수를 다 썼으면 다시 로그인하면 되고, 사용자·클라이언트 한도에 걸렸으면 기다려야 한다.
-    if !state.auth.count_mfa_attempt(&req.ticket) {
-        return error(StatusCode::TOO_MANY_REQUESTS, "ticket_spent");
-    }
+    // 사용자 한도를 먼저 본다: 한도에 막힌 요청이 이 로그인의 횟수를 쓰지 않게.
     if !state.accounts.may_try_login_mfa(user_id, ip) {
         return error(StatusCode::TOO_MANY_REQUESTS, "locked");
+    }
+    if !state.auth.count_mfa_attempt(&req.ticket) {
+        return error(StatusCode::TOO_MANY_REQUESTS, "ticket_spent");
     }
     let code = req.code.clone();
     let ok = state

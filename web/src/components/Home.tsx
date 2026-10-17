@@ -111,7 +111,12 @@ function HostHome({ user }: { user: User }) {
   // 회의 목록과 사용량은 첫 화면과 함께 병렬로 받는다(서로 기다리지 않게).
   useEffect(() => {
     let alive = true
-    void api.get<{ upcoming: Meeting[]; past: Meeting[] }>('/api/meetings').then((r) => alive && r.ok && setMeetings(r.data))
+    void api.get<{ upcoming: Meeting[]; past: Meeting[] }>('/api/meetings').then((r) => {
+      if (!alive || !r.ok) return
+      // 홈에는 끝날 시각이 아직 안 된 회의만(시간이 지났지만 링크는 쓸 수 있는 회의는 회의 목록에서 본다).
+      const now = Date.now() / 1000
+      setMeetings({ ...r.data, upcoming: r.data.upcoming.filter((m) => (m.startsAt ?? 0) + m.durationMin * 60 > now) })
+    })
     if (user.plan !== 'none') void api.get<Billing>('/api/billing').then((r) => alive && r.ok && setBilling(r.data))
     return () => {
       alive = false

@@ -523,7 +523,6 @@ const ko: Messages = {
   'mfa.tooMany': '코드를 너무 많이 틀렸어요. 다시 로그인하면 새로 시도할 수 있어요.',
   'mfa.loginAgain': '다시 로그인',
   'mfa.locked': '지금은 시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.',
-
 }
 
 const ja: Messages = {
@@ -783,7 +782,6 @@ const ja: Messages = {
   'mfa.tooMany': 'コードを何度も間違えました。もう一度ログインするとやり直せます。',
   'mfa.loginAgain': 'もう一度ログイン',
   'mfa.locked': '試行回数が多すぎます。しばらくしてからもう一度お試しください。',
-
 }
 
 registerMessages({ en, ko, ja })

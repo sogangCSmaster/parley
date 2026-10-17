@@ -163,7 +163,6 @@ pub fn end_rooms(c: &rusqlite::Connection, codes: &[String], now: i64) -> rusqli
     Ok(())
 }
 
-/// 메모리에 없는 회의 코드: 예약된(아직 안 끝난) 회의면 방을 연다.
 /// 서버가 다시 시작되면 메모리의 즉석 회의 방은 모두 사라진다. 그 회의 기록을 닫아 둔다
 /// (시작했으면 마지막 활동 시각으로 끝내고, 시작도 안 했으면 지운다). 예약 회의는 링크로 다시 열 수 있으므로 그대로 둔다.
 pub fn close_orphans(db: &Db) -> rusqlite::Result<()> {
@@ -182,6 +181,7 @@ pub fn close_orphans(db: &Db) -> rusqlite::Result<()> {
     })
 }
 
+/// 메모리에 없는 회의 코드: 예약된(아직 안 끝난) 회의면 방을 연다.
 pub async fn ensure_room(db: &Db, rooms: &Rooms, code: &str) {
     if rooms.exists(code) {
         return;
@@ -334,7 +334,7 @@ struct CleanMeeting {
     guests: Vec<String>,
 }
 
-fn clean_meeting(req: &MeetingReq) -> Result<CleanMeeting, &'static str> {
+fn clean_meeting(req: &MeetingReq, keep_start: Option<i64>) -> Result<CleanMeeting, &'static str> {
     let title: String = req
         .title
         .trim()
@@ -349,7 +349,9 @@ fn clean_meeting(req: &MeetingReq) -> Result<CleanMeeting, &'static str> {
         return Err("duration");
     }
     // 과거로는 예약하지 않는다(지금부터 10분 전까지는 허용: 바로 시작하는 회의를 예약하는 경우).
-    if req.starts_at < now_secs() - 600 || req.starts_at > now_secs() + 400 * 86_400 {
+    // 고칠 때 시각을 그대로 두면(이미 시작한 회의의 이름만 고치는 등) 받는다.
+    let unchanged = keep_start == Some(req.starts_at);
+    if (!unchanged && req.starts_at < now_secs() - 600) || req.starts_at > now_secs() + 400 * 86_400 {
         return Err("starts_at");
     }
     let lang = |l: &str| {
@@ -389,6 +391,8 @@ fn clean_meeting(req: &MeetingReq) -> Result<CleanMeeting, &'static str> {
 fn meeting_json(r: &rusqlite::Row) -> rusqlite::Result<Value> {
     let started: Option<i64> = r.get("started_at")?;
     let ended: Option<i64> = r.get("ended_at")?;
+    // 끝난 시각이 기록되지 않은 회의(재시작 등)는 마지막 활동 시각으로 길이를 잰다.
+    let last_active: Option<i64> = r.get("last_active_at")?;
     Ok(json!({
         "id": r.get::<_, i64>("id")?,
         "code": r.get::<_, String>("code")?,
@@ -402,13 +406,13 @@ fn meeting_json(r: &rusqlite::Row) -> rusqlite::Result<Value> {
         "createdAt": r.get::<_, i64>("created_at")?,
         "startedAt": started,
         "endedAt": ended,
-        "lengthSec": match (started, ended) { (Some(s), Some(e)) => (e - s).max(0), _ => 0 },
+        "lengthSec": match (started, ended.or(last_active)) { (Some(s), Some(e)) => (e - s).max(0), _ => 0 },
         "translatedSec": r.get::<_, i64>("translated_seconds")?,
         "peak": r.get::<_, i64>("peak_participants")?,
     }))
 }
 
-const MEETING_COLUMNS: &str = "id, code, title, kind, lang_a, lang_b, starts_at, duration_min, guests, created_at, started_at, ended_at, translated_seconds, peak_participants";
+const MEETING_COLUMNS: &str = "id, code, title, kind, lang_a, lang_b, starts_at, duration_min, guests, created_at, started_at, ended_at, translated_seconds, peak_participants, last_active_at";
 
 /// 다가오는 예약 회의와 지난 회의.
 pub async fn list(State(state): State<AppState>, headers: HeaderMap) -> Response {
@@ -425,9 +429,11 @@ pub async fn list(State(state): State<AppState>, headers: HeaderMap) -> Response
             let open_until = now - RESERVED_GRACE;
             let mut up = c.prepare(&format!(
                 "SELECT {MEETING_COLUMNS} FROM meetings WHERE owner_id = ?1 AND ended_at IS NULL AND starts_at IS NOT NULL
-                   AND starts_at + duration_min * 60 > ?2 ORDER BY starts_at LIMIT 50"
+                   AND starts_at + duration_min * 60 > ?2
+                 ORDER BY starts_at + duration_min * 60 <= ?3, starts_at LIMIT 50"
             ))?;
-            let upcoming = up.query_map(params![uid, open_until], meeting_json)?.collect::<rusqlite::Result<Vec<_>>>()?;
+            // 아직 끝날 시각이 안 된 회의를 먼저(시간이 지났지만 링크는 아직 쓸 수 있는 회의는 뒤로).
+            let upcoming = up.query_map(params![uid, open_until, now], meeting_json)?.collect::<rusqlite::Result<Vec<_>>>()?;
             // 지난 회의: 끝난 회의와, 번역 없이(또는 열리지 않고) 링크를 쓸 수 있는 시간이 지난 회의.
             // 뒤의 것도 보여야 그 기록(이름·초대한 사람 주소)을 지울 수 있다.
             let mut past = c.prepare(&format!(
@@ -468,7 +474,7 @@ pub async fn schedule(
     if plan_of(&db, uid).await == "none" {
         return error(StatusCode::PAYMENT_REQUIRED, "plan");
     }
-    let m = match clean_meeting(&req) {
+    let m = match clean_meeting(&req, None) {
         Ok(m) => m,
         Err(field) => return error(StatusCode::BAD_REQUEST, field),
     };
@@ -544,11 +550,12 @@ pub async fn update(
     if plan_of(state.auth.db(), uid).await == "none" {
         return error(StatusCode::PAYMENT_REQUIRED, "plan");
     }
-    let m = match clean_meeting(&req) {
+    let db = state.auth.db().clone();
+    let current = owned(&db, uid, id).await.and_then(|m| m["startsAt"].as_i64());
+    let m = match clean_meeting(&req, current) {
         Ok(m) => m,
         Err(field) => return error(StatusCode::BAD_REQUEST, field),
     };
-    let db = state.auth.db().clone();
     let guests = serde_json::to_string(&m.guests).unwrap_or_else(|_| "[]".into());
     let n = db
         .call(move |c| {
