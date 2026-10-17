@@ -975,6 +975,7 @@ pub async fn dev_activate(
         Ok(_) => {
             // 실제 결제처럼 영수증 메일도 같은 경로로 보낸다(개발 모드에서는 data/mail에 파일로 남는다).
             if matches!(item.as_str(), "basic" | "pro") {
+                // 가격은 web의 PLAN_PRICE(AccountPages)·PRICE(BillingPages)와 같다. 바꿀 때 함께 바꾼다.
                 let amount = if item == "pro" { "$39.00" } else { "$19.00" };
                 send_receipt(
                     &state,
