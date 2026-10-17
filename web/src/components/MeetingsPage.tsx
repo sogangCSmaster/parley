@@ -70,11 +70,11 @@ export function MeetingsPage() {
     setToast((await copy(meetingUrl(m))) ? 'room.linkCopied' : 'account.failed')
   }
 
-  async function remove(m: Meeting) {
+  /** `past`: 지난 회의 탭에서 지우면 '기록 삭제' 문구로 확인한다. */
+  async function remove(m: Meeting, past: boolean) {
     // 이미 링크를 받은 손님이 있을 수 있으니 한 번 확인한다.
     const title = m.title || t('meetings.untitled')
-    const ended = m.endedAt != null
-    if (!window.confirm(t(ended ? 'meetings.deletePastConfirm' : 'meetings.deleteConfirm', { title }))) return
+    if (!window.confirm(t(past ? 'meetings.deletePastConfirm' : 'meetings.deleteConfirm', { title }))) return
     const r = await api.del(`/api/meetings/${m.id}`)
     if (r.ok) reload()
     else setError('account.failed')
@@ -127,7 +127,7 @@ export function MeetingsPage() {
               </thead>
               <tbody>
                 {list.map((m) => {
-                  const at = (tab === 'upcoming' ? m.startsAt : m.startedAt) ?? m.createdAt
+                  const at = (tab === 'upcoming' ? m.startsAt : (m.startedAt ?? m.startsAt)) ?? m.createdAt
                   return (
                     <tr key={m.id}>
                       <td>
@@ -164,14 +164,14 @@ export function MeetingsPage() {
                                 [t('meetings.edit'), () => setEditing(m)],
                                 [t('meetings.inviteInfo'), () => setDone(m)],
                                 [t('meetings.addToCalendar'), () => (location.href = `/api/meetings/${m.id}/ics`)],
-                                [t('meetings.delete'), () => void remove(m), true],
+                                [t('meetings.delete'), () => void remove(m, false), true],
                               ]}
                               label={t('meetings.actions')}
                             />
                           </>
                         )}
                         {/* 지난 회의 기록(이름·초대한 사람 주소 등)도 지울 수 있게(개인정보 처리방침과 같게). */}
-                        {tab === 'past' && <RowMenu items={[[t('meetings.delete'), () => void remove(m), true]]} label={t('meetings.actions')} />}
+                        {tab === 'past' && <RowMenu items={[[t('meetings.delete'), () => void remove(m, true), true]]} label={t('meetings.actions')} />}
                       </td>
                     </tr>
                   )

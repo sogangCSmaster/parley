@@ -408,10 +408,14 @@ pub async fn list(State(state): State<AppState>, headers: HeaderMap) -> Response
                    AND starts_at + duration_min * 60 > ?2 ORDER BY starts_at LIMIT 50"
             ))?;
             let upcoming = up.query_map(params![uid, now], meeting_json)?.collect::<rusqlite::Result<Vec<_>>>()?;
+            // 지난 회의: 끝난 회의와, 번역 없이(또는 열리지 않고) 예약 시간이 지난 회의.
+            // 뒤의 것도 보여야 그 기록(이름·초대한 사람 주소)을 지울 수 있다.
             let mut past = c.prepare(&format!(
-                "SELECT {MEETING_COLUMNS} FROM meetings WHERE owner_id = ?1 AND ended_at IS NOT NULL ORDER BY ended_at DESC LIMIT 50"
+                "SELECT {MEETING_COLUMNS} FROM meetings WHERE owner_id = ?1 AND (ended_at IS NOT NULL
+                   OR (starts_at IS NOT NULL AND starts_at + duration_min * 60 <= ?2))
+                 ORDER BY COALESCE(ended_at, starts_at + duration_min * 60) DESC LIMIT 50"
             ))?;
-            let past = past.query_map(params![uid], meeting_json)?.collect::<rusqlite::Result<Vec<_>>>()?;
+            let past = past.query_map(params![uid, now], meeting_json)?.collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(json!({ "upcoming": upcoming, "past": past }))
         })
         .await;
