@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Refund Policy</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 100%; background: #FFFFFF; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;">
+  <nav aria-label="Main" style="height: 48px; background: rgba(250,250,252,0.85); border-bottom: 1px solid rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; font-size: 13px;">
+    <a href="MainFull.dc.html" aria-label="Tolkmeet home" style="display: flex; align-items: center; gap: 6px; color: #1D1D1F; font-weight: 800; font-size: 16px; letter-spacing: -0.05em; text-decoration: none;">
+      <svg width="22" height="22" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>tolkmeet
+    </a>
+    <span style="display: flex; gap: 20px;"><a href="Privacy.dc.html" style="color: #424245;">Privacy</a><a href="Terms.dc.html" style="color: #424245;">Terms</a><a href="#" style="color: #1D1D1F; font-weight: 600;">Refunds</a></span>
+  </nav>
+
+  <article style="max-width: 760px; margin: 0 auto; padding: 88px 24px 120px; font-size: 17px; line-height: 1.65;">
+    <h1 style="margin: 0; font-size: clamp(40px, 5vw, 64px); font-weight: 700; letter-spacing: -0.02em;">Refund Policy</h1>
+    <p style="margin: 14px 0 0; color: #6E6E73;">Last updated [DATE]</p>
+    <p style="margin: 16px 0 0; display: inline-flex; padding: 6px 12px; border-radius: 8px; background: #FFF1EC; color: #9E2D14; font-size: 13px; font-weight: 600;">Draft for legal review. Not yet in effect.</p>
+
+    <div style="margin-top: 40px; display: flex; flex-wrap: wrap; gap: 12px;">
+      <div style="flex: 1 1 200px; padding: 22px; border-radius: 20px; background: #F5F5F7;"><p style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em;">14 days</p><p style="margin: 6px 0 0; font-size: 15px; color: #6E6E73;">Full refund of your first payment if you used under [1] hour of translation.</p></div>
+      <div style="flex: 1 1 200px; padding: 22px; border-radius: 20px; background: #F5F5F7;"><p style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em;">Any time</p><p style="margin: 6px 0 0; font-size: 15px; color: #6E6E73;">Cancel renewal. Your plan runs until the end of the paid period.</p></div>
+      <div style="flex: 1 1 200px; padding: 22px; border-radius: 20px; background: #F5F5F7;"><p style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em;">Pro-rated</p><p style="margin: 6px 0 0; font-size: 15px; color: #6E6E73;">If a service outage stops you using Tolkmeet for [24] hours or more.</p></div>
+    </div>
+
+    <h2 style="margin: 48px 0 12px; font-size: 26px; font-weight: 700;">Who handles refunds</h2>
+    <p style="margin: 0;">Paddle.com is our merchant of record. Refunds are issued by Paddle to your original payment method, usually within [5–10] business days.</p>
+
+    <h2 style="margin: 48px 0 12px; font-size: 26px; font-weight: 700;">First payment</h2>
+    <p style="margin: 0;">If you are not satisfied, ask for a refund within 14 days of your first payment of a plan. We refund it in full if you have used less than [1] hour of translated meetings. Above that, we refund the unused share of the plan.</p>
+
+    <h2 style="margin: 48px 0 12px; font-size: 26px; font-weight: 700;">Renewals and extra hours</h2>
+    <p style="margin: 0;">Renewal payments and purchased extra hours are not refundable once translation time from them has been used. If a renewal charged you by mistake and you have not used it, write to us within 14 days.</p>
+
+    <h2 style="margin: 48px 0 12px; font-size: 26px; font-weight: 700;">Your legal rights</h2>
+    <p style="margin: 0;">Nothing here limits rights you have under consumer protection law where you live, such as withdrawal rights in the European Union or Korea.</p>
+
+    <h2 style="margin: 48px 0 12px; font-size: 26px; font-weight: 700;">How to ask</h2>
+    <p style="margin: 0;">Go to Account › Plan and billing › View receipts and choose “Request a refund”, or email [billing@tolkmeet.com] with the email address on your account.</p>
+  </article>
+
+  <footer style="background: #F5F5F7; padding: 28px 24px; font-size: 12px; color: #6E6E73; text-align: center;">© 2026 [COMPANY NAME] · <a href="Privacy.dc.html" style="color: #424245;">Privacy</a> · <a href="Terms.dc.html" style="color: #424245;">Terms</a> · <a href="#" style="color: #424245;">Refunds</a></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":2200}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

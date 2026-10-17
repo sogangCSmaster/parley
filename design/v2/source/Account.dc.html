@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>계정</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1720px; box-sizing: border-box; background: #F5F5F7; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif; display: flex; flex-direction: column;">
+  <nav aria-label="주요 메뉴" style="height: 60px; flex: none; display: flex; align-items: center; gap: 32px; padding: 0 40px; background: rgba(245,245,247,0.85); border-bottom: 1px solid rgba(0,0,0,0.06);">
+    <a href="Home.dc.html" aria-label="Tolkmeet 홈" style="display: flex; align-items: center; gap: 6px; color: #1D1D1F; font-weight: 800; font-size: 18px; letter-spacing: -0.05em; text-decoration: none;">
+      <svg width="24" height="24" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>tolkmeet
+    </a>
+    <div style="display: flex; gap: 4px; font-size: 14px; font-weight: 600;">
+      <a href="Home.dc.html" style="padding: 7px 14px; border-radius: 16px; color: #6E6E73; text-decoration: none;">홈</a>
+      <a href="#" style="padding: 7px 14px; border-radius: 16px; color: #6E6E73; text-decoration: none;">회의</a>
+      <a href="#" aria-current="page" style="padding: 7px 14px; border-radius: 16px; background: #FFFFFF; color: #1D1D1F; text-decoration: none; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">계정</a>
+    </div>
+  </nav>
+
+  <div style="flex: 1; max-width: 1120px; width: 100%; margin: 0 auto; padding: 40px 40px 60px; box-sizing: border-box; display: flex; gap: 48px; align-items: flex-start;">
+    <aside style="flex: none; width: 240px; display: flex; flex-direction: column; gap: 22px;">
+      <div style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 8px 0 4px;">
+        <span style="width: 88px; height: 88px; border-radius: 44px; display: grid; place-items: center; background: linear-gradient(180deg, #A2A6B0 0%, #7D818C 100%); color: #FFFFFF; font-size: 36px; font-weight: 600;">민</span>
+        <span style="font-size: 20px; font-weight: 700;">유민준</span>
+        <span style="font-size: 14px; color: #6E6E73;">minjun@company.com</span>
+      </div>
+      <nav aria-label="계정 메뉴" style="display: flex; flex-direction: column; gap: 2px; font-size: 15px;">
+        <a href="#profile" aria-current="true" style="padding: 9px 14px; border-radius: 10px; background: #FFFFFF; color: #1D1D1F; font-weight: 600; text-decoration: none;">프로필</a>
+        <a href="#plan" style="padding: 9px 14px; border-radius: 10px; color: #424245; text-decoration: none;">요금제와 결제</a>
+        <a href="#usage" style="padding: 9px 14px; border-radius: 10px; color: #424245; text-decoration: none;">사용 내역</a>
+        <a href="#prefs" style="padding: 9px 14px; border-radius: 10px; color: #424245; text-decoration: none;">기본 설정</a>
+        <a href="#security" style="padding: 9px 14px; border-radius: 10px; color: #424245; text-decoration: none;">로그인과 보안</a>
+        <a href="#data" style="padding: 9px 14px; border-radius: 10px; color: #424245; text-decoration: none;">데이터와 계정</a>
+      </nav>
+      <button type="button" style="align-self: flex-start; height: 38px; padding: 0 14px; border: 0; border-radius: 19px; background: transparent; color: #424245; font-size: 14px; font-weight: 600;">로그아웃</button>
+    </aside>
+
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 22px;">
+      <h1 style="margin: 0 0 4px; font-size: 40px; font-weight: 700; letter-spacing: -0.02em;">계정</h1>
+
+      <section id="profile" aria-labelledby="h-profile" style="border-radius: 22px; background: #FFFFFF; overflow: hidden;">
+        <h2 id="h-profile" style="margin: 0; padding: 20px 24px 8px; font-size: 19px; font-weight: 700;">프로필</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px; color: #6E6E73;">이름</span><span style="display: flex; gap: 16px; align-items: center; font-size: 15px;">유민준 <a href="#">변경</a></span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px; color: #6E6E73;">이메일</span><span style="display: flex; gap: 16px; align-items: center; font-size: 15px;">minjun@company.com <a href="#">변경</a></span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px 18px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px; color: #6E6E73;">회의에서 보이는 이름</span><span style="display: flex; gap: 16px; align-items: center; font-size: 15px;">민준 <a href="#">변경</a></span></div>
+      </section>
+
+      <section id="plan" aria-labelledby="h-plan" style="border-radius: 22px; background: #FFFFFF; padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+          <div>
+            <h2 id="h-plan" style="margin: 0; font-size: 19px; font-weight: 700;">요금제와 결제</h2>
+            <p style="margin: 14px 0 0; font-size: 30px; font-weight: 700; letter-spacing: -0.015em;">Pro · 연간</p>
+            <p style="margin: 4px 0 0; font-size: 15px; color: #6E6E73;">월 $15 (1년 $180) · 2027년 3월 2일에 자동 갱신</p>
+          </div>
+          <svg width="40" height="40" viewBox="0 0 96 96" aria-hidden="true" style="flex: none;"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+          <button type="button" style="height: 42px; padding: 0 18px; border: 0; border-radius: 21px; background: {{button}}; color: #FFFFFF; font-size: 15px; font-weight: 700;">Business로 바꾸기</button>
+          <button type="button" style="height: 42px; padding: 0 18px; border: 0; border-radius: 21px; background: #F2F2F4; color: #1D1D1F; font-size: 15px; font-weight: 600;">결제 수단 변경</button>
+          <button type="button" style="height: 42px; padding: 0 18px; border: 0; border-radius: 21px; background: #F2F2F4; color: #1D1D1F; font-size: 15px; font-weight: 600;">영수증 보기</button>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid #F0F0F2; font-size: 14px; color: #6E6E73;"><span>결제 수단 Visa ···· 4242 · 결제는 Paddle이 처리합니다</span><a href="#">구독 해지</a></div>
+      </section>
+
+      <section id="usage" aria-labelledby="h-usage" style="border-radius: 22px; background: #FFFFFF; padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><h2 id="h-usage" style="margin: 0; font-size: 19px; font-weight: 700;">사용 내역</h2><span style="font-size: 14px; color: #6E6E73;">11월 1일에 다시 채워짐</span></div>
+        <p style="margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.015em;">2시간 40분<span style="font-size: 16px; font-weight: 500; color: #6E6E73;"> / 10시간 사용</span></p>
+        <div role="progressbar" aria-label="이번 달 번역 시간 사용량" aria-valuenow="27" aria-valuemin="0" aria-valuemax="100" style="height: 10px; border-radius: 5px; background: #E5E5EA; overflow: hidden;"><div style="width: 27%; height: 100%; border-radius: 5px; background: {{accent}};"></div></div>
+        <div style="display: flex; align-items: flex-end; gap: 10px; height: 96px; padding-top: 8px;" role="img" aria-label="최근 6개월 사용 시간: 5월 4시간, 6월 6시간, 7월 9시간, 8월 7시간, 9월 8시간, 10월 2시간 40분">
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;"><div style="width: 100%; height: 40px; border-radius: 6px; background: #E5E5EA;"></div><span style="font-size: 12px; color: #6E6E73;">5월</span></div>
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;"><div style="width: 100%; height: 58px; border-radius: 6px; background: #E5E5EA;"></div><span style="font-size: 12px; color: #6E6E73;">6월</span></div>
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;"><div style="width: 100%; height: 76px; border-radius: 6px; background: #E5E5EA;"></div><span style="font-size: 12px; color: #6E6E73;">7월</span></div>
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;"><div style="width: 100%; height: 64px; border-radius: 6px; background: #E5E5EA;"></div><span style="font-size: 12px; color: #6E6E73;">8월</span></div>
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;"><div style="width: 100%; height: 70px; border-radius: 6px; background: #E5E5EA;"></div><span style="font-size: 12px; color: #6E6E73;">9월</span></div>
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;"><div style="width: 100%; height: 26px; border-radius: 6px; background: {{accent}};"></div><span style="font-size: 12px; color: #1D1D1F; font-weight: 600;">10월</span></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid #F0F0F2; font-size: 15px;"><span>바쁜 달에는 시간을 추가할 수 있습니다. 시간당 $3.</span><button type="button" style="height: 38px; padding: 0 16px; border: 0; border-radius: 19px; background: #F2F2F4; color: #1D1D1F; font-size: 14px; font-weight: 600;">시간 추가</button></div>
+      </section>
+
+      <section id="prefs" aria-labelledby="h-prefs" style="border-radius: 22px; background: #FFFFFF; overflow: hidden;">
+        <h2 id="h-prefs" style="margin: 0; padding: 20px 24px 8px; font-size: 19px; font-weight: 700;">기본 설정</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">내 언어</span><span style="font-size: 15px; color: #6E6E73;">한국어 ›</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">자주 쓰는 상대 언어</span><span style="font-size: 15px; color: #6E6E73;">日本語 ›</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">화면</span>
+          <span role="group" aria-label="화면 테마" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 2px; border-radius: 9px; background: #F2F2F4; font-size: 13px; font-weight: 600; text-align: center; width: 240px;"><span style="padding: 6px 0; border-radius: 7px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">시스템</span><span style="padding: 6px 0; color: #6E6E73;">라이트</span><span style="padding: 6px 0; color: #6E6E73;">다크</span></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">자막 크기</span>
+          <span role="group" aria-label="자막 크기" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 2px; border-radius: 9px; background: #F2F2F4; font-weight: 600; text-align: center; width: 240px;"><span style="padding: 6px 0; font-size: 12px; color: #6E6E73;">가</span><span style="padding: 6px 0; font-size: 14px; border-radius: 7px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">가</span><span style="padding: 6px 0; font-size: 17px; color: #6E6E73;">가</span></span>
+        </div>
+        <label style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px 18px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">회의가 끝나면 자막 파일 저장 안내</span>
+          <span style="width: 50px; height: 30px; border-radius: 15px; background: #34C759; position: relative;"><span style="position: absolute; right: 2px; top: 2px; width: 26px; height: 26px; border-radius: 13px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></span></span>
+        </label>
+      </section>
+
+      <section id="security" aria-labelledby="h-sec" style="border-radius: 22px; background: #FFFFFF; overflow: hidden;">
+        <h2 id="h-sec" style="margin: 0; padding: 20px 24px 8px; font-size: 19px; font-weight: 700;">로그인과 보안</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">비밀번호</span><span style="display: flex; gap: 16px; font-size: 15px; color: #6E6E73;">3개월 전에 변경 <a href="#">변경</a></span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">Google 계정</span><span style="display: flex; gap: 16px; font-size: 15px; color: #6E6E73;">연결됨 <a href="#">해제</a></span></div>
+        <div style="padding: 14px 24px 18px; border-top: 1px solid #F0F0F2; display: flex; flex-direction: column; gap: 10px;">
+          <span style="font-size: 15px;">로그인된 기기</span>
+          <div style="display: flex; justify-content: space-between; font-size: 14px;"><span>MacBook · Chrome · 서울</span><span style="color: #6E6E73;">지금 이 기기</span></div>
+          <div style="display: flex; justify-content: space-between; font-size: 14px;"><span>iPad · Safari · 서울</span><span style="display: flex; gap: 14px; color: #6E6E73;">2일 전 <a href="#">로그아웃</a></span></div>
+        </div>
+      </section>
+
+      <section id="data" aria-labelledby="h-data" style="border-radius: 22px; background: #FFFFFF; overflow: hidden;">
+        <h2 id="h-data" style="margin: 0; padding: 20px 24px 8px; font-size: 19px; font-weight: 700;">데이터와 계정</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">내 데이터 내보내기 <span style="color: #6E6E73;">(계정, 사용 내역, 결제 기록)</span></span><a href="#" style="font-size: 15px;">요청</a></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px 18px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">계정 삭제 <span style="color: #6E6E73;">(구독도 함께 해지됩니다)</span></span><button type="button" style="height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: #FFF1F0; color: #C9302C; font-size: 14px; font-weight: 600;">계정 삭제</button></div>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":1720}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>로그인과 보안</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1360px; box-sizing: border-box; background: #F5F5F7; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif; display: flex; flex-direction: column;">
+  <nav aria-label="주요 메뉴" style="height: 60px; flex: none; display: flex; align-items: center; gap: 32px; padding: 0 40px; background: rgba(245,245,247,0.85); border-bottom: 1px solid rgba(0,0,0,0.06);">
+    <span style="display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 18px; letter-spacing: -0.05em;"><svg width="24" height="24" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>tolkmeet</span>
+    <div style="display: flex; gap: 4px; font-size: 14px; font-weight: 600;">
+      <a href="Home.dc.html" style="padding: 7px 14px; border-radius: 16px; color: #6E6E73; text-decoration: none;">홈</a>
+      <a href="Meetings.dc.html" style="padding: 7px 14px; border-radius: 16px; color: #6E6E73; text-decoration: none;">회의</a>
+      <a href="Account.dc.html" aria-current="page" style="padding: 7px 14px; border-radius: 16px; background: #FFFFFF; color: #1D1D1F; text-decoration: none; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">계정</a>
+    </div>
+  </nav>
+
+  <div style="flex: 1; max-width: 1120px; width: 100%; margin: 0 auto; padding: 40px 40px 60px; box-sizing: border-box; display: flex; gap: 48px; align-items: flex-start;">
+    <aside style="flex: none; width: 240px; display: flex; flex-direction: column; gap: 2px; font-size: 15px;">
+      <a href="Account.dc.html#profile" style="padding: 9px 14px; border-radius: 10px; color: #424245; text-decoration: none;">프로필</a>
+      <a href="Account.dc.html#plan" style="padding: 9px 14px; border-radius: 10px; color: #424245; text-decoration: none;">요금제와 결제</a>
+      <a href="Account.dc.html#usage" style="padding: 9px 14px; border-radius: 10px; color: #424245; text-decoration: none;">사용 내역</a>
+      <a href="Account.dc.html#prefs" style="padding: 9px 14px; border-radius: 10px; color: #424245; text-decoration: none;">기본 설정</a>
+      <a href="#" aria-current="true" style="padding: 9px 14px; border-radius: 10px; background: #FFFFFF; color: #1D1D1F; font-weight: 600; text-decoration: none;">로그인과 보안</a>
+      <a href="Account.dc.html#data" style="padding: 9px 14px; border-radius: 10px; color: #424245; text-decoration: none;">데이터와 계정</a>
+    </aside>
+
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 22px;">
+      <h1 style="margin: 0 0 4px; font-size: 40px; font-weight: 700; letter-spacing: -0.02em;">로그인과 보안</h1>
+
+      <section aria-labelledby="h-passkey" style="border-radius: 22px; background: #FFFFFF; padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+          <div>
+            <h2 id="h-passkey" style="margin: 0; font-size: 19px; font-weight: 700;">패스키</h2>
+            <p style="margin: 6px 0 0; font-size: 15px; line-height: 1.5; color: #6E6E73;">비밀번호 대신 기기의 Face ID, 지문, 화면 잠금으로 로그인합니다. 피싱에 안전하고 2차 인증도 따로 필요 없습니다.</p>
+          </div>
+          <button type="button" style="flex: none; height: 42px; padding: 0 18px; border: 0; border-radius: 21px; background: {{button}}; color: #FFFFFF; font-size: 15px; font-weight: 700;">패스키 추가</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid #F0F0F2;">
+          <span style="flex: none; width: 40px; height: 40px; border-radius: 12px; background: #F5F5F7; display: grid; place-items: center;"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#1D1D1F" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg></span>
+          <span style="flex: 1; display: flex; flex-direction: column;"><span style="font-size: 15px; font-weight: 600;">MacBook Pro · iCloud 키체인</span><span style="font-size: 13px; color: #6E6E73;">8월 2일 추가 · 오늘 사용</span></span>
+          <a href="#" style="font-size: 14px;">삭제</a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 14px 0 0; border-top: 1px solid #F0F0F2;">
+          <span style="flex: none; width: 40px; height: 40px; border-radius: 12px; background: #F5F5F7; display: grid; place-items: center;"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#1D1D1F" stroke-width="1.8" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="3"/></svg></span>
+          <span style="flex: 1; display: flex; flex-direction: column;"><span style="font-size: 15px; font-weight: 600;">Galaxy S25 · Google 비밀번호 관리자</span><span style="font-size: 13px; color: #6E6E73;">9월 14일 추가 · 3일 전 사용</span></span>
+          <a href="#" style="font-size: 14px;">삭제</a>
+        </div>
+      </section>
+
+      <section aria-labelledby="h-otp" style="border-radius: 22px; background: #FFFFFF; padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+          <div>
+            <h2 id="h-otp" style="margin: 0; font-size: 19px; font-weight: 700;">2차 인증 (인증 앱)</h2>
+            <p style="margin: 6px 0 0; font-size: 15px; color: #6E6E73;">비밀번호로 로그인할 때 인증 앱의 6자리 코드를 한 번 더 확인합니다.</p>
+          </div>
+          <span style="flex: none; width: 50px; height: 30px; border-radius: 15px; background: #34C759; position: relative;" role="img" aria-label="켜짐"><span style="position: absolute; right: 2px; top: 2px; width: 26px; height: 26px; border-radius: 13px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></span></span>
+        </div>
+        <div style="display: flex; gap: 24px; align-items: center; padding: 20px; border-radius: 18px; background: #F5F5F7;">
+          <div role="img" aria-label="인증 앱 연결용 QR 코드 자리" style="flex: none; width: 150px; height: 150px; border-radius: 12px; background: #FFFFFF; display: grid; place-items: center; font-size: 13px; color: #6E6E73; border: 1px dashed #C7C7CC;">[QR 코드]</div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            <p style="margin: 0; font-size: 16px; font-weight: 600;">새 인증 앱 연결</p>
+            <ol style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; color: #424245;">
+              <li>Google Authenticator, 1Password 등 인증 앱에서 QR 코드를 스캔합니다</li>
+              <li>앱에 나온 6자리 코드를 입력합니다</li>
+            </ol>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <label style="display: flex; align-items: center; height: 44px; padding: 0 14px; border-radius: 12px; background: #FFFFFF; border: 1px solid #D2D2D7;"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden;">인증 코드</span><input type="text" value="291 0" style="width: 120px; border: 0; padding: 0; font: inherit; font-size: 18px; font-weight: 600; letter-spacing: 0.15em; background: transparent; outline: none; color: #1D1D1F;"></label>
+              <button type="button" style="height: 44px; padding: 0 18px; border: 0; border-radius: 12px; background: #1D1D1F; color: #FFFFFF; font-size: 15px; font-weight: 600;">확인</button>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid #F0F0F2;">
+          <span style="display: flex; flex-direction: column;"><span style="font-size: 15px; font-weight: 600;">복구 코드</span><span style="font-size: 13px; color: #6E6E73;">휴대폰을 잃어버렸을 때 쓰는 1회용 코드 10개 · 8개 남음</span></span>
+          <span style="display: flex; gap: 16px; font-size: 14px;"><a href="#">보기</a><a href="#">새로 만들기</a></span>
+        </div>
+      </section>
+
+      <section aria-labelledby="h-pw" style="border-radius: 22px; background: #FFFFFF; overflow: hidden;">
+        <h2 id="h-pw" style="margin: 0; padding: 20px 24px 8px; font-size: 19px; font-weight: 700;">비밀번호와 연결된 계정</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">비밀번호</span><span style="display: flex; gap: 16px; font-size: 15px; color: #6E6E73;">3개월 전에 변경 <a href="ResetNew.dc.html">변경</a></span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px 18px; border-top: 1px solid #F0F0F2;"><span style="font-size: 15px;">Google 계정</span><span style="display: flex; gap: 16px; font-size: 15px; color: #6E6E73;">minjun@company.com <a href="#">해제</a></span></div>
+      </section>
+
+      <section aria-labelledby="h-dev" style="border-radius: 22px; background: #FFFFFF; overflow: hidden;">
+        <h2 id="h-dev" style="margin: 0; padding: 20px 24px 8px; font-size: 19px; font-weight: 700;">로그인된 기기</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid #F0F0F2; font-size: 15px;"><span>MacBook · Chrome · 서울</span><span style="color: #248A3D; font-weight: 600;">지금 이 기기</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-top: 1px solid #F0F0F2; font-size: 15px;"><span>iPad · Safari · 서울</span><span style="display: flex; gap: 16px; color: #6E6E73;">2일 전 <a href="#">로그아웃</a></span></div>
+        <div style="display: flex; justify-content: flex-end; padding: 14px 24px 18px; border-top: 1px solid #F0F0F2;"><a href="#" style="font-size: 14px;">이 기기를 뺀 모든 기기에서 로그아웃</a></div>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":1360}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

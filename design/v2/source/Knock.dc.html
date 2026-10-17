@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>입장 요청 알림</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#FF8A66}a:hover{color:#FFA285}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 36px; background: linear-gradient(160deg, #3B4A5C 0%, #1F2530 55%, #2D2433 100%); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Apple SD Gothic Neo', system-ui, sans-serif; color: #F5F5F7;">
+  <div style="position: relative; height: 100%; display: flex; border-radius: 16px; overflow: hidden; background: #1C1C1E;">
+    <div style="flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px 16px 96px;">
+      <div style="border-radius: 14px; background: #2C2C2E; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;"><span style="width: 128px; height: 128px; border-radius: 64px; display: grid; place-items: center; background: linear-gradient(180deg, #A2A6B0, #7D818C); font-size: 54px; font-weight: 600;">さ</span><span style="font-size: 15px; font-weight: 600;">さくら</span></div>
+      <div style="border-radius: 14px; background: #2C2C2E; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;"><span style="width: 128px; height: 128px; border-radius: 64px; display: grid; place-items: center; background: linear-gradient(180deg, #A2A6B0, #7D818C); font-size: 54px; font-weight: 600;">민</span><span style="font-size: 15px; font-weight: 600;">민준 (나)</span></div>
+    </div>
+    <aside aria-label="대화 기록" style="width: 360px; flex: none; background: #F5F5F7;"></aside>
+
+    <div role="alertdialog" aria-labelledby="knock-title" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 460px; padding: 18px 18px 18px 20px; border-radius: 22px; background: rgba(44,44,46,0.92); backdrop-filter: blur(30px); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6); display: flex; align-items: center; gap: 14px;">
+      <span style="flex: none; width: 48px; height: 48px; border-radius: 24px; display: grid; place-items: center; background: linear-gradient(180deg, #A2A6B0, #7D818C); font-size: 20px; font-weight: 600;">T</span>
+      <div style="flex: 1; min-width: 0;">
+        <p id="knock-title" style="margin: 0; font-size: 15px; font-weight: 600;">Takahashi 님이 들어오려고 합니다</p>
+        <p style="margin: 2px 0 0; font-size: 13px; color: rgba(235,235,245,0.65);">日本語로 말하고 한국어로 읽음 · 대기 중 1명</p>
+      </div>
+      <button type="button" style="height: 38px; padding: 0 14px; border: 0; border-radius: 19px; background: rgba(255,255,255,0.14); color: #F5F5F7; font-size: 14px; font-weight: 600;">거절</button>
+      <button type="button" style="height: 38px; padding: 0 16px; border: 0; border-radius: 19px; background: {{button}}; color: #FFFFFF; font-size: 14px; font-weight: 700;">수락</button>
+    </div>
+
+    <div style="position: absolute; left: calc(50% - 180px); bottom: 28px; transform: translateX(-50%); display: flex; gap: 10px; padding: 10px; border-radius: 26px; background: rgba(44,44,46,0.75); border: 1px solid rgba(255,255,255,0.08);">
+      <span style="width: 48px; height: 48px; border-radius: 24px; background: rgba(255,255,255,0.12);"></span>
+      <span style="width: 48px; height: 48px; border-radius: 24px; background: rgba(255,255,255,0.12);"></span>
+      <span style="position: relative; width: 48px; height: 48px; border-radius: 24px; background: rgba(255,255,255,0.12); display: grid; place-items: center;"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c.8-3.5 3.2-5 6-5s5.2 1.5 6 5M17 8h4M19 6v4"/></svg><span style="position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; border-radius: 9px; background: {{button}}; color: #FFFFFF; font-size: 11px; font-weight: 700; display: grid; place-items: center;">1</span></span>
+      <span style="width: 64px; height: 48px; border-radius: 24px; background: #FF3B30;"></span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0A84FF","#5E5CE6"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

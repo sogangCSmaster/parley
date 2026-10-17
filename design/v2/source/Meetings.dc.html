@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>회의 목록</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #F5F5F7; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif; display: flex; flex-direction: column;">
+  <nav aria-label="주요 메뉴" style="height: 60px; flex: none; display: flex; align-items: center; gap: 32px; padding: 0 40px; background: rgba(245,245,247,0.85); border-bottom: 1px solid rgba(0,0,0,0.06);">
+    <span style="display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 18px; letter-spacing: -0.05em;"><svg width="24" height="24" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>tolkmeet</span>
+    <div style="display: flex; gap: 4px; font-size: 14px; font-weight: 600;">
+      <a href="Home.dc.html" style="padding: 7px 14px; border-radius: 16px; color: #6E6E73; text-decoration: none;">홈</a>
+      <a href="#" aria-current="page" style="padding: 7px 14px; border-radius: 16px; background: #FFFFFF; color: #1D1D1F; text-decoration: none; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">회의</a>
+      <a href="Account.dc.html" style="padding: 7px 14px; border-radius: 16px; color: #6E6E73; text-decoration: none;">계정</a>
+    </div>
+  </nav>
+
+  <div style="flex: 1; max-width: 1120px; width: 100%; margin: 0 auto; padding: 36px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h1 style="margin: 0; font-size: 40px; font-weight: 700; letter-spacing: -0.02em;">회의</h1>
+      <div style="display: flex; gap: 10px;">
+        <a href="Schedule.dc.html" style="display: inline-flex; align-items: center; height: 42px; padding: 0 18px; border-radius: 21px; background: #FFFFFF; color: #1D1D1F; font-size: 15px; font-weight: 600; text-decoration: none;">회의 예약</a>
+        <button type="button" style="height: 42px; padding: 0 18px; border: 0; border-radius: 21px; background: {{button}}; color: #FFFFFF; font-size: 15px; font-weight: 700;">지금 회의 시작</button>
+      </div>
+    </div>
+    <div role="tablist" aria-label="회의 구분" style="align-self: flex-start; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; border-radius: 11px; background: rgba(118,118,128,0.12); font-size: 14px; font-weight: 600; text-align: center; width: 260px;">
+      <button type="button" role="tab" aria-selected="true" style="padding: 7px 0; border: 0; border-radius: 9px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.12); font: inherit; color: #1D1D1F;">예정 3</button>
+      <button type="button" role="tab" aria-selected="false" style="padding: 7px 0; border: 0; border-radius: 9px; background: transparent; font: inherit; color: #6E6E73;">지난 회의</button>
+    </div>
+
+    <div style="border-radius: 22px; background: #FFFFFF; overflow: hidden;">
+      <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) 180px 160px 160px; gap: 16px; padding: 14px 24px; font-size: 12px; font-weight: 600; color: #6E6E73; border-bottom: 1px solid #F0F0F2;"><span>날짜</span><span>회의</span><span>언어</span><span>초대</span><span></span></div>
+      <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) 180px 160px 160px; gap: 16px; align-items: center; padding: 16px 24px; border-bottom: 1px solid #F0F0F2;"><span style="font-size: 15px;"><b style="font-weight: 600;">10월 23일</b><br><span style="color: #6E6E73; font-size: 13px;">목 오후 3:00</span></span><span style="font-size: 16px; font-weight: 600;">일본 유통 파트너 미팅</span><span style="font-size: 14px; color: #6E6E73;">한국어 ⇄ 日本語</span><span style="font-size: 14px; color: #6E6E73;">2명</span><span style="display: flex; gap: 8px; justify-content: flex-end;"><button type="button" style="height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: #F2F2F4; font-size: 13px; font-weight: 600; color: #1D1D1F;">링크 복사</button><button type="button" aria-label="더 보기" style="width: 34px; height: 34px; border: 0; border-radius: 17px; background: #F2F2F4; color: #1D1D1F;">···</button></span></div>
+      <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) 180px 160px 160px; gap: 16px; align-items: center; padding: 16px 24px; border-bottom: 1px solid #F0F0F2;"><span style="font-size: 15px;"><b style="font-weight: 600;">10월 28일</b><br><span style="color: #6E6E73; font-size: 13px;">화 오전 10:00</span></span><span style="font-size: 16px; font-weight: 600;">투자사 IR 콜</span><span style="font-size: 14px; color: #6E6E73;">한국어 ⇄ English</span><span style="font-size: 14px; color: #6E6E73;">3명</span><span style="display: flex; gap: 8px; justify-content: flex-end;"><button type="button" style="height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: #F2F2F4; font-size: 13px; font-weight: 600; color: #1D1D1F;">링크 복사</button><button type="button" aria-label="더 보기" style="width: 34px; height: 34px; border: 0; border-radius: 17px; background: #F2F2F4; color: #1D1D1F;">···</button></span></div>
+      <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) 180px 160px 160px; gap: 16px; align-items: center; padding: 16px 24px;"><span style="font-size: 15px;"><b style="font-weight: 600;">11월 4일</b><br><span style="color: #6E6E73; font-size: 13px;">화 오후 2:00</span></span><span style="font-size: 16px; font-weight: 600;">오사카 매장 설명회 <span style="margin-left: 6px; padding: 2px 8px; border-radius: 8px; background: #F2F2F4; font-size: 12px; color: #6E6E73;">자막 화면</span></span><span style="font-size: 14px; color: #6E6E73;">한국어 ⇄ 日本語</span><span style="font-size: 14px; color: #6E6E73;">없음</span><span style="display: flex; gap: 8px; justify-content: flex-end;"><button type="button" style="height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: #F2F2F4; font-size: 13px; font-weight: 600; color: #1D1D1F;">링크 복사</button><button type="button" aria-label="더 보기" style="width: 34px; height: 34px; border: 0; border-radius: 17px; background: #F2F2F4; color: #1D1D1F;">···</button></span></div>
+    </div>
+    <p style="margin: 0; font-size: 13px; color: #6E6E73;">지난 회의 탭에는 날짜, 길이, 참가자 수, 사용한 번역 시간만 남습니다. 대화 내용은 저장하지 않습니다.</p>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

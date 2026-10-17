@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>비밀번호 재설정</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+input::placeholder{color:#8E8E93}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #F5F5F7; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif; display: flex; flex-direction: column; align-items: center;">
+  <div style="align-self: stretch; height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 40px;">
+    <span style="display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 18px; letter-spacing: -0.05em;"><svg width="24" height="24" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>tolkmeet</span>
+    <a href="SignIn.dc.html" style="font-size: 14px;">로그인으로 돌아가기</a>
+  </div>
+  <div style="margin-top: 110px; width: 400px; display: flex; flex-direction: column; align-items: center; text-align: center;">
+    <span style="width: 80px; height: 80px; border-radius: 40px; display: grid; place-items: center; background: #FFFFFF; box-shadow: 0 8px 24px -10px rgba(0,0,0,0.2);"><svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#1D1D1F" stroke-width="1.6" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg></span>
+    <h1 style="margin: 24px 0 0; font-size: 36px; font-weight: 700; letter-spacing: -0.02em;">비밀번호 재설정</h1>
+    <p style="margin: 10px 0 0; font-size: 16px; line-height: 1.55; color: #6E6E73;">가입한 이메일을 입력하면 재설정 링크를 보내 드립니다. 링크는 30분 동안 쓸 수 있습니다.</p>
+  </div>
+  <form style="margin-top: 28px; width: 400px; display: flex; flex-direction: column; gap: 14px;">
+    <label style="display: flex; flex-direction: column; gap: 2px; padding: 10px 16px; border-radius: 14px; border: 1px solid #D2D2D7; background: #FFFFFF;">
+      <span style="font-size: 12px; color: #6E6E73;">이메일</span>
+      <input type="email" value="minjun@company.com" style="border: 0; padding: 0; font: inherit; font-size: 17px; color: #1D1D1F; outline: none; background: transparent;">
+    </label>
+    <button type="submit" style="height: 54px; border: 0; border-radius: 14px; background: {{button}}; color: #FFFFFF; font-size: 18px; font-weight: 700;">재설정 링크 보내기</button>
+    <p style="margin: 4px 0 0; text-align: center; font-size: 13px; line-height: 1.5; color: #6E6E73;">Google로 가입하셨다면 비밀번호 없이 Google로 로그인하시면 됩니다.</p>
+  </form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

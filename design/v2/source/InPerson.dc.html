@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>대면 대화</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#0A84FF}a:hover{color:#409CFF}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; border-radius: 48px; overflow: hidden; background: #000000; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif; display: flex; flex-direction: column; gap: 6px; padding: 6px;">
+  <div style="flex: 1; border-radius: 42px 42px 26px 26px; background: #1C1C1E; color: #F5F5F7; transform: rotate(180deg); display: flex; flex-direction: column; justify-content: flex-start; gap: 18px; padding: 34px 28px;">
+    <span style="font-size: 13px; color: rgba(235,235,245,0.5); font-weight: 600;">日本語</span>
+    <div>
+      <p style="margin: 0; font-size: 15px; color: rgba(235,235,245,0.55);">네, 목요일 오후 세 시에 뵐게요.</p>
+      <p style="margin: 6px 0 0; font-size: 30px; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em;">はい、木曜日の午後3時にお会いしましょう。</p>
+    </div>
+  </div>
+
+  <div style="position: relative; flex: 1; border-radius: 26px 26px 42px 42px; background: #FFFFFF; color: #1D1D1F; display: flex; flex-direction: column; justify-content: space-between; padding: 30px 28px 28px;">
+    <div style="display: flex; flex-direction: column; gap: 18px;">
+      <span style="font-size: 13px; color: #6E6E73; font-weight: 600;">한국어</span>
+      <div>
+        <p style="margin: 0; font-size: 15px; color: #6E6E73;">ありがとうございます。資料は前日までにお送りします。</p>
+        <p style="margin: 6px 0 0; font-size: 30px; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em;">감사합니다. 자료는 전날까지 보내 드릴게요.</p>
+      </div>
+    </div>
+    <button type="button" aria-label="누르고 말하기" style="align-self: center; display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 28px; border: 0; border-radius: 28px; background: {{button}}; color: #FFFFFF; font-size: 19px; font-weight: 700;">
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      누르고 말하기
+    </button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0A84FF","#1D1D1F"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

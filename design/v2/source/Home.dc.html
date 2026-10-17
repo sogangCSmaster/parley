@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>홈</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+input::placeholder{color:#8E8E93}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #F5F5F7; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif; display: flex; flex-direction: column;">
+  <nav aria-label="주요 메뉴" style="height: 60px; flex: none; display: flex; align-items: center; gap: 32px; padding: 0 40px; background: rgba(245,245,247,0.85); border-bottom: 1px solid rgba(0,0,0,0.06);">
+    <a href="#" aria-label="Tolkmeet" style="display: flex; align-items: center; gap: 6px; color: #1D1D1F; font-weight: 800; font-size: 18px; letter-spacing: -0.05em; text-decoration: none;">
+      <svg width="24" height="24" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>tolkmeet
+    </a>
+    <div style="display: flex; gap: 4px; font-size: 14px; font-weight: 600;">
+      <a href="#" aria-current="page" style="padding: 7px 14px; border-radius: 16px; background: #FFFFFF; color: #1D1D1F; text-decoration: none; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">홈</a>
+      <a href="#" style="padding: 7px 14px; border-radius: 16px; color: #6E6E73; text-decoration: none;">회의</a>
+      <a href="Account.dc.html" style="padding: 7px 14px; border-radius: 16px; color: #6E6E73; text-decoration: none;">계정</a>
+    </div>
+    <a href="Account.dc.html" aria-label="계정" style="margin-left: auto; width: 34px; height: 34px; border-radius: 17px; display: grid; place-items: center; background: linear-gradient(180deg, #A2A6B0 0%, #7D818C 100%); color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none;">민</a>
+  </nav>
+
+  <div style="flex: 1; max-width: 1200px; width: 100%; margin: 0 auto; padding: 36px 40px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;">
+      <div>
+        <p style="margin: 0; font-size: 15px; color: #6E6E73;">10월 17일 금요일</p>
+        <h1 style="margin: 4px 0 0; font-size: 44px; font-weight: 700; letter-spacing: -0.02em;">안녕하세요, 민준 님</h1>
+      </div>
+      <form style="display: flex; gap: 8px; width: 420px;">
+        <label style="flex: 1; display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border-radius: 14px; background: #FFFFFF; border: 1px solid #E5E5EA;">
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#6E6E73" stroke-width="2" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>
+          <span style="position: absolute; width: 1px; height: 1px; overflow: hidden;">받은 회의 링크 또는 코드</span>
+          <input type="text" placeholder="받은 링크나 코드로 참여" style="flex: 1; min-width: 0; border: 0; padding: 0; font: inherit; font-size: 15px; background: transparent; outline: none; color: #1D1D1F;">
+        </label>
+        <button type="submit" style="height: 46px; padding: 0 18px; border: 0; border-radius: 14px; background: #1D1D1F; color: #FFFFFF; font-size: 15px; font-weight: 600;">참여</button>
+      </form>
+    </div>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 20px; flex: 1; min-height: 0; padding-bottom: 36px;">
+      <div style="display: flex; flex-direction: column; gap: 20px; min-height: 0;">
+        <section aria-labelledby="next-title" style="position: relative; overflow: hidden; border-radius: 28px; background: #1D1D1F; color: #F5F5F7; padding: 30px 32px; display: flex; flex-direction: column; gap: 22px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+            <div>
+              <p style="margin: 0; font-size: 14px; font-weight: 600; color: #FF8A66;">다음 회의 · 6일 후</p>
+              <h2 id="next-title" style="margin: 8px 0 0; font-size: 32px; font-weight: 700; letter-spacing: -0.015em;">일본 유통 파트너 미팅</h2>
+              <p style="margin: 8px 0 0; font-size: 16px; color: rgba(235,235,245,0.7);">10월 23일 (목) 오후 3:00 – 4:00 · 한국어 ⇄ 日本語 · 게스트 2명 초대됨</p>
+            </div>
+            <svg width="44" height="44" viewBox="0 0 96 96" aria-hidden="true" style="flex: none;"><rect x="8" y="28" width="62" height="16" rx="8" fill="#F5F5F7"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+            <button type="button" style="height: 46px; padding: 0 22px; border: 0; border-radius: 23px; background: {{button}}; color: #FFFFFF; font-size: 16px; font-weight: 700;">지금 입장</button>
+            <button type="button" style="height: 46px; padding: 0 18px; border: 0; border-radius: 23px; background: rgba(255,255,255,0.14); color: #F5F5F7; font-size: 15px; font-weight: 600;">초대 링크 복사</button>
+            <button type="button" style="height: 46px; padding: 0 18px; border: 0; border-radius: 23px; background: rgba(255,255,255,0.14); color: #F5F5F7; font-size: 15px; font-weight: 600;">일정 바꾸기</button>
+          </div>
+        </section>
+
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+          <button type="button" style="display: flex; align-items: center; gap: 16px; padding: 22px; border: 0; border-radius: 22px; background: #FFFFFF; color: #1D1D1F; text-align: left;">
+            <span style="flex: none; width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: {{button}}; color: #FFFFFF;"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 10l5-3v10l-5-3z"/></svg></span>
+            <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 19px; font-weight: 700;">지금 회의 시작</span><span style="font-size: 14px; color: #6E6E73;">링크가 바로 만들어집니다</span></span>
+          </button>
+          <a href="Schedule.dc.html" style="display: flex; align-items: center; gap: 16px; padding: 22px; border-radius: 22px; background: #FFFFFF; color: #1D1D1F; text-decoration: none;">
+            <span style="flex: none; width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: #F2F2F4;"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+            <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 19px; font-weight: 700;">회의 예약</span><span style="font-size: 14px; color: #6E6E73;">날짜를 정하고 초대 보내기</span></span>
+          </a>
+        </div>
+
+        <section aria-labelledby="later-title" style="flex: 1; min-height: 0; border-radius: 22px; background: #FFFFFF; padding: 20px 24px; display: flex; flex-direction: column;">
+          <h2 id="later-title" style="margin: 0 0 6px; font-size: 17px; font-weight: 700;">예정된 회의</h2>
+          <div style="display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid #E5E5EA;">
+            <span style="flex: none; width: 48px; text-align: center;"><span style="display: block; font-size: 11px; font-weight: 700; color: #C2381A;">10월</span><span style="display: block; font-size: 22px; font-weight: 700;">28</span></span>
+            <span style="flex: 1; display: flex; flex-direction: column;"><span style="font-size: 16px; font-weight: 600;">투자사 IR 콜</span><span style="font-size: 14px; color: #6E6E73;">화 오전 10:00 · 한국어 ⇄ English</span></span>
+            <button type="button" aria-label="투자사 IR 콜 초대 링크 복사" style="height: 34px; padding: 0 14px; border: 0; border-radius: 17px; background: #F2F2F4; color: #1D1D1F; font-size: 13px; font-weight: 600;">링크 복사</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; padding: 12px 0;">
+            <span style="flex: none; width: 48px; text-align: center;"><span style="display: block; font-size: 11px; font-weight: 700; color: #C2381A;">11월</span><span style="display: block; font-size: 22px; font-weight: 700;">4</span></span>
+            <span style="flex: 1; display: flex; flex-direction: column;"><span style="font-size: 16px; font-weight: 600;">오사카 매장 설명회</span><span style="font-size: 14px; color: #6E6E73;">화 오후 2:00 · 자막 화면 · 한국어 ⇄ 日本語</span></span>
+            <button type="button" aria-label="오사카 매장 설명회 초대 링크 복사" style="height: 34px; padding: 0 14px; border: 0; border-radius: 17px; background: #F2F2F4; color: #1D1D1F; font-size: 13px; font-weight: 600;">링크 복사</button>
+          </div>
+        </section>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 20px; min-height: 0;">
+        <section aria-labelledby="use-title" style="border-radius: 22px; background: #FFFFFF; padding: 24px; display: flex; align-items: center; gap: 22px;">
+          <div role="img" aria-label="이번 달 10시간 중 2시간 40분 사용" style="flex: none; position: relative; width: 112px; height: 112px; border-radius: 56px; background: conic-gradient({{accent}} 0 27%, #E5E5EA 27% 100%); display: grid; place-items: center;">
+            <span style="width: 88px; height: 88px; border-radius: 44px; background: #FFFFFF; display: grid; place-items: center; font-size: 22px; font-weight: 700;">27%</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <h2 id="use-title" style="margin: 0; font-size: 15px; font-weight: 600; color: #6E6E73;">이번 달 번역 시간</h2>
+            <p style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em;">7시간 20분 남음</p>
+            <p style="margin: 0; font-size: 14px; color: #6E6E73;">Pro · 11월 1일에 다시 채워짐</p>
+            <a href="Account.dc.html" style="font-size: 14px; margin-top: 2px;">시간 추가</a>
+          </div>
+        </section>
+
+        <section aria-labelledby="device-title" style="border-radius: 22px; background: #FFFFFF; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px;">
+          <h2 id="device-title" style="margin: 0; font-size: 17px; font-weight: 700;">이 기기에서 바로</h2>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+            <button type="button" style="display: flex; flex-direction: column; align-items: flex-start; gap: 22px; padding: 16px; border: 0; border-radius: 16px; background: #F5F5F7; color: #1D1D1F; text-align: left;">
+              <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="3"/><path d="M7 12h10"/></svg>
+              <span><span style="display: block; font-size: 15px; font-weight: 700;">대면 대화</span><span style="display: block; font-size: 13px; color: #6E6E73;">휴대폰 하나로 마주 보고</span></span>
+            </button>
+            <button type="button" style="display: flex; flex-direction: column; align-items: flex-start; gap: 22px; padding: 16px; border: 0; border-radius: 16px; background: #F5F5F7; color: #1D1D1F; text-align: left;">
+              <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 13h4M13 13h4M7 16h7"/></svg>
+              <span><span style="display: block; font-size: 15px; font-weight: 700;">자막 화면</span><span style="display: block; font-size: 13px; color: #6E6E73;">탁자 위 태블릿으로</span></span>
+            </button>
+          </div>
+        </section>
+
+        <section aria-labelledby="past-title" style="flex: 1; min-height: 0; border-radius: 22px; background: #FFFFFF; padding: 20px 24px; display: flex; flex-direction: column; gap: 4px;">
+          <h2 id="past-title" style="margin: 0 0 6px; font-size: 17px; font-weight: 700;">지난 회의</h2>
+          <div style="display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #E5E5EA; font-size: 14px;"><span>도쿄 바이어 상담</span><span style="color: #6E6E73;">10월 15일 · 48분</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #E5E5EA; font-size: 14px;"><span>주간 파트너 미팅</span><span style="color: #6E6E73;">10월 10일 · 1시간 12분</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 9px 0; font-size: 14px;"><span>제품 데모</span><span style="color: #6E6E73;">10월 6일 · 40분</span></div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>게스트 대기실</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #F5F5F7; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif; display: flex; flex-direction: column;">
+  <div style="height: 64px; display: flex; align-items: center; padding: 0 40px;">
+    <span style="display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 18px; letter-spacing: -0.05em;"><svg width="24" height="24" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>tolkmeet</span>
+  </div>
+  <div style="flex: 1; display: flex; gap: 48px; align-items: center; justify-content: center; padding: 0 80px 64px;">
+    <div style="position: relative; width: 720px; height: 470px; border-radius: 28px; background: #2C2C2E; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #F5F5F7;">
+      <span style="width: 140px; height: 140px; border-radius: 70px; display: grid; place-items: center; background: linear-gradient(180deg, #A2A6B0 0%, #7D818C 100%); font-size: 58px; font-weight: 600;">T</span>
+      <span style="font-size: 15px; color: rgba(235,235,245,0.7);">카메라가 꺼져 있습니다</span>
+      <div style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px;">
+        <button type="button" aria-label="마이크 켜짐" style="width: 52px; height: 52px; border: 0; border-radius: 26px; background: rgba(255,255,255,0.16); color: #FFFFFF; display: grid; place-items: center;"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button type="button" aria-label="카메라 꺼짐" style="width: 52px; height: 52px; border: 0; border-radius: 26px; background: #FFFFFF; color: #1D1D1F; display: grid; place-items: center;"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 10l5-3v10l-5-3zM3 3l18 18"/></svg></button>
+      </div>
+      <div aria-hidden="true" style="position: absolute; left: 22px; bottom: 32px; display: flex; align-items: center; gap: 3px; height: 18px;"><i style="width: 3px; height: 6px; border-radius: 2px; background: #30D158;"></i><i style="width: 3px; height: 14px; border-radius: 2px; background: #30D158;"></i><i style="width: 3px; height: 9px; border-radius: 2px; background: #30D158;"></i></div>
+    </div>
+
+    <form style="width: 400px; display: flex; flex-direction: column; gap: 18px;">
+      <div>
+        <p style="margin: 0; font-size: 15px; color: #6E6E73;">유민준 님의 회의</p>
+        <h1 style="margin: 6px 0 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em;">일본 유통 파트너 미팅</h1>
+      </div>
+      <label style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 13px; font-weight: 600; color: #6E6E73;">이름</span>
+        <input type="text" value="Takahashi" style="height: 48px; padding: 0 14px; border: 1px solid #D2D2D7; border-radius: 12px; font: inherit; font-size: 16px; color: #1D1D1F; background: #FFFFFF;">
+      </label>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+        <label style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 13px; font-weight: 600; color: #6E6E73;">내가 말하는 언어</span><select style="height: 48px; padding: 0 12px; border: 1px solid #D2D2D7; border-radius: 12px; font: inherit; font-size: 16px; background: #FFFFFF; color: #1D1D1F;"><option>日本語</option></select></label>
+        <label style="display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 13px; font-weight: 600; color: #6E6E73;">상대가 말하는 언어</span><select style="height: 48px; padding: 0 12px; border: 1px solid #D2D2D7; border-radius: 12px; font: inherit; font-size: 16px; background: #FFFFFF; color: #1D1D1F;"><option>한국어</option></select></label>
+      </div>
+      <button type="submit" style="height: 54px; border: 0; border-radius: 14px; background: {{button}}; color: #FFFFFF; font-size: 18px; font-weight: 700;">입장 요청</button>
+      <p style="margin: 0; font-size: 13px; line-height: 1.55; color: #6E6E73;">주최자가 수락하면 들어갑니다. 계정은 필요 없습니다. 말한 내용은 번역을 위해 Google Gemini로 전송되며 저장되지 않습니다. 각 참가자는 자기 화면의 자막을 파일로 저장할 수 있습니다.</p>
+    </form>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

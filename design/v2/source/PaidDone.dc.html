@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>결제 완료</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #F5F5F7; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif; display: flex; flex-direction: column; align-items: center;">
+  <div style="align-self: stretch; height: 64px; display: flex; align-items: center; padding: 0 40px;">
+    <span style="display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 18px; letter-spacing: -0.05em;"><svg width="24" height="24" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>tolkmeet</span>
+  </div>
+  <div style="margin-top: 70px; width: 640px; display: flex; flex-direction: column; align-items: center; text-align: center;">
+    <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>
+    <h1 style="margin: 20px 0 0; font-size: 48px; font-weight: 700; letter-spacing: -0.02em;">Pro가 시작되었습니다</h1>
+    <p style="margin: 12px 0 0; font-size: 18px; line-height: 1.5; color: #6E6E73;">이번 달 번역 시간 10시간이 채워졌습니다. 영수증은 minjun@company.com으로 보냈습니다.</p>
+    <div style="margin-top: 36px; width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; text-align: left;">
+      <div style="padding: 20px; border-radius: 20px; background: #FFFFFF; display: flex; flex-direction: column; gap: 10px;"><span style="font-size: 13px; font-weight: 700; color: #C2381A;">1</span><span style="font-size: 16px; font-weight: 600;">회의를 만들고</span><span style="font-size: 14px; line-height: 1.5; color: #6E6E73;">지금 시작하거나 날짜를 정해 예약합니다.</span></div>
+      <div style="padding: 20px; border-radius: 20px; background: #FFFFFF; display: flex; flex-direction: column; gap: 10px;"><span style="font-size: 13px; font-weight: 700; color: #C2381A;">2</span><span style="font-size: 16px; font-weight: 600;">링크를 보내면</span><span style="font-size: 14px; line-height: 1.5; color: #6E6E73;">상대는 가입 없이 브라우저로 들어옵니다.</span></div>
+      <div style="padding: 20px; border-radius: 20px; background: #FFFFFF; display: flex; flex-direction: column; gap: 10px;"><span style="font-size: 13px; font-weight: 700; color: #C2381A;">3</span><span style="font-size: 16px; font-weight: 600;">각자의 언어로</span><span style="font-size: 14px; line-height: 1.5; color: #6E6E73;">말하는 대로 자막이 상대 언어로 흐릅니다.</span></div>
+    </div>
+    <div style="margin-top: 32px; display: flex; gap: 12px;">
+      <a href="Home.dc.html" style="display: inline-flex; align-items: center; height: 52px; padding: 0 26px; border-radius: 26px; background: {{button}}; color: #FFFFFF; font-size: 17px; font-weight: 700; text-decoration: none;">첫 회의 시작하기</a>
+      <a href="Home.dc.html" style="display: inline-flex; align-items: center; height: 52px; padding: 0 22px; border-radius: 26px; background: #E8E8ED; color: #1D1D1F; font-size: 17px; font-weight: 600; text-decoration: none;">홈으로</a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

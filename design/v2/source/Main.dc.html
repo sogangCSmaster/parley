@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Tolkmeet 소개</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; overflow: hidden; background: #FFFFFF; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif; position: relative;">
+  <nav aria-label="주요 메뉴" style="height: 48px; background: rgba(250,250,252,0.8); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: center; gap: 40px; font-size: 12px;">
+    <a href="#" aria-label="Tolkmeet" style="display: flex; align-items: center; gap: 6px; color: #1D1D1F; font-weight: 800; font-size: 16px; letter-spacing: -0.05em; text-decoration: none;">
+      <svg width="22" height="22" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>
+      tolkmeet
+    </a>
+    <a href="#" style="color: #424245;">개요</a>
+    <a href="#" style="color: #424245;">화상 회의</a>
+    <a href="#" style="color: #424245;">대면 대화</a>
+    <a href="#" style="color: #424245;">자막 화면</a>
+    <a href="#" style="color: #424245;">개인정보 보호</a>
+    <a href="#" style="color: #424245;">요금</a>
+    <a href="#" style="background: {{button}}; color: #FFFFFF; padding: 5px 13px; border-radius: 980px; font-size: 12px; font-weight: 700;">시작하기</a>
+  </nav>
+
+  <div style="display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 64px;">
+    <svg width="64" height="64" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>
+    <h1 style="margin: 18px 0 0; font-size: 80px; line-height: 1.05; font-weight: 700; letter-spacing: -0.015em;">말은 각자의 언어로.<br>대화는 하나로.</h1>
+    <p style="margin: 22px 0 0; max-width: 680px; font-size: 24px; line-height: 1.4; color: #6E6E73;">말하는 순간, 상대의 화면에는 그 사람의 언어로 자막이 흐릅니다. 한국어, 일본어, 영어를 포함한 8개 언어.</p>
+    <div style="display: flex; gap: 28px; align-items: center; margin-top: 30px;">
+      <a href="#" style="background: {{button}}; color: #FFFFFF; padding: 12px 26px; border-radius: 980px; font-size: 19px; font-weight: 700; text-decoration: none;">시작하기</a>
+      <a href="#" style="color: #C2381A; font-size: 19px; display: flex; align-items: center; gap: 5px;">회의 예시 보기
+        <svg width="8" height="13" viewBox="0 0 8 13" aria-hidden="true"><path d="M1.5 1.5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+    </div>
+    <p style="margin: 14px 0 0; font-size: 14px; color: #6E6E73;">Pro 월 $19부터. 번역 회의 10시간 포함.</p>
+  </div>
+
+  <div style="position: absolute; left: 50%; top: 600px; width: 1040px; transform: translateX(-50%); border-radius: 22px; padding: 12px; background: linear-gradient(180deg, #2A2A2D 0%, #1A1A1C 100%); box-shadow: 0 50px 100px -30px rgba(0,0,0,0.45);">
+    <div style="position: relative; height: 560px; border-radius: 12px; overflow: hidden; background: #0E0E10; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 8px;">
+      <div style="position: relative; border-radius: 10px; overflow: hidden; background: #2C2C2E; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <span style="width: 128px; height: 128px; border-radius: 64px; display: grid; place-items: center; background: linear-gradient(180deg, #A2A6B0 0%, #7D818C 100%); color: #FFFFFF; font-size: 54px; font-weight: 600; box-shadow: 0 0 0 4px {{accent}}, 0 0 0 12px rgba(242,84,45,0.18);">さ</span>
+          <span aria-hidden="true" style="display: flex; align-items: center; gap: 3px; height: 16px; margin-top: 18px;"><i style="width: 3px; height: 7px; border-radius: 2px; background: {{accent}};"></i><i style="width: 3px; height: 15px; border-radius: 2px; background: {{accent}};"></i><i style="width: 3px; height: 10px; border-radius: 2px; background: {{accent}};"></i><i style="width: 3px; height: 16px; border-radius: 2px; background: {{accent}};"></i><i style="width: 3px; height: 8px; border-radius: 2px; background: {{accent}};"></i></span>
+          <span style="margin-top: 10px; font-size: 15px; font-weight: 600; color: #F5F5F7;">さくら</span>
+        </div>
+      <div style="position: relative; border-radius: 10px; overflow: hidden; background: #2C2C2E; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <span style="width: 128px; height: 128px; border-radius: 64px; display: grid; place-items: center; background: linear-gradient(180deg, #A2A6B0 0%, #7D818C 100%); color: #FFFFFF; font-size: 54px; font-weight: 600; ">민</span>
+          <span aria-hidden="true" style="height: 16px; margin-top: 18px;"></span>
+          <span style="margin-top: 10px; font-size: 15px; font-weight: 600; color: #F5F5F7;">민준</span>
+        </div>
+      <div style="position: absolute; left: 50%; bottom: 100px; transform: translateX(-50%); width: 640px; padding: 16px 22px; border-radius: 18px; background: rgba(30,30,32,0.6); backdrop-filter: blur(30px) saturate(1.6); border: 1px solid rgba(255,255,255,0.12); text-align: left;">
+        <p style="margin: 0; font-size: 14px; color: rgba(235,235,245,0.65);"><span style="font-weight: 600; color: rgba(235,235,245,0.85);">さくら</span>  来週のデモ、木曜日でも大丈夫ですか？</p>
+        <p style="margin: 4px 0 0; font-size: 26px; font-weight: 600; color: #FFFFFF; letter-spacing: -0.01em; display: flex; align-items: center; gap: 12px;"><i aria-hidden="true" style="flex: none; width: 13px; height: 4px; border-radius: 2px; background: {{accent}};"></i>다음 주 데모, 목요일도 괜찮으세요?</p>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

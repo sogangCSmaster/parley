@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>번역 시간 소진</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; overflow: hidden; background: #1C1C1E; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif; color: #1D1D1F;">
+  <div aria-hidden="true" style="position: absolute; inset: 36px; border-radius: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; filter: blur(3px); opacity: 0.6;">
+    <div style="border-radius: 14px; background: #2C2C2E;"></div>
+    <div style="border-radius: 14px; background: #2C2C2E;"></div>
+  </div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.35);"></div>
+
+  <div role="dialog" aria-modal="true" aria-labelledby="q-title" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 520px; border-radius: 28px; background: #FFFFFF; padding: 36px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; text-align: center; box-shadow: 0 40px 90px -30px rgba(0,0,0,0.6);">
+    <div role="img" aria-label="이번 달 번역 시간 10시간 모두 사용" style="width: 104px; height: 104px; border-radius: 52px; background: conic-gradient({{accent}} 0 100%); display: grid; place-items: center;"><span style="width: 82px; height: 82px; border-radius: 41px; background: #FFFFFF; display: grid; place-items: center; font-size: 20px; font-weight: 700;">10h</span></div>
+    <h2 id="q-title" style="margin: 22px 0 0; font-size: 28px; font-weight: 700; letter-spacing: -0.015em;">이번 달 번역 시간을 다 썼습니다</h2>
+    <p style="margin: 10px 0 0; font-size: 16px; line-height: 1.55; color: #6E6E73;">영상과 음성은 그대로 이어집니다. 자막은 시간을 추가하거나 11월 1일에 다시 채워지면 돌아옵니다.</p>
+    <div style="margin-top: 24px; width: 100%; display: flex; flex-direction: column; gap: 10px;">
+      <button type="button" style="height: 56px; border: 0; border-radius: 16px; background: {{button}}; color: #FFFFFF; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; padding: 0 20px;"><span>1시간 추가</span><span>$3</span></button>
+      <button type="button" style="height: 56px; border: 0; border-radius: 16px; background: #F2F2F4; color: #1D1D1F; font-size: 17px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; padding: 0 20px;"><span>5시간 추가</span><span>$15</span></button>
+      <button type="button" style="height: 56px; border: 0; border-radius: 16px; background: #F2F2F4; color: #1D1D1F; font-size: 17px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; padding: 0 20px;"><span>Business로 바꾸기 · 매달 30시간</span><span>$39/월</span></button>
+    </div>
+    <button type="button" style="margin-top: 16px; height: 40px; padding: 0 16px; border: 0; background: transparent; color: #424245; font-size: 15px; font-weight: 600;">자막 없이 계속</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

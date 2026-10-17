@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>회의 예약 완료</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; overflow: hidden; background: #F5F5F7; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Apple SD Gothic Neo', system-ui, sans-serif;">
+  <div aria-hidden="true" style="position: absolute; inset: 0; padding: 104px 160px; display: flex; flex-direction: column; gap: 32px; filter: blur(2px);">
+    <div style="width: 520px; height: 52px; border-radius: 12px; background: #E5E5EA;"></div>
+    <div style="height: 200px; border-radius: 28px; background: #1D1D1F;"></div>
+    <div style="height: 240px; border-radius: 22px; background: #FFFFFF;"></div>
+  </div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.32);"></div>
+
+  <div role="dialog" aria-modal="true" aria-labelledby="done-title" style="position: absolute; left: 50%; top: 64px; transform: translateX(-50%); width: 560px; border-radius: 26px; background: #FFFFFF; box-shadow: 0 40px 90px -30px rgba(0,0,0,0.5); padding: 30px 30px 26px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span style="flex: none; width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; background: #E8F7EC;"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#248A3D" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span>
+      <h2 id="done-title" style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em;">회의가 예약되었습니다</h2>
+    </div>
+    <p style="margin: 0; font-size: 15px; line-height: 1.55; color: #6E6E73;">아래 정보를 복사해 메일이나 메신저로 보내세요. 받는 사람은 가입 없이 링크로 참여합니다.</p>
+
+    <div style="border-radius: 18px; background: #F5F5F7; padding: 20px 22px; font-size: 15px; line-height: 1.65;">
+      <p style="margin: 0; font-weight: 700; font-size: 17px;">일본 유통 파트너 미팅</p>
+      <p style="margin: 6px 0 0;">10월 23일 (목) 오후 3:00 – 4:00<br><span style="color: #6E6E73;">서울·도쿄 같은 시간 · 뉴욕 오전 2:00</span></p>
+      <p style="margin: 12px 0 0;">참여 링크<br><a href="Lobby.dc.html" style="font-weight: 600;">meet.tolkmeet.com/kfr-tqzn-wpe</a></p>
+      <p style="margin: 12px 0 0; color: #6E6E73;">한국어 ⇄ 日本語 실시간 번역 자막 · Chrome, Safari, Edge에서 열어 주세요</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <button type="button" style="height: 52px; border: 0; border-radius: 14px; background: {{button}}; color: #FFFFFF; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+        초대 정보 복사
+      </button>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+        <button type="button" style="height: 46px; border: 0; border-radius: 14px; background: #F2F2F4; color: #1D1D1F; font-size: 14px; font-weight: 600;">링크만 복사</button>
+        <button type="button" style="height: 46px; border: 0; border-radius: 14px; background: #F2F2F4; color: #1D1D1F; font-size: 14px; font-weight: 600;">캘린더에 추가</button>
+        <button type="button" style="height: 46px; border: 0; border-radius: 14px; background: #F2F2F4; color: #1D1D1F; font-size: 14px; font-weight: 600;">메일로 보내기</button>
+      </div>
+    </div>
+    <p style="margin: 0; font-size: 13px; color: #6E6E73;">초대 메일은 다음 사람에게도 보냈습니다: takahashi@example.jp, yamada@example.jp</p>
+    <button type="button" style="align-self: flex-end; height: 40px; padding: 0 18px; border: 0; border-radius: 20px; background: transparent; color: #1D1D1F; font-size: 15px; font-weight: 600;">완료</button>
+  </div>
+
+  <div role="status" style="position: absolute; left: 50%; bottom: 48px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 22px; background: rgba(29,29,31,0.92); color: #FFFFFF; font-size: 15px; font-weight: 600; box-shadow: 0 16px 40px -12px rgba(0,0,0,0.5);">
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#30D158" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
+    일정과 링크를 클립보드에 복사했습니다
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

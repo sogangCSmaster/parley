@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>メール、会議の招待</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#C2381A;text-decoration:none}
+</style>
+</helmet>
+<div style="width: 600px; height: 760px; box-sizing: border-box; background: #F5F5F7; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Apple SD Gothic Neo', system-ui, sans-serif; padding: 40px 32px;">
+  <div style="border-radius: 20px; background: #FFFFFF; padding: 36px;">
+    <span style="display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 18px; letter-spacing: -0.05em;"><svg width="24" height="24" viewBox="0 0 96 96" aria-hidden="true"><rect x="8" y="28" width="62" height="16" rx="8" fill="#1D1D1F"/><rect x="26" y="52" width="62" height="16" rx="8" fill="{{accent}}"/></svg>tolkmeet</span>
+    <p style="margin: 28px 0 0; font-size: 15px; color: #6E6E73;">유민준 さんからの会議の招待</p>
+    <h1 lang="ko" style="margin: 6px 0 0; font-size: 26px; font-weight: 700;">일본 유통 파트너 미팅</h1>
+    <div style="margin-top: 20px; display: flex; gap: 14px; align-items: center; padding: 16px; border-radius: 14px; background: #F5F5F7;">
+      <span style="flex: none; width: 52px; text-align: center;"><span style="display: block; font-size: 12px; font-weight: 700; color: #C2381A;">10月</span><span style="display: block; font-size: 24px; font-weight: 700;">23</span></span>
+      <span style="font-size: 15px; line-height: 1.55;">木曜日 午後3:00〜4:00 (東京・ソウル)<br><span style="color: #6E6E73;">日本語 ⇄ 한국어 字幕つき</span></span>
+    </div>
+    <p style="margin: 20px 0 0; font-size: 15px; line-height: 1.65; color: #424245;">日本語で話せば、相手には韓国語の字幕で届きます。アカウントもアプリも必要ありません。時間になったらボタンを押して参加をリクエストしてください。</p>
+    <a href="Lobby.dc.html" style="margin-top: 22px; display: block; height: 52px; line-height: 52px; border-radius: 14px; background: {{button}}; color: #FFFFFF; text-align: center; font-size: 16px; font-weight: 700; text-decoration: none;">会議に参加する</a>
+    <p style="margin: 16px 0 0; font-size: 13px; color: #6E6E73;">カレンダーに追加: 添付の .ics ファイル · Chrome、Safari、Edge でご利用ください</p>
+  </div>
+  <p style="margin: 22px 0 0; text-align: center; font-size: 12px; line-height: 1.6; color: #6E6E73;">[会社名] · [住所]<br>このメールは 유민준 さんの依頼で Tolkmeet が送信しました。</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#F2542D","options":["#F2542D","#0071E3","#1D1D1F"]},"$preview":{"width":600,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#F2542D';
+// 버튼 바탕은 브랜드 주황보다 한 단계 진하게: 흰 글씨 대비 4.6:1. 로고·막대 같은 포인트는 원래 주황.
+return { accent, button: accent.toUpperCase() === '#F2542D' ? '#D4401C' : accent };
+}
+}
+</script>
+</body>
+</html>

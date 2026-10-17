@@ -3,6 +3,8 @@
 **References: Google Meet** (meeting screen layout, controls, colors) + a **simple caption panel** (white background, thin dividers, translation directly under the original).
 No decoration: gradients, shimmer effects, per-speaker colors and the like are not used. **The font is Pretendard (JP build, which includes Korean, Japanese and Latin) throughout.** Tokens are in [tokens.css](tokens.css); see [preview.html](preview.html) for how it looks.
 
+> **Next version:** the v2 direction (system font, glass surfaces, deep-orange buttons, recency-sized captions, account and billing screens) is mocked up in [v2/](v2/README.md). Screens move to it one at a time; until a screen is rebuilt, the rules below apply.
+
 ## Brand
 
 - Name **tolkmeet** (always lowercase). Wordmark is Pretendard 800, letter-spacing -0.05em.
