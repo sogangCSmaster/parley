@@ -3,11 +3,12 @@ import { api, createRoom, type Plan, type User } from '../lib/api'
 import { features, refreshAuth, setUser, useAuth } from '../lib/auth'
 import { useI18n, type MessageKey } from '../lib/i18n'
 import '../lib/i18nPages'
-import { REFUND_URL } from '../lib/links'
+import { legalUrl } from '../lib/links'
 import { navigate, queryParam } from '../lib/router'
 import { BrandMark } from './BrandMark'
 import { Header } from './Header'
 import { Icon } from './Icon'
+import { Rich } from './Rich'
 
 type Item = 'basic' | 'pro' | 'hours'
 
@@ -59,7 +60,7 @@ const PRICE: Record<Exclude<Item, 'hours'>, string> = { basic: '$19', pro: '$39'
 const HOURS = [1, 5, 10]
 
 export function Checkout() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const auth = useAuth()
   const [item, setItem] = useState<Item>(() => {
     const q = queryParam('item') ?? queryParam('plan')
@@ -70,6 +71,10 @@ export function Checkout() {
     return HOURS.includes(q) ? q : 5
   })
   const [busy, setBusy] = useState(false)
+  // 결제 정보는 판매 대행사 Paddle(영국)에 제공·국외 이전되므로 결제 전에 따로 동의를 받는다(개인정보 보호법 제17조·제28조의8).
+  const [consentProvide, setConsentProvide] = useState(false)
+  const [consentTransfer, setConsentTransfer] = useState(false)
+  const consent = consentProvide && consentTransfer
   const [error, setError] = useState<MessageKey | null>(null)
 
   useEffect(() => {
@@ -92,7 +97,12 @@ export function Checkout() {
       if (!r.ok) return setError('account.billingFailed')
       return navigate(`/billing/done?item=${sel}`)
     }
-    const r = await api.post<CheckoutData | { dev: true }>('/api/billing/checkout', { item: sel, quantity: sel === 'hours' ? qty : 1 })
+    const r = await api.post<CheckoutData | { dev: true }>('/api/billing/checkout', {
+      item: sel,
+      quantity: sel === 'hours' ? qty : 1,
+      consentProvide: consentProvide,
+      consentTransfer: consentTransfer,
+    })
     if (!r.ok) {
       setBusy(false)
       return setError('account.billingFailed')
@@ -178,7 +188,7 @@ export function Checkout() {
           </ul>
           <p className="fine">
             {t('checkout.fine')}{' '}
-            <a href={REFUND_URL} target="_blank" rel="noreferrer">
+            <a href={legalUrl('refund', locale)} target="_blank" rel="noreferrer">
               {t('checkout.refund')}
             </a>
           </p>
@@ -207,10 +217,39 @@ export function Checkout() {
               {t(error)}
             </p>
           )}
+          {!same && !changing && (
+            <div className="consent-box" id="paddle-consent">
+              <label className="check-row">
+                <input type="checkbox" checked={consentProvide} onChange={(e) => setConsentProvide(e.target.checked)} />
+                <span>{t('checkout.consentProvide')}</span>
+              </label>
+              <label className="check-row">
+                <input type="checkbox" checked={consentTransfer} onChange={(e) => setConsentTransfer(e.target.checked)} />
+                <span>{t('checkout.consentTransfer')}</span>
+              </label>
+              <p className="fine">
+                <Rich
+                  text={t('checkout.consentNote')}
+                  parts={{
+                    privacy: (
+                      <a href={legalUrl('privacy', locale)} target="_blank" rel="noreferrer">
+                        {t('checkout.privacyLink')}
+                      </a>
+                    ),
+                  }}
+                />
+              </p>
+            </div>
+          )}
           {same ? (
             <p className="form-note">{t('checkout.already')}</p>
           ) : (
-            <button className="btn btn-primary btn-lg" disabled={busy || (!features().billing && !features().devBilling)} onClick={() => void pay()}>
+            <button
+              className="btn btn-primary btn-lg"
+              disabled={busy || (!changing && !consent) || (!features().billing && !features().devBilling)}
+              aria-describedby={!changing && !consent ? 'paddle-consent' : undefined}
+              onClick={() => void pay()}
+            >
               {changing ? t('checkout.change', { plan: sel === 'pro' ? 'Pro' : 'Basic' }) : t('checkout.pay', { price: priceLabel })}
             </button>
           )}

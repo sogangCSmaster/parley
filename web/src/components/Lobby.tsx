@@ -5,8 +5,10 @@ import { useI18n } from '../lib/i18n'
 import { useAuth, userName } from '../lib/auth'
 import type { LocalMedia } from '../lib/media'
 import type { Prefs } from '../lib/prefs'
+import { legalUrl } from '../lib/links'
 import { Icon } from './Icon'
 import { LanguageSelects } from './LanguageSelects'
+import { Rich } from './Rich'
 import { Header } from './Header'
 import { VideoTile } from './VideoTile'
 
@@ -23,7 +25,7 @@ type Props = {
 }
 
 export function Lobby({ code, local, room, prefs, media, onPrefsChange, onMediaChange, onJoin }: Props) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const auth = useAuth()
   // 로그인한 주최자는 처음 한 번만 계정의 "회의에서 보이는 이름"을 채워 둔다(지우고 새로 써도 되돌아오지 않게).
   const filled = useRef(false)
@@ -109,6 +111,25 @@ export function Lobby({ code, local, room, prefs, media, onPrefsChange, onMediaC
               {auth.status !== 'host' && t('lobby.guestNote')} {room?.translation && t('captions.saveNotice')}
             </p>
           )}
+          {/* 손님도 입장 전에 약관·처리방침을 보고, 번역이 켜진 회의면 음성이 Gemini로 간다는 것도 본다. */}
+          <p className="lobby-note">
+            <Rich
+              text={t('lobby.agree')}
+              parts={{
+                terms: (
+                  <a href={legalUrl('terms', locale)} target="_blank" rel="noreferrer">
+                    {t('lobby.terms')}
+                  </a>
+                ),
+                privacy: (
+                  <a href={legalUrl('privacy', locale)} target="_blank" rel="noreferrer">
+                    {t('lobby.privacy')}
+                  </a>
+                ),
+              }}
+            />
+            {room?.translation && <> {t('lobby.geminiNote')}</>}
+          </p>
         </form>
       </main>
     </div>

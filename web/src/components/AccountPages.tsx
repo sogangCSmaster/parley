@@ -6,7 +6,7 @@ import { useI18n, type MessageKey } from '../lib/i18n'
 import '../lib/i18nPages'
 import { LANGUAGES } from '../lib/languages'
 import { registerPasskey, passkeySupported } from '../lib/passkey'
-import { navigate } from '../lib/router'
+import { navigate, queryParam, replacePath } from '../lib/router'
 import { applyCaptionSize, applyTheme, currentCaptionSize, currentTheme } from '../lib/theme'
 import { InLink } from './AuthBits'
 import { CodeInput } from './CodeInput'
@@ -853,7 +853,11 @@ function PasswordCard({ user }: { user: User }) {
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<MessageKey | null>(null)
+  // Google 연결이 실패하면 서버가 ?error=google로 돌려보낸다.
+  const [error, setError] = useState<MessageKey | null>(() => (queryParam('error') === 'google' ? 'account.googleLinkFailed' : null))
+  useEffect(() => {
+    if (queryParam('error')) replacePath('/account/security')
+  }, [])
   const [note, setNote] = useState<MessageKey | null>(null)
   // Google에서 뒤로 가기로 돌아오면(bfcache) 연결 중 상태가 남아 있으므로 풀어 준다.
   useEffect(() => {

@@ -149,7 +149,7 @@ export const ja: Dict = {
   legalPrivacy: 'プライバシーポリシー',
   legalTerms: '利用規約',
   legalRefund: '返金ポリシー',
-  footerDisclaimer: '翻訳は AI が行うため、誤りが含まれることがあります。契約・医療・法律など重要な内容は、専門家に確認してください。会議の音声は翻訳のために Google Gemini の有料 API に送られ、保存されません。価格は米ドル建てで、決済時に税金が加算される場合があります。',
+  footerDisclaimer: '翻訳は AI が行うため、誤りが含まれることがあります。契約・医療・法律など重要な内容は、専門家に確認してください。会議の音声は翻訳のために Google Gemini の有料 API に送られ、Tolkmeet は保存しません。価格は米ドル建てで、決済時に税金が加算される場合があります。',
 
   footerProduct: 'プロダクト',
   footerOpenSource: 'AGPL-3.0 のオープンソース',

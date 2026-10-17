@@ -1,12 +1,15 @@
 ---
-// 약관·개인정보·환불 페이지의 공통 틀(영어만). 머리 막대, 제목, 목차(있으면), 본문, 바닥 줄.
+// 약관·개인정보·환불 페이지의 공통 틀(영어·한국어). 머리 막대, 제목, 목차(있으면), 본문, 바닥 줄.
 import Base from '../layouts/Base.astro'
 import Mark from './Mark.astro'
 import { en } from '../i18n/en'
+import { ko } from '../i18n/ko'
 import '../styles/legal.css'
 
 type Page = 'privacy' | 'terms' | 'refund'
+type Lang = 'en' | 'ko'
 interface Props {
+  lang: Lang
   page: Page
   title: string
   metaTitle: string
@@ -15,21 +18,40 @@ interface Props {
   /** [id, 목차 이름]. 없으면 목차 없이 한 단으로 놓는다. */
   toc?: [string, string][]
 }
-const { page, title, metaTitle, metaDescription, updated, toc } = Astro.props
-const links: [Page, string][] = [['privacy', 'Privacy'], ['terms', 'Terms'], ['refund', 'Refunds']]
-const href = (p: Page) => `/${p}/`
-// Base는 hreflang 대안을 언어별 첫 페이지로 건다. 이 페이지들은 영어 하나뿐이라 그 대안이 틀리므로
+const { lang, page, title, metaTitle, metaDescription, updated, toc } = Astro.props
+const ui = {
+  en: {
+    dict: en,
+    nav: { privacy: 'Privacy', terms: 'Terms', refund: 'Refunds' },
+    foot: { privacy: 'Privacy Policy', terms: 'Terms of Service', refund: 'Refund Policy' },
+    toc: 'On this page',
+    home: 'Tolkmeet home',
+    other: { lang: 'ko', label: '한국어로 보기' },
+  },
+  ko: {
+    dict: ko,
+    nav: { privacy: '개인정보', terms: '이용약관', refund: '환불' },
+    foot: { privacy: '개인정보처리방침', terms: '이용약관', refund: '환불 정책' },
+    toc: '목차',
+    home: 'Tolkmeet 홈',
+    other: { lang: 'en', label: 'Read in English' },
+  },
+}[lang]
+const pages: Page[] = ['privacy', 'terms', 'refund']
+const href = (p: Page, l: Lang = lang) => (l === 'ko' ? `/ko/${p}/` : `/${p}/`)
+const otherHref = href(page, ui.other.lang as Lang)
+// Base는 hreflang 대안을 언어별 첫 페이지로 건다. 이 페이지들의 짝(영어·한국어)과 맞지 않으므로
 // noindex로 둔다(대표 주소·대안 링크도 함께 빠진다). 검색에 올리려면 Base에 대안 링크를 끄는 옵션부터 만든다.
-const t = { ...en, metaTitle, metaDescription, path: href(page) }
+const t = { ...ui.dict, metaTitle, metaDescription, path: href(page) }
 ---
 <Base t={t} noindex>
   <div class="legal">
-    <a class="skip" href="#legal-main">Skip to content</a>
+    <a class="skip" href="#legal-main">{ui.dict.skipToContent}</a>
     <header>
-    <nav class="legal-top" aria-label="Main">
-      <a class="brand" href="/" aria-label="Tolkmeet home"><Mark size={22} /><span>tolkmeet</span></a>
+    <nav class="legal-top" aria-label={ui.dict.navLabel}>
+      <a class="brand" href={lang === 'ko' ? '/ko/' : '/'} aria-label={ui.home}><Mark size={22} /><span>tolkmeet</span></a>
       <span class="legal-links">
-        {links.map(([p, label]) => <a href={href(p)} aria-current={p === page ? 'page' : undefined}>{label}</a>)}
+        {pages.map((p) => <a href={href(p)} aria-current={p === page ? 'page' : undefined}>{ui.nav[p]}</a>)}
       </span>
     </nav>
     </header>
@@ -39,11 +61,11 @@ const t = { ...en, metaTitle, metaDescription, path: href(page) }
         <>
           <header class="legal-head">
             <h1>{title}</h1>
-            <p class="legal-date">{updated}</p>
+            <p class="legal-date">{updated} · <a class="legal-lang" href={otherHref} lang={ui.other.lang} hreflang={ui.other.lang}>{ui.other.label}</a></p>
           </header>
           <div class="legal-body has-toc">
-            <nav class="legal-toc" aria-label="On this page">
-              <span class="legal-toc-title">On this page</span>
+            <nav class="legal-toc" aria-label={ui.toc}>
+              <span class="legal-toc-title">{ui.toc}</span>
               {toc.map(([id, label]) => <a href={`#${id}`}>{label}</a>)}
             </nav>
             <article class="legal-text"><slot /></article>
@@ -52,14 +74,14 @@ const t = { ...en, metaTitle, metaDescription, path: href(page) }
       ) : (
         <article class="legal-text legal-single">
           <h1>{title}</h1>
-          <p class="legal-date">{updated}</p>
+          <p class="legal-date">{updated} · <a class="legal-lang" href={otherHref} lang={ui.other.lang} hreflang={ui.other.lang}>{ui.other.label}</a></p>
           <slot />
         </article>
       )}
     </main>
 
     <footer class="legal-foot">
-      © 2026 <span lang="ko">휘슬리</span>{links.map(([p, label]) => <> · <a href={href(p)}>{label}</a></>)}
+      © 2026 {lang === 'en' ? <span lang="ko">휘슬리</span> : '휘슬리'}{pages.map((p) => <> · <a href={href(p)}>{ui.foot[p]}</a></>)} · <a class="legal-lang" href={otherHref} lang={ui.other.lang} hreflang={ui.other.lang}>{ui.other.label}</a>
     </footer>
   </div>
 </Base>

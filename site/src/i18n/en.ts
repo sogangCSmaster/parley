@@ -162,7 +162,7 @@ export const en = {
   legalPrivacy: 'Privacy Policy',
   legalTerms: 'Terms of Service',
   legalRefund: 'Refund Policy',
-  footerDisclaimer: 'Translations are made by AI and can be wrong. Confirm anything important, such as contracts or medical and legal matters, with a professional. Meeting audio is sent to Google Gemini’s paid API to be translated and is not stored. Prices are in US dollars; tax may be added at checkout.',
+  footerDisclaimer: 'Translations are made by AI and can be wrong. Confirm anything important, such as contracts or medical and legal matters, with a professional. Meeting audio is sent to Google Gemini’s paid API to be translated; Tolkmeet doesn’t store it. Prices are in US dollars; tax may be added at checkout.',
 
   footerProduct: 'Product',
   footerOpenSource: 'Open source under AGPL-3.0',

@@ -127,6 +127,8 @@ const MIGRATIONS: &[&str] = &[
      );",
     // 지금 구독에 마지막으로 반영한 Paddle 이벤트 시각(늦게 도착한 옛 이벤트를 버리려고)
     "ALTER TABLE users ADD COLUMN paddle_event_at INTEGER NOT NULL DEFAULT 0;",
+    // Paddle(판매 대행사)에 제공·국외 이전하는 데 동의한 마지막 시각(개인정보 보호법 제17조·제28조의8 동의의 기록)
+    "ALTER TABLE users ADD COLUMN paddle_consent_at INTEGER;",
 ];
 
 impl Db {

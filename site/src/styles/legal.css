@@ -40,6 +40,19 @@ body:has(> .legal) { background: var(--legal-bg); }
 .legal-text p + p { margin-top: 12px; }
 .legal-text p + ul { margin-top: 12px; }
 .legal-text ul { display: flex; flex-direction: column; gap: 6px; padding-left: 20px; list-style: disc; }
+.legal-text h3 { margin: 28px 0 8px; font-size: 19px; font-weight: 700; line-height: 1.35; }
+.legal-text :is(ul, .legal-table) + :is(p, ul, .legal-table), .legal-text p + .legal-table { margin-top: 12px; }
+.legal-text ol { display: flex; flex-direction: column; gap: 6px; padding-left: 22px; }
+
+/* 표는 좁은 화면에서 표 안에서만 가로로 밀린다(페이지는 가로로 밀리지 않게) */
+.legal-table { overflow-x: auto; border-radius: 12px; background: var(--legal-card); }
+.legal-table table { width: 100%; min-width: 600px; border-collapse: collapse; font-size: 14px; line-height: 1.5; }
+.legal-table th, .legal-table td { padding: 10px 14px; border-bottom: 1px solid var(--divider); text-align: left; vertical-align: top; }
+.legal-table tr:last-child > * { border-bottom: 0; }
+.legal-table th { font-weight: 600; }
+.legal-table thead th { color: var(--text-secondary); font-size: 13px; }
+.legal-table:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
 .legal-summary { padding: 28px; border-radius: var(--radius-card); background: var(--legal-card); }
 .legal-summary h2 { margin: 0 0 12px; font-size: 22px; }
 .legal-summary ul { gap: 8px; }
@@ -66,3 +79,6 @@ body:has(> .legal) { background: var(--legal-bg); }
 }
 /* .legal a의 링크 색이 건너뛰기 링크(진한 바탕)를 덮지 않게 */
 .legal .skip { color: var(--page-bg); }
+.legal-lang { white-space: nowrap; }
+/* 열 수가 많은 표(국외 이전)는 더 넓게 두고 상자 안에서 가로로 밀린다 */
+.legal-table-wide table { min-width: 900px; }

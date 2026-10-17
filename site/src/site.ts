@@ -13,5 +13,9 @@ export const GITHUB_URL = 'https://github.com/sogangCSmaster/tolkmeet'
 /** 언어 선택에 보이는 순서 */
 export const LOCALES: Dict[] = [en, ko, ja]
 
-/** 법적 고지는 영어 한 벌만 둔다(법률 검토본). 다른 언어 페이지에서도 이 주소로 건다. */
-export const LEGAL = { privacy: '/privacy/', terms: '/terms/', refund: '/refund/' }
+/** 법적 고지는 영어와 한국어 두 벌. 한국어 페이지에서는 한국어판, 나머지는 영어판으로 건다. */
+export function legalLinks(lang: string): { privacy: string; terms: string; refund: string; lang: string } {
+  const ko = lang === 'ko'
+  const base = ko ? '/ko' : ''
+  return { privacy: `${base}/privacy/`, terms: `${base}/terms/`, refund: `${base}/refund/`, lang: ko ? 'ko' : 'en' }
+}

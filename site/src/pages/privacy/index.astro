@@ -3,19 +3,22 @@ import Legal from '../../components/Legal.astro'
 
 const toc: [string, string][] = [
   ['p1', 'The short version'],
-  ['p2', 'What we collect'],
-  ['p3', 'Speech and captions'],
-  ['p4', 'Video and audio'],
-  ['p5', 'Who we share data with'],
-  ['p6', 'International transfers'],
-  ['p7', 'Cookies'],
-  ['p8', 'How long we keep data'],
-  ['p9', 'Your rights'],
-  ['p10', 'Children'],
-  ['p11', 'Changes and contact'],
+  ['p2', 'Who we are'],
+  ['p3', 'What we collect and why'],
+  ['p4', 'Speech and captions'],
+  ['p5', 'Video and audio'],
+  ['p6', 'Who we share data with'],
+  ['p7', 'International transfers'],
+  ['p8', 'Cookies'],
+  ['p9', 'How long we keep data'],
+  ['p10', 'Your rights'],
+  ['p11', 'Security'],
+  ['p12', 'Children'],
+  ['p13', 'Changes and contact'],
 ]
 ---
 <Legal
+  lang="en"
   page="privacy"
   title="Privacy Policy"
   metaTitle="Privacy Policy · Tolkmeet"
@@ -27,51 +30,100 @@ const toc: [string, string][] = [
     <h2>The short version</h2>
     <ul>
       <li>We never record or store your meetings: no audio, no video, no captions.</li>
-      <li>What you say is sent to Google Gemini only to be transcribed and translated, then discarded.</li>
+      <li>What you say is sent to Google Gemini only to be transcribed and translated. Tolkmeet does not store it; Google handles it under its API terms.</li>
       <li>We keep your account details and how many minutes you translate, so we can bill you fairly.</li>
       <li>We use only essential cookies, for signing in. No ads, no trackers.</li>
     </ul>
   </section>
 
-  <h2 id="p2">What we collect</h2>
-  <p><b>Account details.</b> Your name, email address and a one-way hash of your password, or the name and email Google shares if you sign in with Google. Also the name you show in meetings and your app preferences, such as language and caption size.</p>
-  <p><b>Billing.</b> Payments are processed by Paddle, our merchant of record. We receive your plan, billing status and country, never your full card number.</p>
-  <p><b>Meetings you schedule.</b> The title, time, languages and the email addresses of the guests you invite, so we can send invitations and show your meeting list. They stay with the meeting record after it ends; delete the meeting, scheduled or past, to remove them.</p>
-  <p><b>Security.</b> Your signed-in devices (browser and operating system, last active time), passkeys, the authenticator secret and hashed recovery codes if you turn on two-step verification.</p>
-  <p><b>Usage.</b> Meeting start and end times, the number of participants, the languages chosen and the minutes translated. We use this to apply plan limits and to keep the service running.</p>
-  <p><b>Technical data.</b> IP address and browser type in short-lived server logs, used for security and abuse prevention. Logs never contain what was said.</p>
+  <h2 id="p2">Who we are</h2>
+  <p>Tolkmeet is run by <span lang="ko">휘슬리</span>, a sole proprietorship in the Republic of Korea (representative: <span lang="ko">박혜연</span>; business registration number 155-03-03588), registered at <span lang="ko">서울특별시 구로구 구일로4길 65</span>, Republic of Korea. We are the data controller for the personal data described here: we decide why and how it is processed.</p>
+  <p>Privacy contact: privacy@tolkmeet.com. Privacy officer: <span lang="ko">박혜연</span>, pphhyy1004@naver.com.</p>
 
-  <h2 id="p3">Speech and captions</h2>
-  <p>When translation is on, your browser sends your speech directly to Google’s Gemini API, which returns text. The text passes through our server to be translated and delivered to the other participants.</p>
+  <h2 id="p3">What we collect and why</h2>
+  <p>For each kind of data, this table shows what it is used for and the legal basis we rely on.</p>
+  <div class="legal-table" role="region" aria-label="Data we collect" tabindex="0">
+    <table>
+      <thead><tr><th scope="col">Data</th><th scope="col">What it includes</th><th scope="col">Why we use it</th><th scope="col">Legal basis</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Account</th><td>Name, email address, a one-way hash of your password (or your Google sign-in identity if you sign in with Google), the name you show in meetings, preferences such as language, theme and caption size</td><td>Create and run your account, sign you in, send account emails</td><td>Contract</td></tr>
+        <tr><th scope="row">Security</th><td>Signed-in devices (browser and operating system, last active time), passkeys, the authenticator (TOTP) secret and hashed recovery codes if you turn on two-step verification</td><td>Protect your account and let you see and sign out devices</td><td>Contract; legitimate interests (keeping accounts secure)</td></tr>
+        <tr><th scope="row">Trusted device</th><td>A cookie that remembers a device for two-step verification</td><td>Skip the second step on a device you chose to trust</td><td>Consent (only if you tick the option)</td></tr>
+        <tr><th scope="row">Meetings you schedule</th><td>Title, time, languages, and the email addresses of guests you invite</td><td>Send invitations and show your meeting list</td><td>Contract; legitimate interests (letting hosts invite guests)</td></tr>
+        <tr><th scope="row">Usage</th><td>Meeting start and end times, number of participants, languages chosen, minutes translated</td><td>Apply plan limits, bill fairly, keep the service running</td><td>Contract; legitimate interests (running and improving the service)</td></tr>
+        <tr><th scope="row">Billing</th><td>Plan, billing status, Paddle customer and subscription IDs. Never your card number or other payment details</td><td>Manage your subscription and keep records</td><td>Contract; legal obligation (tax and accounting)</td></tr>
+        <tr><th scope="row">Technical</th><td>IP address in web server, app and relay (TURN) server logs, kept up to 14 days. Logs never contain what was said</td><td>Security, abuse prevention, rate limiting</td><td>Legitimate interests (protecting the service and its users)</td></tr>
+        <tr><th scope="row">Speech in meetings</th><td>Audio and the text transcribed and translated from it, while a meeting runs</td><td>Show live translated captions</td><td>Contract</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Where we rely on legitimate interests, we have weighed them against your rights; you can object (see <a href="#p10">Your rights</a>).</p>
+
+  <h2 id="p4">Speech and captions</h2>
+  <p>When translation is on, your browser streams your speech directly to Google’s Gemini Live API, which returns text. The text passes through our server to Gemini to be translated and is delivered to the other participants.</p>
   <p>We use Gemini’s paid service, under which Google does not use the content to train its models. We do not store audio, transcripts or translations. Each participant can save their own captions to their device as a text file.</p>
 
-  <h2 id="p4">Video and audio</h2>
-  <p>Video and audio travel between participants with WebRTC encryption. When a direct connection is not possible, they pass through our relay server, which forwards encrypted data and cannot see or record it.</p>
+  <h2 id="p5">Video and audio</h2>
+  <p>Video and audio travel between participants with WebRTC encryption (DTLS-SRTP), either directly or, when a direct connection is not possible, through our own relay server in Seoul. The relay forwards encrypted data and cannot decrypt, see or record it.</p>
 
-  <h2 id="p5">Who we share data with</h2>
-  <p>We do not sell personal data. We use these processors only to provide the service:</p>
+  <h2 id="p6">Who we share data with</h2>
+  <p>We do not sell personal data. Paddle.com Market Limited is the Merchant of Record for all our orders. For payments it acts as an independent controller, not on our behalf: when you open checkout we send it your email address, an internal user ID and the plan, and it collects your name, country and payment details directly from you under its own privacy policy. Google, Amazon Web Services and Resend are our processors and handle data only on our instructions. Before you pay, we ask for your separate consent to provide these items to Paddle and to transfer them to the United Kingdom; without it you can’t pay, but you can still join meetings as a guest.</p>
+  <div class="legal-table" role="region" aria-label="Recipients" tabindex="0">
+    <table>
+      <thead><tr><th scope="col">Recipient</th><th scope="col">Role</th><th scope="col">Country</th><th scope="col">What they do</th><th scope="col">Data</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Google LLC</th><td>Processor</td><td>The United States and other countries where Google operates</td><td>Speech recognition and translation (Gemini API); Google sign-in if you choose it; a connectivity check (STUN) when joining a meeting</td><td>Audio and text during a meeting; your Google identity; IP address</td></tr>
+        <tr><th scope="row">Paddle.com Market Limited</th><td>Independent controller (Merchant of Record)</td><td>United Kingdom</td><td>Payments, invoices, sales tax and VAT, refunds</td><td>Email address, internal user ID, plan; name, country and payment details you enter directly with Paddle</td></tr>
+        <tr><th scope="row">Amazon Web Services</th><td>Processor</td><td>Republic of Korea (Seoul)</td><td>Hosting and encrypted backups</td><td>All data we store</td></tr>
+        <tr><th scope="row">Resend, Inc.</th><td>Processor</td><td>United States</td><td>Account and invitation emails</td><td>Email address and email content</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>We may also share data with professional advisers (such as lawyers and accountants) and with authorities where the law requires it.</p>
+
+  <h2 id="p7">International transfers</h2>
+  <p>Our servers are in Seoul, Republic of Korea (Amazon Web Services, ap-northeast-2). Google processes data in the United States and other countries where it operates, Resend in the United States and Paddle in the United Kingdom, as listed above. Data is transferred when you use the service, over encrypted connections (TLS). Where the law requires it, we rely on appropriate safeguards such as standard contractual clauses or an adequacy decision.</p>
+
+  <h2 id="p8">Cookies</h2>
+  <p>We set only essential cookies:</p>
   <ul>
-    <li>Google (Gemini API): speech recognition and translation</li>
-    <li>Paddle: payments, invoices and tax</li>
-    <li>Amazon Web Services: hosting</li>
-    <li>Resend: account emails such as sign-up verification</li>
+    <li>Session: keeps you signed in (30 days)</li>
+    <li>Trusted device: remembers a device you chose to trust for two-step verification (30 days, only if you opt in)</li>
+    <li>Google sign-in state: protects signing in with Google (10 minutes)</li>
+  </ul>
+  <p>We do not use advertising or tracking cookies. You can block or delete cookies in your browser settings, but then you will not be able to sign in.</p>
+
+  <h2 id="p9">How long we keep data</h2>
+  <ul>
+    <li>Account data, usage records and meeting records are kept while your account is open. When you close your account, we delete all of this immediately, using secure deletion; backup copies of the database are deleted within about a day.</li>
+    <li>You can delete a meeting yourself from your meeting list, before it starts or after it ends.</li>
+    <li>Your email address in meetings other people invited you to is part of their records; you can ask them, or us, to remove it.</li>
+    <li>Sign-in sessions expire after 30 days.</li>
+    <li>Billing records are kept by Paddle as long as tax law requires.</li>
+    <li>Server logs (web server, app and relay server, including IP addresses) are kept up to 14 days.</li>
+    <li>Audio, transcripts and translations are not stored by us. Google handles them under its API terms; Resend keeps delivery logs under its own policy.</li>
   </ul>
 
-  <h2 id="p6">International transfers</h2>
-  <p>Our servers are in Seoul, South Korea (Amazon Web Services, ap-northeast-2). Our processors may handle data in other countries, including the United States. Where the law requires it, we rely on appropriate safeguards such as standard contractual clauses.</p>
+  <h2 id="p10">Your rights</h2>
+  <p>Depending on where you live, including Korea, Japan, the United Kingdom and the European Union, you have the right to:</p>
+  <ul>
+    <li>access the personal data we hold about you</li>
+    <li>have it corrected (rectification)</li>
+    <li>have it deleted (erasure)</li>
+    <li>restrict how we process it</li>
+    <li>receive it in a portable format (portability)</li>
+    <li>object to processing based on legitimate interests</li>
+    <li>withdraw consent at any time, without affecting earlier processing</li>
+    <li>complain to a data protection authority, such as the one where you live</li>
+  </ul>
+  <p>You can change most details and close your account in account settings, and download a copy of your data in Account › Data &amp; account › Your data › Download (JSON). For anything else, write to privacy@tolkmeet.com. We respond within one month.</p>
 
-  <h2 id="p7">Cookies</h2>
-  <p>We set only essential cookies: one keeps you signed in, one remembers a device you chose to trust for two-step verification (30 days), and a short-lived one protects Google sign-in (10 minutes). We do not use advertising or tracking cookies. Our website analytics, if any, are cookie-free.</p>
+  <h2 id="p11">Security</h2>
+  <p>We protect your data with appropriate technical and organizational measures, including: passwords hashed with Argon2 and checked against known breaches; optional two-step verification and passkeys; encrypted connections (HTTPS/TLS) and WebRTC encryption; encrypted backups; access limited to the operator; secure deletion; and rate limiting against abuse.</p>
 
-  <h2 id="p8">How long we keep data</h2>
-  <p>Account data, usage records and meeting records (title, time, length, participant count and invited guests’ email addresses) are kept while your account is open. When you close your account, we delete all of this immediately; backup copies of the database are deleted within about a day. You can also delete a meeting yourself from your meeting list, before it starts or after it ends. Your email address in meetings other people invited you to is part of their records; you can ask them, or us, to remove it. Sign-in sessions expire after 30 days. Billing records are kept by Paddle as long as tax law requires. Server logs never include what was said and are kept only as long as needed to run and secure the service.</p>
-
-  <h2 id="p9">Your rights</h2>
-  <p>You can access, correct, export or delete your data at any time from account settings, or by writing to us. Depending on where you live, including Korea, Japan and the European Union, you may have further rights under local law, such as objecting to processing or complaining to a data protection authority.</p>
-
-  <h2 id="p10">Children</h2>
+  <h2 id="p12">Children</h2>
   <p>Tolkmeet accounts are for people aged 16 and over.</p>
 
-  <h2 id="p11">Changes and contact</h2>
+  <h2 id="p13">Changes and contact</h2>
   <p>If we make a material change, we will email account holders before it takes effect. Questions or requests: privacy@tolkmeet.com. Data controller: <span lang="ko">휘슬리</span> (representative: <span lang="ko">박혜연</span>), <span lang="ko">서울특별시 구로구 구일로4길 65</span>, Republic of Korea; business registration number 155-03-03588. Privacy officer: <span lang="ko">박혜연</span>, pphhyy1004@naver.com.</p>
 </Legal>

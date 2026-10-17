@@ -2,21 +2,23 @@
 import Legal from '../../components/Legal.astro'
 
 const toc: [string, string][] = [
-  ['t1', 'Using Tolkmeet'],
+  ['t1', 'Who you contract with'],
   ['t2', 'Accounts'],
   ['t3', 'Plans and billing'],
   ['t4', 'Cancelling and refunds'],
-  ['t5', 'Fair use'],
-  ['t6', 'Translation accuracy'],
+  ['t5', 'Acceptable use'],
+  ['t6', 'AI translation'],
   ['t7', 'Your content'],
-  ['t8', 'Open source'],
+  ['t8', 'Our intellectual property'],
   ['t9', 'Availability'],
-  ['t10', 'Ending the agreement'],
+  ['t10', 'Suspension and termination'],
   ['t11', 'Liability'],
-  ['t12', 'Governing law and contact'],
+  ['t12', 'Changes to these terms'],
+  ['t13', 'Governing law and contact'],
 ]
 ---
 <Legal
+  lang="en"
   page="terms"
   title="Terms of Service"
   metaTitle="Terms of Service · Tolkmeet"
@@ -27,48 +29,69 @@ const toc: [string, string][] = [
   <section class="legal-summary">
     <h2>The short version</h2>
     <ul>
-      <li>Tolkmeet is a paid monthly subscription.</li>
+      <li>Tolkmeet is a paid monthly subscription, sold through Paddle.</li>
       <li>Plans renew automatically. You can cancel any time, and you keep access until the end of the period you paid for.</li>
+      <li>Changed your mind? Ask for a full refund within 30 days of any payment.</li>
       <li>Translations are made by AI and can be wrong. Check anything important with a qualified person.</li>
       <li>Guests you invite do not need an account, but they use Tolkmeet under these terms too.</li>
     </ul>
   </section>
 
-  <h2 id="t1">1. Using Tolkmeet</h2>
-  <p>These terms are an agreement between you and <span lang="ko">휘슬리</span> (“we”). By creating an account or joining a meeting, you accept them. If you use Tolkmeet for an organization, you confirm you may accept these terms on its behalf.</p>
+  <h2 id="t1">1. Who you contract with</h2>
+  <p>Tolkmeet is provided by <span lang="ko">휘슬리</span>, a sole proprietorship in the Republic of Korea (“we”, “us”). These terms are a contract between you and <span lang="ko">휘슬리</span>. Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders.</p>
+  <p>By creating an account, buying a plan, joining a meeting or continuing to use Tolkmeet, you accept these terms. If you use Tolkmeet for an organization, you confirm you may accept these terms on its behalf.</p>
 
   <h2 id="t2">2. Accounts</h2>
-  <p>You need an account to create meetings. Keep your sign-in details secure and tell us at support@tolkmeet.com if you suspect misuse. You are responsible for meetings created from your account, including the guests you let in.</p>
+  <p>You need an account to create meetings, and you must be 16 or over to have one. Guests join from a link without an account. Keep your sign-in details secure and tell us at support@tolkmeet.com if you suspect misuse. You are responsible for meetings created from your account, including the guests you let in.</p>
 
   <h2 id="t3">3. Plans and billing</h2>
-  <p>Paddle.com is our merchant of record and sells Tolkmeet to you. Paddle handles payment, invoices, sales tax and VAT, under its own buyer terms.</p>
-  <p>Each plan includes a number of translated meeting hours per month. Unused hours do not carry over. You can buy extra hours, which stay on your account until you use them. Prices may change; we will tell you at least 30 days before a change applies to your next renewal.</p>
+  <p>Tolkmeet is a monthly subscription. Basic costs $19 per month and includes 10 translated meeting hours; Pro costs $39 per month and includes 30 hours. Unused plan hours do not carry over. You can buy extra hours at $3 per hour; they never expire and stay on your account until you use them.</p>
+  <p>Prices are in US dollars. Applicable sales tax or VAT is added at checkout by Paddle. Your subscription renews automatically each month and Paddle charges your payment method at the start of each period until you cancel.</p>
+  <p>Paddle handles payment, invoices, sales tax and VAT. When you buy, you also agree to <a href="https://www.paddle.com/legal/checkout-buyer-terms">Paddle’s buyer terms</a>.</p>
+  <p>Prices may change. We will tell you at least 30 days before a change would apply to your next renewal. A price increase applies to an existing subscription only if you agree to it; if you do not, your subscription ends at the end of the current paid period and you are not charged the new price.</p>
 
   <h2 id="t4">4. Cancelling and refunds</h2>
-  <p>Cancel any time from account settings; your plan stays active until the end of the paid period. Refunds follow our <a href="/refund/">Refund Policy</a> and any rights you have under consumer law where you live.</p>
+  <p>Cancel any time in Account › Plan &amp; billing. Your plan stays active until the end of the period you paid for and does not renew after that.</p>
+  <p>Deleting your account cancels your subscription immediately and removes any unused extra hours. You can still ask for a refund through <a href="https://paddle.net">paddle.net</a> within 30 days of a payment.</p>
+  <p>You can ask for a full refund of any payment (first payment, renewal or extra hours) within 30 days, for any reason, through Paddle at <a href="https://paddle.net">paddle.net</a> or by emailing billing@tolkmeet.com. Details are in our <a href="/refund/">Refund Policy</a>. This does not limit any rights you have under consumer law where you live.</p>
 
-  <h2 id="t5">5. Fair use</h2>
-  <p>Do not use Tolkmeet to break the law, to record or translate people without the consent the law requires, to harass anyone, or to attack, overload or reverse-engineer the service beyond what the open-source license allows.</p>
-  <p>We may limit or suspend accounts that put the service or other users at risk, and will tell you why unless the law prevents us.</p>
+  <h2 id="t5">5. Acceptable use</h2>
+  <p>Do not use Tolkmeet to:</p>
+  <ul>
+    <li>break the law, or record or translate people without the consent the law requires</li>
+    <li>commit fraud, impersonate others, or send spam or unsolicited invitations</li>
+    <li>harass, threaten or harm anyone, or share content that is illegal or exploits children</li>
+    <li>infringe anyone’s intellectual property or privacy rights</li>
+    <li>interfere with the security or operation of the service: no malware, probing or scanning for vulnerabilities, scraping, overloading, or getting around limits and access controls</li>
+    <li>use the AI translation to produce content that is unlawful, deceptive or designed to cause harm</li>
+  </ul>
 
-  <h2 id="t6">6. Translation accuracy</h2>
-  <p>Speech recognition and translation are produced automatically by AI. They can contain errors, omissions or wrong tone. Tolkmeet is not a certified interpreter. For contracts, medical, legal or financial decisions, confirm the meaning with a qualified professional.</p>
+  <h2 id="t6">6. AI translation</h2>
+  <p>Speech recognition and translation are produced automatically by AI (Google Gemini). They can contain errors, omissions or wrong tone. Tolkmeet is not a certified interpreter. For contracts, medical, legal or financial decisions, confirm the meaning with a qualified professional.</p>
+  <p>You are responsible for what you say in meetings and for how you use the captions and translations, including any decision you make based on them.</p>
 
   <h2 id="t7">7. Your content</h2>
-  <p>What you say in meetings belongs to you. We process it only to provide transcription and translation, as described in our <a href="/privacy/">Privacy Policy</a>, and we do not store it.</p>
+  <p>What you say in meetings, and the captions made from it, belong to you. You give us only the permission needed to process it for transcription and translation, as described in our <a href="/privacy/">Privacy Policy</a>. We do not store it.</p>
+  <p>If you think someone is using Tolkmeet to infringe your rights or to abuse others, write to support@tolkmeet.com. We may act on abuse as described in section 10.</p>
 
-  <h2 id="t8">8. Open source</h2>
-  <p>Tolkmeet’s source code is available under the GNU Affero General Public License v3.0. These terms cover the hosted service at tolkmeet.com; the license covers the code.</p>
+  <h2 id="t8">8. Our intellectual property</h2>
+  <p>We own the Tolkmeet service, name, logo and the content we provide, such as the website and app text and design. Tolkmeet’s source code is licensed under the GNU Affero General Public License v3.0; that license governs your use of the code. These terms cover the hosted service at tolkmeet.com.</p>
 
   <h2 id="t9">9. Availability</h2>
-  <p>We work to keep Tolkmeet running but cannot promise it will always be available or error-free. It depends on your network, your browser and third-party services such as Google Gemini.</p>
+  <p>We work to keep Tolkmeet running but do not guarantee it will be uninterrupted or error-free. It depends on your network, your browser and third-party services such as Google Gemini. If an outage stops you using Tolkmeet for 24 hours or more, we refund the affected part of your plan as set out in the <a href="/refund/">Refund Policy</a>.</p>
 
-  <h2 id="t10">10. Ending the agreement</h2>
-  <p>You can close your account at any time. We may end this agreement with 30 days’ notice, or immediately for a serious breach of these terms. If we end it without cause, we refund the unused part of your prepaid plan.</p>
+  <h2 id="t10">10. Suspension and termination</h2>
+  <p>You can close your account at any time from account settings. This cancels your subscription immediately, as described in section 4.</p>
+  <p>We may limit, suspend or close an account for a material breach of these terms, non-payment, a security or fraud risk, or repeated or serious violations, including abuse of the AI translation. We will tell you why unless the law or safety prevents us.</p>
+  <p>We may also end this agreement without cause with 30 days’ notice. If we do, we refund the unused part of what you prepaid.</p>
 
   <h2 id="t11">11. Liability</h2>
-  <p>To the extent the law allows, we are not liable for indirect or consequential losses, and our total liability is limited to the amount you paid us in the 12 months before the claim. Nothing here limits liability that cannot be limited by law.</p>
+  <p>To the extent the law allows, we are not liable for indirect or consequential losses, and our total liability is limited to the amount you paid in the 12 months before the claim. Nothing here limits liability that cannot be limited by law.</p>
 
-  <h2 id="t12">12. Governing law and contact</h2>
-  <p>These terms are governed by the laws of the Republic of Korea, without limiting mandatory consumer protections where you live. Contact: <span lang="ko">휘슬리</span> (representative: <span lang="ko">박혜연</span>, business registration number 155-03-03588), <span lang="ko">서울특별시 구로구 구일로4길 65</span>, Republic of Korea, support@tolkmeet.com.</p>
+  <h2 id="t12">12. Changes to these terms</h2>
+  <p>We post changes on this page and email account holders at least 7 days before they take effect, or at least 30 days before for changes that are unfavourable to you. If you do not agree, you can cancel before the change applies. These terms are published in English and Korean; for users in Korea the Korean version prevails, and the English version prevails elsewhere.</p>
+
+  <h2 id="t13">13. Governing law and contact</h2>
+  <p>These terms are governed by the laws of the Republic of Korea, without limiting mandatory consumer protections where you live.</p>
+  <p><span lang="ko">휘슬리</span> (representative: <span lang="ko">박혜연</span>; business registration number 155-03-03588), <span lang="ko">서울특별시 구로구 구일로4길 65</span>, Republic of Korea. Support: support@tolkmeet.com. Billing: billing@tolkmeet.com.</p>
 </Legal>

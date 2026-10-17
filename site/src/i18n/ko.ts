@@ -150,7 +150,7 @@ export const ko: Dict = {
   legalPrivacy: '개인정보 처리방침',
   legalTerms: '이용약관',
   legalRefund: '환불 정책',
-  footerDisclaimer: '번역은 AI가 만들며 틀릴 수 있습니다. 계약·의료·법률처럼 중요한 내용은 전문가와 한 번 더 확인하십시오. 회의 음성은 번역을 위해 Google Gemini 유료 API로 전송되며 저장되지 않습니다. 가격은 미국 달러 기준이며 세금은 결제 시 더해질 수 있습니다.',
+  footerDisclaimer: '번역은 AI가 만들며 틀릴 수 있습니다. 계약·의료·법률처럼 중요한 내용은 전문가와 한 번 더 확인하십시오. 회의 음성은 번역을 위해 Google Gemini 유료 API로 전송되며, Tolkmeet은 저장하지 않습니다. 가격은 미국 달러 기준이며 세금은 결제 시 더해질 수 있습니다.',
 
   footerProduct: '제품',
   footerOpenSource: 'AGPL-3.0 오픈 소스',

@@ -100,6 +100,12 @@ Server environment variables:
 | `GEMINI_TRANSLATE_MODEL` | `gemini-3.5-flash-lite` | Translation model |
 | `GEMINI_STT_MODEL` | `gemini-3.5-transcribe-live` | Speech recognition model, locked into each browser token |
 | `TRUSTED_PROXY` | (unset) | Set to `1` only behind a reverse proxy (Caddy) that sets `X-Forwarded-For`; login throttling then uses its last hop as the client IP. Otherwise the socket peer address is used |
+| `APP_ORIGIN` | `http://localhost:5173` in dev, `https://meet.tolkmeet.com` otherwise | Public address of the app (e.g. `https://meet.tolkmeet.com`). Used for links in emails, passkeys and the Google redirect URI |
+| `DATABASE_PATH` | `server/data/dev.db` in dev, `server/data/tolkmeet.db` otherwise (build-time path; set it explicitly in production) | SQLite file (accounts, sessions, meetings, usage) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | (none) | Google sign-in (OAuth "Web application" client). Register the redirect URI `{APP_ORIGIN}/api/auth/google/callback` (dev: `http://localhost:5173/api/auth/google/callback`). If empty, the Google button is hidden. Failures are logged with a reason (`google sign-in failed`) |
+| `RESEND_API_KEY` | (none) | Sends account emails through Resend. If empty, dev mode writes them to `server/data/mail/` (text and HTML) |
+| `MAIL_FROM` | `Tolkmeet <no-reply@mail.tolkmeet.com>` | Sender address for account emails |
+| `PADDLE_API_KEY`, `PADDLE_CLIENT_TOKEN`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_PRICE_BASIC`, `PADDLE_PRICE_PRO`, `PADDLE_PRICE_HOUR` | (none) | Paddle billing (all required together). `PADDLE_ENV=production` for live, otherwise sandbox. If missing, checkout is disabled (dev mode activates plans without payment) |
 
 Per-step translation latency (first token, total, STT → translation) is logged at debug level: `RUST_LOG=info,tolkmeet_server::pipeline=debug`. Caption text is never logged.
 

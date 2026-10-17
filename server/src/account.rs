@@ -69,7 +69,11 @@ pub struct Google {
     pub client_id: String,
     pub client_secret: String,
     http: reqwest::Client,
+    /// 코드를 ID 토큰으로 바꾸는 주소. 테스트에서만 가짜 서버로 바꾼다.
+    token_url: String,
 }
+
+const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 
 impl Google {
     pub fn from_env() -> Option<Self> {
@@ -83,6 +87,7 @@ impl Google {
             client_id: id.trim().to_owned(),
             client_secret: secret.trim().to_owned(),
             http: reqwest::Client::new(),
+            token_url: GOOGLE_TOKEN_URL.to_owned(),
         })
     }
 }
@@ -1473,7 +1478,13 @@ pub async fn export(State(state): State<AppState>, headers: HeaderMap) -> Respon
         Err(r) => return r,
     };
     let db = state.auth.db().clone();
-    let user = user_json(&db, uid, None).await;
+    let mut user = user_json(&db, uid, None).await;
+    // 결제 전에 받은 Paddle 제공·국외 이전 동의 시각도 내 정보에 포함한다.
+    let consent: Option<i64> = db
+        .call(move |c| c.query_row("SELECT paddle_consent_at FROM users WHERE id = ?1", params![uid], |r| r.get(0)))
+        .await
+        .unwrap_or(None);
+    user["paddleConsentAt"] = json!(consent);
     let meetings = db
         .call(move |c| {
             let mut stmt = c.prepare(
@@ -2023,9 +2034,14 @@ pub async fn google_callback(
     headers: HeaderMap,
     Query(q): Query<GoogleCallback>,
 ) -> Response {
-    let fail = || Redirect::to("/login?error=google").into_response();
+    // 실패 이유는 남긴다(코드·토큰·비밀은 남기지 않는다). 키나 리디렉션 주소 설정이 틀렸을 때 알아보려고.
+    // 연결(로그인한 계정에 잇기) 중이었으면 보안 화면으로, 아니면 로그인 화면으로 돌려보낸다.
+    let fail = |why: &str, link: bool| {
+        tracing::warn!(reason = why, "google sign-in failed");
+        Redirect::to(if link { "/account/security?error=google" } else { "/login?error=google" }).into_response()
+    };
     let (Some(google), Some(code), Some(st)) = (&state.accounts.google, q.code, q.state) else {
-        return fail();
+        return fail("missing code or state (sign-in canceled?)", false);
     };
     let cookie_state = headers
         .get_all(header::COOKIE)
@@ -2039,7 +2055,7 @@ pub async fn google_callback(
                 .map(str::to_owned)
         });
     if cookie_state.as_deref() != Some(st.as_str()) {
-        return fail();
+        return fail("state cookie does not match", false);
     }
     let Some((nonce, link, locale, _)) = state
         .accounts
@@ -2049,12 +2065,12 @@ pub async fn google_callback(
         .remove(&st)
         .filter(|(_, _, _, at)| at.elapsed() < OAUTH_TTL)
     else {
-        return fail();
+        return fail("unknown or expired state", false);
     };
     let redirect = format!("{}/api/auth/google/callback", state.accounts.origin);
     let res = google
         .http
-        .post("https://oauth2.googleapis.com/token")
+        .post(&google.token_url)
         .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
         .body(format!(
             "code={}&client_id={}&client_secret={}&redirect_uri={}&grant_type=authorization_code",
@@ -2066,13 +2082,20 @@ pub async fn google_callback(
         .timeout(Duration::from_secs(15))
         .send()
         .await;
-    let Ok(res) = res else { return fail() };
-    let Ok(body) = res.json::<Value>().await else {
-        return fail();
+    let linking = link.is_some();
+    let Ok(res) = res else {
+        return fail("token request failed", linking);
     };
+    let Ok(body) = res.json::<Value>().await else {
+        return fail("token response unreadable", linking);
+    };
+    if let Some(err) = body["error"].as_str() {
+        // 예: redirect_uri_mismatch, invalid_client(키가 틀림), invalid_grant(코드 만료)
+        tracing::warn!(error = err, "google token endpoint refused");
+    }
     // 토큰 엔드포인트에서 TLS로 직접 받은 ID 토큰이므로 서명 대신 내용(발급자·대상·만료·nonce)을 확인한다(OIDC Core 3.1.3.7).
     let Some(claims) = body["id_token"].as_str().and_then(decode_jwt_payload) else {
-        return fail();
+        return fail("no id_token in token response", linking);
     };
     if !matches!(
         claims.iss.as_str(),
@@ -2081,14 +2104,14 @@ pub async fn google_callback(
         || claims.exp <= now_secs()
         || claims.nonce.as_deref() != Some(nonce.as_str())
     {
-        return fail();
+        return fail("id_token claims do not match (iss/aud/exp/nonce)", linking);
     }
     let email: String = match &claims.email {
         Some(e) if claims.email_verified == Some(true) => normalize_username(e),
-        _ => return fail(),
+        _ => return fail("google email not verified", linking),
     };
     if !valid_email(&email) {
-        return fail();
+        return fail("google email not usable", linking);
     }
     let sub = claims.sub.clone();
     let name = clean_name(claims.name.as_deref().unwrap_or(""));
@@ -2098,7 +2121,8 @@ pub async fn google_callback(
         .await;
     let (uid, reset_sessions) = match result {
         Ok(Some(v)) => v,
-        _ => return fail(),
+        // 연결 중: 그 Google 계정이 이미 다른 계정에 쓰이고 있음
+        _ => return fail("google account already linked elsewhere or db error", linking),
     };
     if reset_sessions {
         state.auth.revoke_user_sessions(uid, None).await;
@@ -2134,14 +2158,12 @@ pub async fn google_callback(
             .into_response();
     }
     let token = state.auth.create_session(uid, &user_agent(&headers)).await;
+    // 같은 이름의 헤더를 두 개 보내므로 AppendHeaders로(배열은 앞의 값을 덮어써 세션 쿠키가 사라진다).
     (
-        [
-            (
-                header::SET_COOKIE,
-                auth::session_cookie(&token, state.cookie_secure),
-            ),
+        axum::response::AppendHeaders([
+            (header::SET_COOKIE, auth::session_cookie(&token, state.cookie_secure)),
             (header::SET_COOKIE, clear),
-        ],
+        ]),
         Redirect::to("/"),
     )
         .into_response()
@@ -2252,6 +2274,162 @@ pub async fn google_unlink(State(state): State<AppState>, headers: HeaderMap) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 키 없이 Google 로그인 전체 흐름을 확인한다: 시작(state·nonce·쿠키) → 콜백(토큰 교환·ID 토큰 확인) → 계정·세션.
+    /// Google 토큰 서버 자리에 가짜 서버를 띄워, 시작 때 정한 nonce를 담은 ID 토큰을 돌려준다.
+    mod google_flow {
+        use super::*;
+        use axum::body::to_bytes;
+        use std::sync::Arc;
+
+        struct Fake {
+            nonce: Arc<Mutex<String>>,
+            email: &'static str,
+            aud: &'static str,
+        }
+
+        async fn fake_google(fake: Fake) -> String {
+            let fake = Arc::new(fake);
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move || {
+                    let fake = fake.clone();
+                    async move {
+                        use base64::Engine;
+                        let claims = json!({
+                            "iss": "https://accounts.google.com", "aud": fake.aud, "sub": "g-123",
+                            "email": fake.email, "email_verified": true, "name": "Mina",
+                            "nonce": *fake.nonce.lock().unwrap(), "exp": now_secs() + 600,
+                        });
+                        let b64 = |v: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(v);
+                        let jwt = format!("{}.{}.sig", b64(b"{}"), b64(claims.to_string().as_bytes()));
+                        Json(json!({ "id_token": jwt }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            format!("http://{addr}/token")
+        }
+
+        fn state(token_url: String) -> AppState {
+            let rooms = Arc::new(crate::room::Rooms::default());
+            let google = Google {
+                client_id: "client-1".into(),
+                client_secret: "secret".into(),
+                http: reqwest::Client::new(),
+                token_url,
+            };
+            AppState {
+                pipeline: Arc::new(crate::pipeline::Pipeline::new(rooms.clone(), None)),
+                stt: None,
+                rooms,
+                auth: Arc::new(crate::auth::Auth::new(HashMap::new())),
+                accounts: Arc::new(Accounts::new(crate::mail::Mailer::off(), "http://localhost".into(), Some(google))),
+                billing: None,
+                dev_mode: false,
+                cookie_secure: false,
+                trusted_proxy: false,
+            }
+        }
+
+        /// 시작 요청을 보내 Google로 가는 주소에서 state·nonce를, 응답에서 브라우저 쿠키를 꺼낸다.
+        async fn start(state: &AppState) -> (String, String, String) {
+            let res = google_start(
+                State(state.clone()),
+                ConnectInfo("127.0.0.1:1".parse().unwrap()),
+                HeaderMap::new(),
+                Query(GoogleStart { locale: "ko".into() }),
+            )
+            .await;
+            let location = res.headers()[header::LOCATION].to_str().unwrap().to_owned();
+            let param = |k: &str| location.split(['?', '&']).find_map(|p| p.strip_prefix(&format!("{k}="))).unwrap().to_owned();
+            let cookie = res.headers()[header::SET_COOKIE].to_str().unwrap().split(';').next().unwrap().to_owned();
+            (param("state"), param("nonce"), cookie)
+        }
+
+        async fn callback(state: &AppState, st: &str, cookie: &str) -> Response {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::COOKIE, cookie.parse().unwrap());
+            google_callback(
+                State(state.clone()),
+                headers,
+                Query(GoogleCallback { code: Some("code-1".into()), state: Some(st.into()) }),
+            )
+            .await
+        }
+
+        fn location(res: &Response) -> &str {
+            res.headers()[header::LOCATION].to_str().unwrap()
+        }
+
+        #[tokio::test]
+        async fn new_google_user_gets_an_account_and_a_session() {
+            let nonce = Arc::new(Mutex::new(String::new()));
+            let url = fake_google(Fake { nonce: nonce.clone(), email: "mina@example.com", aud: "client-1" }).await;
+            let state = state(url);
+            let (st, n, cookie) = start(&state).await;
+            *nonce.lock().unwrap() = n;
+            let res = callback(&state, &st, &cookie).await;
+            assert_eq!(location(&res), "/");
+            let cookies: Vec<_> = res.headers().get_all(header::SET_COOKIE).iter().map(|v| v.to_str().unwrap().to_owned()).collect();
+            assert!(cookies.iter().any(|c| c.starts_with("tolkmeet_session=")), "session cookie set");
+            let (verified, name, sub): (bool, String, String) = state
+                .auth
+                .db()
+                .blocking(|c| {
+                    c.query_row(
+                        "SELECT email_verified, name, google_sub FROM users WHERE email = 'mina@example.com'",
+                        [],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                    )
+                })
+                .unwrap();
+            assert_eq!((verified, name.as_str(), sub.as_str()), (true, "Mina", "g-123"));
+            let _ = to_bytes(res.into_body(), 1024).await;
+        }
+
+        #[tokio::test]
+        async fn totp_account_is_sent_to_the_second_step() {
+            let nonce = Arc::new(Mutex::new(String::new()));
+            let url = fake_google(Fake { nonce: nonce.clone(), email: "mina@example.com", aud: "client-1" }).await;
+            let state = state(url);
+            state
+                .auth
+                .db()
+                .blocking(|c| {
+                    c.execute(
+                        "INSERT INTO users (email, email_verified, google_sub, totp_enabled, created_at) VALUES ('mina@example.com', 1, 'g-123', 1, 1)",
+                        [],
+                    )
+                })
+                .unwrap();
+            let (st, n, cookie) = start(&state).await;
+            *nonce.lock().unwrap() = n;
+            let res = callback(&state, &st, &cookie).await;
+            assert!(location(&res).starts_with("/login?mfa="), "got {}", location(&res));
+            assert!(!res.headers().get_all(header::SET_COOKIE).iter().any(|v| v.to_str().unwrap().starts_with("tolkmeet_session=")));
+        }
+
+        #[tokio::test]
+        async fn wrong_nonce_audience_or_cookie_is_refused() {
+            // nonce가 다르면(다른 로그인 시도의 토큰) 거부
+            let nonce = Arc::new(Mutex::new("someone-else".to_owned()));
+            let state1 = state(fake_google(Fake { nonce: nonce.clone(), email: "mina@example.com", aud: "client-1" }).await);
+            let (st, _, cookie) = start(&state1).await;
+            assert_eq!(location(&callback(&state1, &st, &cookie).await), "/login?error=google");
+            // 다른 앱에 발급된 토큰(aud)이면 거부
+            let nonce = Arc::new(Mutex::new(String::new()));
+            let state2 = state(fake_google(Fake { nonce: nonce.clone(), email: "mina@example.com", aud: "other-app" }).await);
+            let (st, n, cookie) = start(&state2).await;
+            *nonce.lock().unwrap() = n;
+            assert_eq!(location(&callback(&state2, &st, &cookie).await), "/login?error=google");
+            // 이 브라우저에서 시작하지 않았으면(쿠키가 다르면) 거부: 로그인 CSRF 방지
+            let (st, _, _) = start(&state2).await;
+            assert_eq!(location(&callback(&state2, &st, "tolkmeet_oauth=forged").await), "/login?error=google");
+        }
+    }
 
     fn db_with(email: &str, verified: bool) -> (Db, i64) {
         let db = Db::memory();

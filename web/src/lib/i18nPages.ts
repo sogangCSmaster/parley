@@ -26,7 +26,7 @@ const en = {
   'auth.passwordHint': 'At least 8 characters',
   'auth.signupTitle': 'Create your account',
   'auth.signupLead': 'Only the person who sets up meetings needs an account. Everyone else joins from the link.',
-  'auth.agree': 'By continuing you agree to the {terms} and {privacy}. Meeting audio is sent to Google Gemini for translation and isn’t stored.',
+  'auth.agree': 'By continuing you agree to the {terms} and {privacy}. Meeting audio is sent to Google Gemini for translation; Tolkmeet doesn’t store it.',
   'auth.terms': 'Terms of Service',
   'auth.privacy': 'Privacy Policy',
   'auth.signupSubmit': 'Create account',
@@ -190,7 +190,7 @@ const en = {
   'meetings.edit': 'Edit',
   'meetings.addToCalendar': 'Add to calendar',
   'meetings.delete': 'Delete',
-  'meetings.privacy': 'Past meetings keep only the date, length, number of people and translated time. What was said isn’t stored.',
+  'meetings.privacy': 'Past meetings keep the name, date, length, languages, number of people, translated time and invited addresses — never what was said. You can delete any of them from the ⋯ menu.',
   'meetings.name': 'Meeting name',
   'meetings.namePlaceholder': 'e.g. Partner call with Tokyo office',
   'meetings.duration': 'Length',
@@ -231,7 +231,7 @@ const en = {
   'checkout.allModes': 'Video meetings, in-person conversation and live captions screen',
   'checkout.guestsFree': '8 languages, guests join free without signing up',
   'checkout.extra': 'Add more hours in a busy month at $3 each',
-  'checkout.fine': 'Billed monthly, cancel anytime from your account. Paddle handles payment as our reseller; card details are entered only in Paddle’s checkout.',
+  'checkout.fine': 'Billed monthly, cancel anytime from your account. Not happy? Get a full refund within 30 days. Paddle handles payment as our reseller; card details are entered only in Paddle’s checkout.',
   'checkout.refund': 'Refund policy',
   'checkout.summary': 'Summary',
   'checkout.tax': 'Tax',
@@ -261,6 +261,11 @@ const en = {
   'mfa.tooMany': 'Too many wrong codes. Log in again to try once more.',
   'mfa.loginAgain': 'Log in again',
   'mfa.locked': 'Too many attempts for now. Please try again later.',
+  'account.googleLinkFailed': 'Couldn’t connect your Google account. It may already be connected to another Tolkmeet account. Please try again.',
+  'checkout.privacyLink': 'Privacy Policy',
+  'checkout.consentProvide': '(Required) Provision to a third party: I agree that my email address, account ID and plan are provided to Paddle.com Market Limited, our reseller, to process payment, invoices, refunds and tax. Paddle keeps them for the period its privacy policy and tax law require.',
+  'checkout.consentTransfer': '(Required) Transfer abroad: I agree that these items are transferred to Paddle in the United Kingdom (privacy@paddle.com) over an encrypted connection (TLS) when the checkout opens.',
+  'checkout.consentNote': 'You can refuse by leaving the boxes unticked, but then you can’t pay (you can still join meetings as a guest). Details: {privacy}.',
 } as const
 
 export type PageKey = keyof typeof en
@@ -288,7 +293,7 @@ const ko: Messages = {
   'auth.passwordHint': '8자 이상',
   'auth.signupTitle': '계정 만들기',
   'auth.signupLead': '회의를 만드는 사람만 계정이 있으면 돼요. 함께하는 사람은 링크로 바로 참여해요.',
-  'auth.agree': '계속하면 {terms}과 {privacy}에 동의하게 돼요. 회의 음성은 번역을 위해 Google Gemini로 전송되며 저장되지 않아요.',
+  'auth.agree': '계속하면 {terms}과 {privacy}에 동의하게 돼요. 회의 음성은 번역을 위해 Google Gemini로 전송되며, Tolkmeet은 저장하지 않아요.',
   'auth.terms': '이용약관',
   'auth.privacy': '개인정보 처리방침',
   'auth.signupSubmit': '계정 만들기',
@@ -452,7 +457,7 @@ const ko: Messages = {
   'meetings.edit': '수정',
   'meetings.addToCalendar': '캘린더에 추가',
   'meetings.delete': '삭제',
-  'meetings.privacy': '지난 회의에는 날짜, 길이, 참가자 수, 사용한 번역 시간만 남아요. 대화 내용은 저장하지 않아요.',
+  'meetings.privacy': '지난 회의에는 이름, 날짜, 길이, 언어, 참가자 수, 사용한 번역 시간, 초대한 주소가 남고 대화 내용은 저장하지 않아요. ⋯ 메뉴에서 언제든 지울 수 있어요.',
   'meetings.name': '회의 이름',
   'meetings.namePlaceholder': '예: 일본 유통 파트너 미팅',
   'meetings.duration': '길이',
@@ -493,7 +498,7 @@ const ko: Messages = {
   'checkout.allModes': '화상 회의, 대면 대화, 자막 화면',
   'checkout.guestsFree': '8개 언어, 게스트는 가입 없이 무료',
   'checkout.extra': '더 필요한 달은 시간당 $3로 추가',
-  'checkout.fine': '매달 자동 결제되며 계정에서 언제든 해지할 수 있어요. 결제는 판매 대행사 Paddle이 처리하고, 카드 정보는 Paddle 결제창에만 입력돼요.',
+  'checkout.fine': '매달 자동 결제되며 계정에서 언제든 해지할 수 있어요. 30일 안에는 이유를 묻지 않고 전액 환불해 드려요. 결제는 판매 대행사 Paddle이 처리하고, 카드 정보는 Paddle 결제창에만 입력돼요.',
   'checkout.refund': '환불 정책',
   'checkout.summary': '결제 정보',
   'checkout.tax': '세금',
@@ -523,6 +528,12 @@ const ko: Messages = {
   'mfa.tooMany': '코드를 너무 많이 틀렸어요. 다시 로그인하면 새로 시도할 수 있어요.',
   'mfa.loginAgain': '다시 로그인',
   'mfa.locked': '지금은 시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.',
+  'account.googleLinkFailed': 'Google 계정을 연결하지 못했어요. 이미 다른 Tolkmeet 계정에 연결된 Google 계정일 수 있어요. 다시 시도해 주세요.',
+  'checkout.privacyLink': '개인정보 처리방침',
+  'checkout.consentProvide': '(필수) 제3자 제공: 결제·영수증·환불·세금 처리를 위해 이메일 주소, 계정 ID, 요금제를 판매 대행사 Paddle.com Market Limited에 제공하는 데 동의해요. Paddle은 자체 개인정보 처리방침과 세법이 정한 기간 동안 보관해요.',
+  'checkout.consentTransfer': '(필수) 국외 이전: 이 항목이 결제창을 열 때 암호화된 연결(TLS)로 영국의 Paddle(privacy@paddle.com)에 이전되는 데 동의해요.',
+  'checkout.consentNote': '동의하지 않으려면 체크하지 않으면 돼요. 그러면 결제할 수 없지만, 손님으로 회의에 참여하는 데에는 지장이 없어요. 자세한 내용: {privacy}',
+
 }
 
 const ja: Messages = {
@@ -547,7 +558,7 @@ const ja: Messages = {
   'auth.passwordHint': '8文字以上',
   'auth.signupTitle': 'アカウントを作成',
   'auth.signupLead': 'アカウントが必要なのは会議を作る人だけです。参加者はリンクからすぐに参加できます。',
-  'auth.agree': '続行すると{terms}と{privacy}に同意したことになります。会議の音声は翻訳のため Google Gemini に送信され、保存されません。',
+  'auth.agree': '続行すると{terms}と{privacy}に同意したことになります。会議の音声は翻訳のため Google Gemini に送信され、Tolkmeet は保存しません。',
   'auth.terms': '利用規約',
   'auth.privacy': 'プライバシーポリシー',
   'auth.signupSubmit': 'アカウントを作成',
@@ -711,7 +722,7 @@ const ja: Messages = {
   'meetings.edit': '編集',
   'meetings.addToCalendar': 'カレンダーに追加',
   'meetings.delete': '削除',
-  'meetings.privacy': '過去の会議には日付、長さ、参加人数、翻訳時間だけが残ります。会話の内容は保存しません。',
+  'meetings.privacy': '過去の会議には名前、日付、長さ、言語、参加人数、翻訳時間、招待したアドレスが残り、会話の内容は保存しません。⋯ メニューからいつでも削除できます。',
   'meetings.name': '会議名',
   'meetings.namePlaceholder': '例: 韓国パートナーとの打ち合わせ',
   'meetings.duration': '長さ',
@@ -752,7 +763,7 @@ const ja: Messages = {
   'checkout.allModes': 'ビデオ会議、対面会話、字幕スクリーン',
   'checkout.guestsFree': '8言語、ゲストは登録不要・無料',
   'checkout.extra': '足りない月は1時間 $3 で追加',
-  'checkout.fine': '毎月自動で請求され、アカウントからいつでも解約できます。お支払いは販売代理店の Paddle が処理し、カード情報は Paddle の決済画面にのみ入力されます。',
+  'checkout.fine': '毎月自動で請求され、アカウントからいつでも解約できます。30日以内なら理由を問わず全額返金します。お支払いは販売代理店の Paddle が処理し、カード情報は Paddle の決済画面にのみ入力されます。',
   'checkout.refund': '返金ポリシー',
   'checkout.summary': 'お支払い内容',
   'checkout.tax': '税',
@@ -782,6 +793,12 @@ const ja: Messages = {
   'mfa.tooMany': 'コードを何度も間違えました。もう一度ログインするとやり直せます。',
   'mfa.loginAgain': 'もう一度ログイン',
   'mfa.locked': '試行回数が多すぎます。しばらくしてからもう一度お試しください。',
+  'account.googleLinkFailed': 'Google アカウントを連携できませんでした。別の Tolkmeet アカウントに連携済みの可能性があります。もう一度お試しください。',
+  'checkout.privacyLink': 'プライバシーポリシー',
+  'checkout.consentProvide': '（必須）第三者提供: 決済・領収書・返金・税務処理のため、メールアドレス、アカウント ID、プランを販売代理店 Paddle.com Market Limited に提供することに同意します。Paddle は自社のプライバシーポリシーと税法が定める期間保管します。',
+  'checkout.consentTransfer': '（必須）国外移転: これらの項目が決済画面を開くときに暗号化された接続（TLS）で英国の Paddle（privacy@paddle.com）に移転されることに同意します。',
+  'checkout.consentNote': '同意しない場合はチェックしなければ大丈夫です。その場合は決済できませんが、ゲストとして会議に参加することはできます。詳細: {privacy}',
+
 }
 
 registerMessages({ en, ko, ja })

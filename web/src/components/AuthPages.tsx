@@ -3,7 +3,7 @@ import { api, login } from '../lib/api'
 import { refreshAuth, useFeatures } from '../lib/auth'
 import { useI18n, type MessageKey } from '../lib/i18n'
 import '../lib/i18nPages'
-import { PRIVACY_URL, TERMS_URL } from '../lib/links'
+import { legalUrl } from '../lib/links'
 import { loginWithPasskey, passkeySupported } from '../lib/passkey'
 import { clearPendingSignup, pendingPassword, setPendingSignup } from '../lib/pendingSignup'
 import { navigate, queryParam, replacePath } from '../lib/router'
@@ -306,12 +306,12 @@ export function Signup() {
             text={t('auth.agree')}
             parts={{
               terms: (
-                <a href={TERMS_URL} target="_blank" rel="noreferrer">
+                <a href={legalUrl('terms', locale)} target="_blank" rel="noreferrer">
                   {t('auth.terms')}
                 </a>
               ),
               privacy: (
-                <a href={PRIVACY_URL} target="_blank" rel="noreferrer">
+                <a href={legalUrl('privacy', locale)} target="_blank" rel="noreferrer">
                   {t('auth.privacy')}
                 </a>
               ),

@@ -879,15 +879,29 @@ pub async fn billing_summary(State(state): State<AppState>, headers: HeaderMap) 
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CheckoutReq {
     /// "basic" | "pro" | "hours"
     item: String,
     #[serde(default = "one")]
     quantity: i64,
+    /// 결제 화면에서 Paddle 제공·국외 이전에 각각 동의했는지
+    #[serde(default)]
+    consent_provide: bool,
+    #[serde(default)]
+    consent_transfer: bool,
 }
 
 fn one() -> i64 {
     1
+}
+
+/// Paddle 제공·국외 이전 동의 시각을 남긴다(개인정보 보호법 제17조·제28조의8 동의의 기록).
+async fn record_consent(db: &Db, uid: i64) -> bool {
+    let now = now_secs();
+    db.call(move |c| c.execute("UPDATE users SET paddle_consent_at = ?2 WHERE id = ?1", params![uid, now]))
+        .await
+        .is_ok()
 }
 
 /// 결제창(Paddle.js)에 넘길 값. 금액은 Paddle에 등록된 가격 id로만 정해지므로 브라우저가 바꿀 수 없다.
@@ -905,8 +919,15 @@ pub async fn checkout(
     {
         return error(StatusCode::BAD_REQUEST, "item");
     }
+    // 결제 정보는 Paddle(영국)에 제공·국외 이전되므로 두 가지 동의가 모두 있어야 한다.
+    if !(req.consent_provide && req.consent_transfer) {
+        return error(StatusCode::BAD_REQUEST, "consent");
+    }
     let Some(b) = &state.billing else {
         return if state.dev_mode {
+            if !record_consent(state.auth.db(), uid).await {
+                return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
+            }
             Json(json!({ "dev": true })).into_response()
         } else {
             error(StatusCode::SERVICE_UNAVAILABLE, "billing")
@@ -915,6 +936,10 @@ pub async fn checkout(
     // 이미 구독 중이면 새 구독을 만들지 않는다(두 번 결제되지 않게). 요금제 바꾸기·다시 이어 쓰기로 처리한다.
     if req.item != "hours" && plan_of(state.auth.db(), uid).await != "none" {
         return error(StatusCode::CONFLICT, "subscribed");
+    }
+    // 실제로 결제창을 열 때만 동의 시각을 남긴다.
+    if !record_consent(state.auth.db(), uid).await {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
     }
     let price = if req.item == "hours" {
         Some(b.price_hour.as_str())

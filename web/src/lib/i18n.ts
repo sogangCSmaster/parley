@@ -209,6 +209,10 @@ const en = {
   'quota.restored': 'Captions are back.',
   'quota.guest': 'Captions paused: the host is out of translation time.',
   'lobby.hostMeeting': '{host}’s meeting',
+  'lobby.agree': 'By joining you agree to the {terms} and {privacy}.',
+  'lobby.terms': 'Terms of Service',
+  'lobby.privacy': 'Privacy Policy',
+  'lobby.geminiNote': 'What you say is sent to Google Gemini to be translated; Tolkmeet doesn’t store it.',
 } as const
 
 type CoreKey = keyof typeof en
@@ -417,6 +421,10 @@ const ko: Messages = {
   'quota.restored': '자막이 다시 켜졌어요.',
   'quota.guest': '주최자의 번역 시간이 다 떨어져 자막이 멈췄어요.',
   'lobby.hostMeeting': '{host}님의 회의',
+  'lobby.agree': '참여하면 {terms}과 {privacy}에 동의하게 돼요.',
+  'lobby.terms': '이용약관',
+  'lobby.privacy': '개인정보 처리방침',
+  'lobby.geminiNote': '말한 내용은 번역을 위해 Google Gemini로 전송되며, Tolkmeet은 저장하지 않아요.',
 
 }
 
@@ -622,6 +630,10 @@ const ja: Messages = {
   'quota.restored': '字幕が再開しました。',
   'quota.guest': '主催者の翻訳時間がなくなったため、字幕が止まりました。',
   'lobby.hostMeeting': '{host}さんの会議',
+  'lobby.agree': '参加すると{terms}と{privacy}に同意したことになります。',
+  'lobby.terms': '利用規約',
+  'lobby.privacy': 'プライバシーポリシー',
+  'lobby.geminiNote': '話した内容は翻訳のため Google Gemini に送信されます。Tolkmeet は保存しません。',
 
 }
 

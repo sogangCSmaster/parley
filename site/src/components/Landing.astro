@@ -1,13 +1,14 @@
 ---
 import type { Dict } from '../i18n/en'
 import Base from '../layouts/Base.astro'
-import { GITHUB_URL, LEGAL, LOCALES, SIGN_IN_URL, SIGNUP_URL, SITE_URL } from '../site'
+import { GITHUB_URL, legalLinks, LOCALES, SIGN_IN_URL, SIGNUP_URL, SITE_URL } from '../site'
 import Face from './Face.astro'
 import Gemini from './Gemini.astro'
 import Mark from './Mark.astro'
 
 interface Props { t: Dict }
 const { t } = Astro.props
+const LEGAL = legalLinks(t.lang)
 const you = (name: string) => t.you.replace('{name}', name)
 const names = { other: t.otherName, me: you(t.meName) }
 const nameLang = { other: t.otherNameLang, me: t.lang }
@@ -253,7 +254,7 @@ const jsonLd = [
           {/* 계속 도는 움직임이라 멈출 수 있게 한다(WCAG 2.2.2). */}
           <button class="pv-toggle" type="button" data-pv-toggle data-labels={JSON.stringify({ pause: t.privacyPause, play: t.privacyPlay })}>{t.privacyPause}</button>
         </div>
-        <a class="privacy-link" href={LEGAL.privacy} hreflang="en">{t.privacyLink} ›</a>
+        <a class="privacy-link" href={LEGAL.privacy} hreflang={LEGAL.lang}>{t.privacyLink} ›</a>
       </div>
     </section>
 
@@ -317,9 +318,9 @@ const jsonLd = [
       </nav>
       <nav aria-label={t.footerLegal}>
         <h2>{t.footerLegal}</h2>
-        <a href={LEGAL.privacy} hreflang="en">{t.legalPrivacy}</a>
-        <a href={LEGAL.terms} hreflang="en">{t.legalTerms}</a>
-        <a href={LEGAL.refund} hreflang="en">{t.legalRefund}</a>
+        <a href={LEGAL.privacy} hreflang={LEGAL.lang}>{t.legalPrivacy}</a>
+        <a href={LEGAL.terms} hreflang={LEGAL.lang}>{t.legalTerms}</a>
+        <a href={LEGAL.refund} hreflang={LEGAL.lang}>{t.legalRefund}</a>
       </nav>
       <div class="foot-col">
         <h2 id="foot-lang">{t.languageLabel}</h2>
