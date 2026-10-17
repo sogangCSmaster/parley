@@ -13,6 +13,7 @@ The target look for the next version, explored on a design canvas (2026-10-17). 
 | Surfaces | Thin borders, flat panels | No borders; layers come from fill (`#F5F5F7` page, `#FFFFFF` cards), large radii (14–30px), translucent glass (`backdrop-filter`) over video |
 | Filled buttons | Ink | **Deep orange `#D4401C` with white text and white icons** (4.62:1), also for icon tiles and badges on orange. The brand orange `#F2542D` stays for non-text accents only: logo, translation pill, speaking ring, progress |
 | Camera off | Colored initial circle | Gray monogram (`#A2A6B0 → #7D818C`), speaking = orange double ring + level bars |
+| Account avatar | Initial | A generic person icon on `#E8E8ED`. No profile photo upload (people rarely add one to a work tool) |
 | Captions | Panel list, same size for every line | Recency sizing: the latest line is largest and darkest, older lines shrink and fade. Scrolling up switches to uniform reading mode with a "최신 대화로" pill |
 | Meeting room | Caption panel on the right | Video tiles + a light "대화 기록" column (a mini version of the live captions screen); one floating control capsule |
 | Screen share (presenter) | Captions hidden behind the shared app | Document Picture-in-Picture caption window, always on top, never shared |
