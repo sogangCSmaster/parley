@@ -1,0 +1,67 @@
+/*
+ * 약관·개인정보·환불 페이지(design/v2/source/{Privacy,Terms,Refund}.dc.html). site.css의 토큰과 다크 값을 그대로 쓴다.
+ * 밝은 화면은 흰 바탕 위 회색 면(디자인), 어두운 화면은 가장 어두운 바탕 위 한 단계 밝은 면.
+ */
+:root { --legal-bg: var(--panel-bg); --legal-card: var(--page-bg); --notice-bg: #FFF1EC; --notice-fg: #9E2D14; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --legal-bg: var(--page-bg); --legal-card: var(--panel-bg); --notice-bg: rgb(242 84 45 / .16); --notice-fg: #FF8A66; }
+}
+:root[data-theme="dark"] { --legal-bg: var(--page-bg); --legal-card: var(--panel-bg); --notice-bg: rgb(242 84 45 / .16); --notice-fg: #FF8A66; }
+
+body:has(> .legal) { background: var(--legal-bg); }
+.legal a { color: var(--accent-text); text-decoration: none; }
+.legal a:hover { text-decoration: underline; }
+
+.legal-top { display: flex; align-items: center; gap: 24px; height: 48px; padding: 0 24px; border-bottom: 1px solid var(--divider); background: var(--header-bg); font-size: 13px; }
+.legal-top .brand { gap: 6px; color: var(--text); font-size: 16px; }
+.legal-top .brand:hover, .legal-links a:hover { text-decoration: none; }
+.legal-links { display: flex; gap: 20px; margin-left: auto; }
+.legal-links a { color: var(--text-secondary); }
+.legal-links a:hover, .legal-links a[aria-current="page"] { color: var(--text); }
+.legal-links a[aria-current="page"] { font-weight: 600; }
+
+.legal-head, .legal-body { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+.legal-head { padding-top: 88px; padding-bottom: 40px; }
+.legal h1 { font-size: clamp(40px, 5vw, 64px); font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; }
+.legal .legal-date { margin-top: 14px; color: var(--text-secondary); font-size: 17px; }
+.legal .legal-draft { display: inline-flex; margin-top: 16px; padding: 6px 12px; border-radius: 8px; background: var(--notice-bg); color: var(--notice-fg); font-size: 13px; font-weight: 600; line-height: 1.5; }
+
+.legal-body { display: grid; gap: 40px; padding-bottom: 120px; }
+.legal-toc { display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.4; }
+.legal-toc-title { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.legal-toc a { width: fit-content; color: var(--text-secondary); }
+.legal-toc a:hover { color: var(--text); }
+@media (min-width: 960px) {
+  .legal-body.has-toc { grid-template-columns: 220px minmax(0, 700px); gap: 56px; align-items: start; }
+  .legal-toc { position: sticky; top: 24px; padding-top: 6px; }
+}
+
+.legal-text { min-width: 0; max-width: 700px; font-size: 17px; line-height: 1.65; }
+.legal-text h2 { margin: 48px 0 12px; font-size: 26px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; }
+.legal-text p + p { margin-top: 12px; }
+.legal-text p + ul { margin-top: 12px; }
+.legal-text ul { display: flex; flex-direction: column; gap: 6px; padding-left: 20px; list-style: disc; }
+.legal-summary { padding: 28px; border-radius: var(--radius-card); background: var(--legal-card); }
+.legal-summary h2 { margin: 0 0 12px; font-size: 22px; }
+.legal-summary ul { gap: 8px; }
+
+/* 환불 페이지: 목차 없이 한 단, 위에 요약 카드 셋 */
+.legal-single { max-width: 760px; margin: 0 auto; padding: 88px 24px 120px; }
+.legal .legal-single .legal-date { font-size: inherit; }
+.legal-cards { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 40px; }
+.legal-card { flex: 1 1 200px; padding: 22px; border-radius: 20px; background: var(--legal-card); }
+.legal-card-big { font-size: 34px; font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; }
+.legal .legal-card-big + p { margin-top: 6px; color: var(--text-secondary); font-size: 15px; line-height: 1.5; }
+
+.legal-foot { padding: 28px 24px; background: var(--legal-card); color: var(--text-secondary); font-size: 12px; text-align: center; }
+.legal-foot a { color: var(--text-secondary); }
+.legal-foot a:hover { color: var(--text); }
+
+@media (max-width: 640px) {
+  .legal-top { gap: 16px; padding: 0 16px; }
+  .legal-links { gap: 16px; }
+  .legal-head, .legal-body { padding-left: 16px; padding-right: 16px; }
+  .legal-head, .legal-single { padding-top: 56px; }
+  .legal-single { padding-left: 16px; padding-right: 16px; }
+  .legal-summary { padding: 22px; }
+}

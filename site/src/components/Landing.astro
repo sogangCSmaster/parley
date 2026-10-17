@@ -1,8 +1,9 @@
 ---
 import type { Dict } from '../i18n/en'
 import Base from '../layouts/Base.astro'
-import { GITHUB_URL, LOCALES, SIGN_IN_URL, SIGNUP_URL, SITE_URL } from '../site'
+import { GITHUB_URL, LEGAL, LOCALES, SIGN_IN_URL, SIGNUP_URL, SITE_URL } from '../site'
 import Face from './Face.astro'
+import Gemini from './Gemini.astro'
 import Mark from './Mark.astro'
 
 interface Props { t: Dict }
@@ -14,6 +15,10 @@ const times = ['15:21', '15:22', '15:22']
 // 띄어 쓰지 않는 언어(일본어)는 문구에 | 로 나눠 둔다
 const words = t.statement.includes('|') ? t.statement.split('|') : t.statement.split(' ')
 const joiner = t.statement.includes('|') ? '' : ' '
+// 개인정보 장면: 글자마다 조금씩 늦게 나타나게 지연을 정한다. 줄마다 4초씩 차례로(한 바퀴 12초).
+const chars = (text: string, start: number, step: number) => [...text].map((c, i) => ({ c: c === ' ' ? '\u00a0' : c, d: `${(start + i * step).toFixed(3)}s` }))
+const privacyLines = t.privacyLines.map((l, k) => ({ ...l, name: l.who === 'me' ? t.meName : t.otherName, nameLang: l.who === 'me' ? t.lang : t.otherNameLang, src: chars(l.text, k * 4, 0.02), out: chars(l.tr, k * 4, 0.035), d: `${k * 4}s` }))
+const dots = Array.from({ length: 8 }, (_, i) => i)
 
 const jsonLd = [
   {
@@ -42,6 +47,7 @@ const jsonLd = [
       <nav class="top-nav" aria-label={t.navLabel}>
         <a href="#story">{t.navStory}</a>
         <a href="#modes">{t.navModes}</a>
+        <a href="#privacy">{t.navPrivacy}</a>
         <a href="#pricing">{t.navPricing}</a>
         <a href="#faq">{t.navFaq}</a>
       </nav>
@@ -57,7 +63,7 @@ const jsonLd = [
           <svg class="i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>
         </button>
         <a class="link-quiet" href={SIGN_IN_URL}>{t.signIn}</a>
-        <a class="btn btn-ink" href={SIGNUP_URL}>{t.getStarted}</a>
+        <a class="btn btn-cta" href={SIGNUP_URL}>{t.getStarted}</a>
       </div>
     </div>
   </header>
@@ -71,10 +77,11 @@ const jsonLd = [
       </h1>
       <p class="lead hero-in">{t.heroLead}</p>
       <div class="hero-cta hero-in">
-        <a class="btn btn-ink btn-lg" href={SIGNUP_URL}>{t.getStarted}</a>
+        <a class="btn btn-cta btn-lg" href={SIGNUP_URL}>{t.getStarted}</a>
         <a class="btn btn-plain btn-lg" href="#story">{t.heroSecondary}</a>
       </div>
       <p class="hero-price hero-in">{t.heroPrice}</p>
+      <p class="gem-pill hero-in"><Gemini id="gem-hero" /><span>{t.poweredBy} <b>Gemini</b></span></p>
       <ul class="hero-points hero-in">
         {t.heroPoints.map(([a, b]) => (
           <li><span>{a}</span><span class="tr-mark">{b}</span></li>
@@ -123,6 +130,40 @@ const jsonLd = [
         </div>
       </div>
       <script type="application/json" data-story set:html={JSON.stringify({ story: t.story, translating: t.translating })} />
+    </section>
+
+    {/* 번역 엔진: 속도(스트리밍)와 품질(맥락). */}
+    <section id="engine" class="wrap section engine" aria-labelledby="engine-title">
+      <div class="engine-head">
+        <p class="engine-eyebrow"><Gemini id="gem-engine" size={28} />Powered by Gemini</p>
+        <h2 id="engine-title" class="engine-title">{t.engineTitle1}<br /><span class="gem-text">{t.engineTitle2}</span></h2>
+        <p class="section-lead">{t.engineLead}</p>
+      </div>
+      <div class="engine-cards">
+        <div class="speed-card">
+          <div>
+            <p class="eyebrow">{t.speedEyebrow}</p>
+            <p class="speed-title">{t.speedTitle}</p>
+            <p class="card-body">{t.speedBody}</p>
+          </div>
+          <ol class="speed-rows" aria-hidden="true">
+            {t.speedRows.map(([label, text], i) => (
+              <li class={`speed-row r${i}`}><span class="speed-label">{label}</span><span class={i ? 'tr-mark' : ''} lang={i ? t.lang : t.speedSrcLang}>{text}</span></li>
+            ))}
+          </ol>
+        </div>
+        <div class="context-card">
+          <div>
+            <p class="eyebrow">{t.contextEyebrow}</p>
+            <p class="context-title">{t.contextTitle1}<br />{t.contextTitle2}</p>
+            <p class="card-body">{t.contextBody}</p>
+          </div>
+          <div class="context-sample">
+            <p><span lang={t.contextQ[0]}>{t.contextQ[1]}</span> → <b lang={t.contextA[0]}>{t.contextA[1]}</b></p>
+            <p class="tr-mark" lang={t.contextTr[0]}>{t.contextTr[1]}</p>
+          </div>
+        </div>
+      </div>
     </section>
 
     {/* 세 가지 자리: 기기 화면이 머물고, 스크롤에 따라 화상 → 대면 → 자막 화면으로 바뀐다. */}
@@ -178,6 +219,41 @@ const jsonLd = [
       </dl>
     </section>
 
+    {/* 개인정보: 자막이 나타났다가 흩어져 사라진다(남기지 않음). 두 사람 사이엔 암호화된 신호 점만 오간다. CSS 애니메이션뿐(스크립트 없음). */}
+    <section id="privacy" class="privacy" aria-labelledby="privacy-title">
+      <div class="wrap">
+        <h2 id="privacy-title" class="privacy-title">{t.privacyTitle1}<br />{t.privacyTitle2}</h2>
+        <p class="privacy-lead">{t.privacyLead}</p>
+        <div class="pv-stage" role="img" aria-label={t.privacyStageLabel}>
+          <div class="pv-lines" aria-hidden="true">
+            {privacyLines.map((l) => (
+              <div class="pv-line">
+                <p class="pv-src"><b class="pv-ch" lang={l.nameLang} style={`--d:${l.d}`}>{l.name}</b>{'\u00a0\u00a0'}<span lang={l.lang}>{l.src.map((x) => <span class="pv-ch" style={`--d:${x.d}`}>{x.c}</span>)}</span></p>
+                <p class="pv-tr"><i class="pv-ch" style={`--d:${l.d}`}></i><span lang={l.trLang}>{l.out.map((x) => <span class="pv-ch" style={`--d:${x.d}`}>{x.c}</span>)}</span></p>
+              </div>
+            ))}
+          </div>
+          <div class="pv-people" aria-hidden="true">
+            <div class="pv-person"><span class="pv-avatar on" lang={t.lang}>{[...t.meName][0]}</span><span>{t.meName}</span></div>
+            <div class="pv-mid">
+              <div class="pv-wire">
+                <span class="pv-line-bg"></span>
+                {dots.map((i) => <i class="pv-dot" style={`--d:${(-0.45 * i).toFixed(2)}s`}></i>)}
+                {dots.map((i) => <i class="pv-dot pv-rev" style={`--d:${(-0.2 - 0.45 * i).toFixed(2)}s`}></i>)}
+              </div>
+              <span class="pv-wire-label">{t.privacyWire}</span>
+            </div>
+            <div class="pv-person"><span class="pv-avatar" lang={t.otherNameLang}>{[...t.otherName][0]}</span><span lang={t.otherNameLang}>{t.otherName}</span></div>
+          </div>
+          <ul class="pv-chips">
+            {t.privacyChips.map(([a, b, c]) => <li class="pv-chip">{a}<b>{b}</b>{c}</li>)}
+          </ul>
+          <p class="pv-hint" aria-hidden="true">{t.privacyHint}</p>
+        </div>
+        <a class="privacy-link" href={LEGAL.privacy} hreflang="en">{t.privacyLink} ›</a>
+      </div>
+    </section>
+
     <section id="pricing" class="wrap section" aria-labelledby="pricing-title">
       <h2 id="pricing-title" class="section-title">{t.pricingTitle}</h2>
       <p class="section-lead">{t.pricingLead}</p>
@@ -189,7 +265,7 @@ const jsonLd = [
             <p class="plan-price"><span>{p.price}</span><small>{p.unit}</small></p>
             <p class="plan-hours">{p.hours}</p>
             <p class="plan-note">{p.note}</p>
-            <a class={`btn ${i === 0 ? 'btn-ink' : 'btn-outline'}`} href={SIGNUP_URL}>{p.cta}</a>
+            <a class={`btn ${i === 0 ? 'btn-cta' : 'btn-ink'}`} href={SIGNUP_URL}>{p.cta}</a>
           </div>
         ))}
         <div class="includes">
@@ -218,7 +294,7 @@ const jsonLd = [
         <span class="pt-1">{t.closingLine1}</span>
         <span class="pt-2"><i class="pt-bar" aria-hidden="true"></i>{t.closingLine2}</span>
       </p>
-      <a class="btn btn-ink btn-lg" href={SIGNUP_URL}>{t.getStarted}</a>
+      <a class="btn btn-cta btn-lg" href={SIGNUP_URL}>{t.getStarted}</a>
     </section>
   </main>
 
@@ -236,6 +312,12 @@ const jsonLd = [
         <a href="#faq">{t.navFaq}</a>
         <a href={SIGN_IN_URL}>{t.signIn}</a>
       </nav>
+      <nav aria-label={t.footerLegal}>
+        <h2>{t.footerLegal}</h2>
+        <a href={LEGAL.privacy} hreflang="en">{t.legalPrivacy}</a>
+        <a href={LEGAL.terms} hreflang="en">{t.legalTerms}</a>
+        <a href={LEGAL.refund} hreflang="en">{t.legalRefund}</a>
+      </nav>
       <div class="foot-col">
         <h2 id="foot-lang">{t.languageLabel}</h2>
         <ul class="foot-list" aria-labelledby="foot-lang">
@@ -250,6 +332,7 @@ const jsonLd = [
         </a>
       </div>
     </div>
+    <p class="wrap foot-note">{t.footerDisclaimer}</p>
   </footer>
 
   <script is:inline>
@@ -327,6 +410,7 @@ const jsonLd = [
         modes.forEach((m, i) => m.classList.toggle('is-active', i === idx))
       }
 
+      const privacyEl = document.getElementById('privacy')
       const statementEl = document.querySelector('[data-statement]')
       const statementWords = [...statementEl.querySelectorAll('.w')]
       let lit = -1
@@ -355,7 +439,8 @@ const jsonLd = [
         if (k !== lit) { lit = k; statementWords.forEach((w, i) => w.classList.toggle('on', i < k)) }
         header.classList.toggle('scrolled', scrollY > 8)
         // 어두운 회의 장면 위를 지나는 동안 머리도 어둡게(흐린 회색으로 비치지 않게)
-        header.classList.toggle('on-dark', sr.top <= hh && sr.bottom >= hh)
+        const pr = privacyEl.getBoundingClientRect()
+        header.classList.toggle('on-dark', (sr.top <= hh && sr.bottom >= hh) || (pr.top <= hh && pr.bottom >= hh))
       }
       const request = () => { if (!ticking) { ticking = true; requestAnimationFrame(frame) } }
       addEventListener('scroll', request, { passive: true })

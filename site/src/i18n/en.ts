@@ -4,6 +4,9 @@
 export type Utterance = { who: 'other' | 'me'; lang: string; text: string; drafts: string[]; tr: string; trLang: string }
 export type FaceName = 'sakura' | 'minjun'
 
+/** 개인정보 구역의 한 줄: 나타났다가 흩어져 사라지는 자막 */
+export type PrivacyLine = { who: 'other' | 'me'; lang: string; text: string; tr: string; trLang: string }
+
 export const en = {
   lang: 'en',
   htmlLang: 'en',
@@ -20,7 +23,7 @@ export const en = {
   navFaq: 'FAQ',
   navLabel: 'Main',
   signIn: 'Sign in',
-  getStarted: 'Start with Pro',
+  getStarted: 'Get started',
   languageLabel: 'Language',
   themeLabel: 'Theme',
   themeSystem: 'System',
@@ -81,7 +84,7 @@ export const en = {
   details: [
     { title: 'Accents are fine', body: 'Japanese spoken with a Korean accent is still written as Japanese, not as Korean sounds.' },
     { title: 'Guests need nothing', body: 'They open the link in Chrome, Safari or Edge and ask to join. You let them in.' },
-    { title: 'Encrypted, and never stored', body: 'Video and audio are encrypted between participants and pass through our relay only when a direct connection isn’t possible. Speech is sent to Google Gemini to be recognized and translated. We keep neither audio nor captions.' },
+    { title: 'Screen sharing', body: 'While you present, a small caption window stays on top of your screen.' },
     { title: 'Keep the conversation', body: 'Anyone can save their own captions, original and translation, as a text file.' },
     { title: 'Eight languages', body: 'Korean, Japanese, English, Chinese (Simplified), Spanish, French, German and Vietnamese. Each person picks their own.' },
     { title: 'Open source', body: 'The code is public under AGPL-3.0, so you can check exactly what it does.' },
@@ -110,6 +113,55 @@ export const en = {
 
   closingLine1: 'Your next meeting,',
   closingLine2: 'in everyone’s language.',
+
+  navPrivacy: 'Privacy',
+  poweredBy: 'Powered by',
+
+  // 번역 엔진: 속도(스트리밍)와 품질(맥락). 숫자 대신 "기다리지 않는다"로 말한다.
+  engineTitle1: 'Fast,',
+  engineTitle2: 'and accurate.',
+  engineLead: 'Google’s Gemini starts streaming the translation the moment it hears you. That is a different pace from interpreter apps that wait for the sentence to end.',
+  speedEyebrow: 'Streaming translation',
+  speedTitle: 'No waiting.',
+  speedBody: 'It doesn’t wait for the sentence to end. A draft follows in gray while you speak, then settles the moment you stop.',
+  speedSrcLang: 'ja',
+  speedRows: [
+    ['Starts speaking', '来週のデモ、木曜日でも…'],
+    ['Still speaking', 'Next week’s demo, Thursday…'],
+    ['Done speaking', 'Would Thursday work for next week’s demo?'],
+  ] as [string, string][],
+  contextEyebrow: 'Context-aware',
+  contextTitle1: 'It translates the conversation,',
+  contextTitle2: 'not just the sentence.',
+  contextBody: 'It reads what was said before, so short replies, politeness and names stay consistent for the whole meeting.',
+  contextQ: ['en', 'Should I start with plan A or plan B?'] as [string, string],
+  contextA: ['ja', 'Bからで。'] as [string, string],
+  contextTr: ['en', 'Plan B first, please.'] as [string, string],
+
+  // 개인정보: 자막이 나타났다가 흩어져 사라진다(저장하지 않음). 두 사람 사이엔 암호화된 신호만 오간다.
+  privacyTitle1: 'What’s said in the meeting',
+  privacyTitle2: 'stays in the meeting.',
+  privacyLead: 'Video and audio are encrypted between participants. What you say is sent to Google Gemini only to be translated. We store neither audio nor captions.',
+  privacyStageLabel: 'Captions appear and scatter away, while only encrypted signals travel between the two participants.',
+  privacyLines: [
+    { who: 'other', lang: 'ja', text: '来週のデモ、木曜日でも大丈夫ですか？', tr: 'Would Thursday work for next week’s demo?', trLang: 'en' },
+    { who: 'me', lang: 'en', text: 'Sure. I’ll send the slides ahead.', tr: 'はい、大丈夫です。資料は事前にお送りします。', trLang: 'ja' },
+    { who: 'other', lang: 'ja', text: '価格の条件も確認させてください。', tr: 'I’d also like to go over the pricing terms.', trLang: 'en' },
+  ] as PrivacyLine[],
+  privacyWire: 'Encrypted between participants',
+  privacyChips: [
+    ['', '0', ' seconds recorded'],
+    ['', '0', ' captions left on our servers'],
+    ['Saved only ', 'on your own device', ''],
+  ] as [string, string, string][],
+  privacyHint: 'Hover to pause',
+  privacyLink: 'Privacy Policy',
+
+  footerLegal: 'Legal',
+  legalPrivacy: 'Privacy Policy',
+  legalTerms: 'Terms of Service',
+  legalRefund: 'Refund Policy',
+  footerDisclaimer: 'Translations are made by AI and can be wrong. Confirm anything important, such as contracts or medical and legal matters, with a professional. Meeting audio is sent to Google Gemini’s paid API to be translated and is not stored. Prices are in US dollars; tax may be added at checkout.',
 
   footerProduct: 'Product',
   footerOpenSource: 'Open source under AGPL-3.0',

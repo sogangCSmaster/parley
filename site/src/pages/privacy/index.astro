@@ -1,0 +1,75 @@
+---
+import Legal from '../../components/Legal.astro'
+
+const toc: [string, string][] = [
+  ['p1', 'The short version'],
+  ['p2', 'What we collect'],
+  ['p3', 'Speech and captions'],
+  ['p4', 'Video and audio'],
+  ['p5', 'Who we share data with'],
+  ['p6', 'International transfers'],
+  ['p7', 'Cookies'],
+  ['p8', 'How long we keep data'],
+  ['p9', 'Your rights'],
+  ['p10', 'Children'],
+  ['p11', 'Changes and contact'],
+]
+---
+<Legal
+  page="privacy"
+  title="Privacy Policy"
+  metaTitle="Privacy Policy · Tolkmeet"
+  metaDescription="How Tolkmeet handles your data: we never record or store your meetings, and we keep only what we need to run and bill the service."
+  updated="Last updated [DATE] · Effective [DATE]"
+  toc={toc}
+>
+  <section id="p1" class="legal-summary">
+    <h2>The short version</h2>
+    <ul>
+      <li>We never record or store your meetings: no audio, no video, no captions.</li>
+      <li>What you say is sent to Google Gemini only to be transcribed and translated, then discarded.</li>
+      <li>We keep your account details and how many minutes you translate, so we can bill you fairly.</li>
+      <li>We use one essential cookie to keep you signed in. No ads, no trackers.</li>
+    </ul>
+  </section>
+
+  <h2 id="p2">What we collect</h2>
+  <p><b>Account details.</b> Your name, email address and a one-way hash of your password, or the name and email Google shares if you sign in with Google.</p>
+  <p><b>Billing.</b> Payments are processed by Paddle, our merchant of record. We receive your plan, billing status and country, never your full card number.</p>
+  <p><b>Usage.</b> Meeting start and end times, the number of participants, the languages chosen and the minutes translated. We use this to apply plan limits and to keep the service running.</p>
+  <p><b>Technical data.</b> IP address and browser type in short-lived server logs, used for security and abuse prevention. Logs never contain what was said.</p>
+
+  <h2 id="p3">Speech and captions</h2>
+  <p>When translation is on, your browser sends your speech directly to Google’s Gemini API, which returns text. The text passes through our server to be translated and delivered to the other participants.</p>
+  <p>We use Gemini’s paid service, under which Google does not use the content to train its models. We do not store audio, transcripts or translations. Each participant can save their own captions to their device as a text file.</p>
+
+  <h2 id="p4">Video and audio</h2>
+  <p>Video and audio travel between participants with WebRTC encryption. When a direct connection is not possible, they pass through our relay server, which forwards encrypted data and cannot see or record it.</p>
+
+  <h2 id="p5">Who we share data with</h2>
+  <p>We do not sell personal data. We use these processors only to provide the service:</p>
+  <ul>
+    <li>Google (Gemini API): speech recognition and translation</li>
+    <li>Paddle: payments, invoices and tax</li>
+    <li>Amazon Web Services: hosting</li>
+    <li>Resend: account emails such as sign-up verification</li>
+  </ul>
+
+  <h2 id="p6">International transfers</h2>
+  <p>Our servers are in [REGION]. Our processors may handle data in other countries, including the United States. Where the law requires it, we rely on appropriate safeguards such as standard contractual clauses.</p>
+
+  <h2 id="p7">Cookies</h2>
+  <p>We set one essential cookie that keeps you signed in. We do not use advertising or tracking cookies. Our website analytics, if any, are cookie-free.</p>
+
+  <h2 id="p8">How long we keep data</h2>
+  <p>Account data is kept while your account is open and deleted within [30] days after you close it. Usage records are kept for [12] months. Billing records are kept as long as tax law requires. Server logs are deleted after [14] days.</p>
+
+  <h2 id="p9">Your rights</h2>
+  <p>You can access, correct, export or delete your data at any time from account settings, or by writing to us. Depending on where you live, including Korea, Japan and the European Union, you may have further rights under local law, such as objecting to processing or complaining to a data protection authority.</p>
+
+  <h2 id="p10">Children</h2>
+  <p>Tolkmeet accounts are for people aged [16] and over.</p>
+
+  <h2 id="p11">Changes and contact</h2>
+  <p>If we make a material change, we will email account holders before it takes effect. Questions or requests: [privacy@tolkmeet.com]. Data controller: [COMPANY NAME], [ADDRESS], [REGISTRATION NUMBER].</p>
+</Legal>
