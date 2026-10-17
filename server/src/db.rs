@@ -141,8 +141,11 @@ impl Db {
 
     fn init(conn: Connection) -> rusqlite::Result<Self> {
         // WAL: 읽기가 쓰기를 기다리지 않는다. busy_timeout: Litestream 체크포인트와 겹쳐도 잠깐 기다린다.
+        // secure_delete: 지운 행을 빈 페이지에 남기지 않고 0으로 덮는다(백업 사본에 지운 개인정보가 옮겨지지 않게).
+        // FAST는 이미 메모리에 있는 페이지만 덮어 디스크 쓰기가 거의 늘지 않는다.
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
+             PRAGMA secure_delete = FAST;
              PRAGMA synchronous = NORMAL;
              PRAGMA foreign_keys = ON;
              PRAGMA busy_timeout = 5000;",
@@ -194,6 +197,30 @@ pub fn now_secs() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deleted_account_leaves_no_bytes_in_the_file() {
+        // 처리방침: 계정을 지우면 바로 지우고 백업(파일 스냅숏)에도 남지 않는다.
+        let path = std::env::temp_dir().join(format!("tolkmeet-secure-delete-{}.db", std::process::id()));
+        for ext in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
+        }
+        let marker = "forget-me-7f3a@example.com";
+        let db = Db::open(&path).unwrap();
+        db.blocking(|c| {
+            c.execute("INSERT INTO users (email, created_at) VALUES (?1, 1)", params![marker])?;
+            c.execute("DELETE FROM users WHERE email = ?1", params![marker])?;
+            c.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        })
+        .unwrap();
+        drop(db);
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes.extend(std::fs::read(format!("{}-wal", path.display())).unwrap_or_default());
+        assert!(!bytes.windows(marker.len()).any(|w| w == marker.as_bytes()), "deleted email still in the file");
+        for ext in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
+        }
+    }
 
     #[tokio::test]
     async fn migrates_and_reopens_without_rerunning() {
