@@ -112,24 +112,37 @@ impl Accounts {
 
     /// 초대 메일 한 통을 보내도 되는지(보내는 사람·받는 사람 한도).
     pub fn may_invite(&self, user_id: i64, to: &str) -> bool {
-        // 보내는 사람 한도를 먼저 본다: 받는 주소(아무 값이나 넣을 수 있음)는 그 한도를 넘지 않은 요청만 맵에 쌓인다.
-        self.invites_by_user.check(&user_id.to_string()) && self.invites_by_rcpt.check(to)
+        // 둘 다 허용될 때만 쓴다: 받는 주소(아무 값이나 넣을 수 있음)는 보내는 사람 한도 안의 요청만 맵에 쌓인다.
+        let user = user_id.to_string();
+        self.invites_by_user.allows(&user)
+            && self.invites_by_rcpt.allows(to)
+            && self.invites_by_user.check(&user)
+            && self.invites_by_rcpt.check(to)
     }
 
     /// 메일을 보내는 요청의 빈도 제한. 넘으면 조용히 보내지 않는다(응답은 같게 해 계정 존재를 숨긴다).
     /// IPv6는 /64로 묶는다(주소를 바꿔 가며 피하지 못하게).
     // IP 한도를 먼저 본다(&&): 아무 값이나 넣을 수 있는 주소 키는 IP 한도를 넘지 않은 요청만 맵에 쌓인다.
     fn may_mail(&self, ip: IpAddr, email: &str) -> bool {
-        // 터널 하나로 /48(/64 65,536개)을 받을 수 있으므로 /48도 센다. 한도를 넘은 기기가 같은 /48의 몫을 쓰지 않게
-        // /64를 먼저, 아무 값이나 넣을 수 있는 주소 키는 맨 나중에 본다.
-        self.by_ip.check(&auth::client_key(ip).to_string()) && self.by_net.check(&net48(ip)) && self.by_email.check(email)
+        // 터널 하나로 /48(/64 65,536개)을 받을 수 있으므로 /48도 센다.
+        let (ip, net) = (auth::client_key(ip).to_string(), net48(ip));
+        // 셋 다 허용될 때만 쓴다: 막힌 요청이 다른 단위의 몫을 쓰거나 키를 쌓지 않게.
+        self.by_ip.allows(&ip)
+            && self.by_net.allows(&net)
+            && self.by_email.allows(email)
+            && self.by_ip.check(&ip)
+            && self.by_net.check(&net)
+            && self.by_email.check(email)
     }
 
     /// 로그인 전 대기 상태를 하나 더 만들어도 되는지.
     fn may_start_sign_in(&self, ip: IpAddr) -> bool {
-        // /64 다음 /48: 터널 하나로 받은 /64 수만 개로 나눠 피하지 못하게. 이미 자기 한도를 넘은 기기가
-        // 같은 /48의 다른 사람 몫까지 쓰지 않도록 /64를 먼저 본다.
-        self.sign_in_starts.check(&auth::client_key(ip).to_string()) && self.sign_in_starts_by_net.check(&net48(ip))
+        // /64와 /48 모두: 터널 하나로 받은 /64 수만 개로 나눠 피하지 못하게. 둘 다 허용될 때만 쓴다.
+        let (ip, net) = (auth::client_key(ip).to_string(), net48(ip));
+        self.sign_in_starts.allows(&ip)
+            && self.sign_in_starts_by_net.allows(&net)
+            && self.sign_in_starts.check(&ip)
+            && self.sign_in_starts_by_net.check(&net)
     }
 
     /// 로그인 중 이 클라이언트가 이 사용자의 2차 인증 코드를 한 번 더 맞혀 봐도 되는지.

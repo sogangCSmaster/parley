@@ -74,6 +74,19 @@ impl KeyedLimiter {
         }
     }
 
+    /// 지금 이 키로 한 번 허용될지(토큰을 쓰지도, 키를 만들지도 않는다). 여러 단위를 함께 볼 때
+    /// 모두 허용될 때만 `check`로 쓰려고(한 단위에서 막힌 요청이 다른 단위의 몫을 쓰거나 키를 쌓지 않게).
+    pub fn allows(&self, key: &str) -> bool {
+        let now = Instant::now();
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let ready = |b: &TokenBucket| (b.tokens + now.saturating_duration_since(b.at).as_secs_f64() * b.rate).min(b.burst) >= 1.0;
+        match inner.map.get(key) {
+            Some(b) => ready(b),
+            None if inner.map.len() < self.cap => true,
+            None => ready(&inner.overflow),
+        }
+    }
+
     pub fn check(&self, key: &str) -> bool {
         let now = Instant::now();
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -121,5 +134,13 @@ mod keyed_tests {
         // 새 키들은 넘침 버킷(키 하나 몫)을 함께 쓴다.
         assert!(l.check("new0"));
         assert!(!l.check("new1"));
+    }
+
+    #[test]
+    fn allows_does_not_spend_or_insert() {
+        let l = KeyedLimiter::new(1, std::time::Duration::from_secs(3600));
+        assert!(l.allows("a") && l.allows("a"));
+        assert!(l.check("a"));
+        assert!(!l.allows("a"));
     }
 }
