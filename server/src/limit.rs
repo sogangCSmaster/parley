@@ -78,33 +78,46 @@ impl KeyedLimiter {
     /// 모두 허용될 때만 `check`로 쓰려고(한 단위에서 막힌 요청이 다른 단위의 몫을 쓰거나 키를 쌓지 않게).
     pub fn allows(&self, key: &str) -> bool {
         let now = Instant::now();
-        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let ready = |b: &TokenBucket| (b.tokens + now.saturating_duration_since(b.at).as_secs_f64() * b.rate).min(b.burst) >= 1.0;
-        // 맵에 없는 키는 허용으로 본다: 가득 찼을 때의 정리·넘침 버킷 판단은 `check`가 한다.
-        inner.map.get(key).is_none_or(ready)
+        if let Some(b) = inner.map.get(key) {
+            return ready(b);
+        }
+        // 없는 키: `check`와 같게, 가득 찼으면 먼저 치워 보고 그래도 가득하면 넘침 버킷으로 판단한다.
+        if self.sweep_if_full(&mut inner, now) {
+            ready(&inner.overflow)
+        } else {
+            true
+        }
+    }
+
+    /// 맵이 가득 찼으면 다 찬(한동안 안 쓴) 버킷을 치운다(1초에 한 번까지). 그래도 가득하면 true.
+    fn sweep_if_full(&self, inner: &mut Inner, now: Instant) -> bool {
+        if inner.map.len() < self.cap {
+            return false;
+        }
+        if inner.swept_at.is_none_or(|t| now.saturating_duration_since(t).as_secs() >= 1) {
+            inner.swept_at = Some(now);
+            inner.map.retain(|_, b| {
+                let tokens = (b.tokens + now.saturating_duration_since(b.at).as_secs_f64() * b.rate).min(b.burst);
+                tokens < b.burst
+            });
+            if inner.map.len() >= self.cap {
+                tracing::warn!(cap = self.cap, "rate limiter full: new keys share the overflow bucket");
+            }
+        }
+        inner.map.len() >= self.cap
     }
 
     pub fn check(&self, key: &str) -> bool {
         let now = Instant::now();
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let Inner { map, overflow, swept_at } = &mut *inner;
-        if !map.contains_key(key) && map.len() >= self.cap {
-            if swept_at.is_none_or(|t| now.saturating_duration_since(t).as_secs() >= 1) {
-                *swept_at = Some(now);
-                // 버킷이 다 찬(한동안 안 쓴) 키만 버린다.
-                map.retain(|_, b| {
-                    let tokens = (b.tokens + now.saturating_duration_since(b.at).as_secs_f64() * b.rate).min(b.burst);
-                    tokens < b.burst
-                });
-                if map.len() >= self.cap {
-                    tracing::warn!(cap = self.cap, "rate limiter full: new keys share the overflow bucket");
-                }
-            }
-            if map.len() >= self.cap {
-                return overflow.take(now);
-            }
+        if !inner.map.contains_key(key) && self.sweep_if_full(&mut inner, now) {
+            return inner.overflow.take(now);
         }
-        map.entry(key.to_owned())
+        inner
+            .map
+            .entry(key.to_owned())
             .or_insert_with(|| TokenBucket::new(self.rate, self.burst))
             .take(now)
     }
@@ -139,5 +152,14 @@ mod keyed_tests {
         assert!(l.allows("a") && l.allows("a"));
         assert!(l.check("a"));
         assert!(!l.allows("a"));
+    }
+
+    #[test]
+    fn allows_uses_overflow_when_full() {
+        let l = KeyedLimiter::with_cap(1, std::time::Duration::from_secs(3600), 1);
+        assert!(l.check("a"));
+        assert!(l.allows("new") && l.check("new"));
+        // 넘침 버킷도 다 썼으면 없는 키도 허용하지 않는다.
+        assert!(!l.allows("other"));
     }
 }
