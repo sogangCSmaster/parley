@@ -956,6 +956,7 @@ pub async fn dev_activate(
         Err(r) => return r,
     };
     let renews = next_reset(now_secs());
+    let item = req.item.clone();
     let res = state
         .auth
         .db()
@@ -971,7 +972,18 @@ pub async fn dev_activate(
         })
         .await;
     match res {
-        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Ok(_) => {
+            // 실제 결제처럼 영수증 메일도 같은 경로로 보낸다(개발 모드에서는 data/mail에 파일로 남는다).
+            if matches!(item.as_str(), "basic" | "pro") {
+                let amount = if item == "pro" { "$39.00" } else { "$19.00" };
+                send_receipt(
+                    &state,
+                    billing::Receipt { user: uid, plan: item.clone(), amount: amount.into(), renews: Some(renews) },
+                )
+                .await;
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "failed"),
     }
 }

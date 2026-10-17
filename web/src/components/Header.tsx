@@ -58,7 +58,7 @@ export function Header() {
           </button>
         )}
         {auth.status === 'guest' && path !== '/signup' && (
-          <button className="btn btn-primary btn-sm" onClick={() => navigate('/signup')}>
+          <button className="btn btn-primary btn-sm header-signup" onClick={() => navigate('/signup')}>
             {t('auth.createAccount')}
           </button>
         )}

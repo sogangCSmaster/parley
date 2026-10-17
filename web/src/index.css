@@ -741,6 +741,8 @@ body { background: var(--page-bg); color: var(--text); }
 @media (max-width: 480px) {
   /* 좁은 화면에서는 지구본만. 값은 aria-labelledby로 계속 읽힌다. */
   .app-header .select-pill .select-value { display: none; }
+  /* 휴대폰에서는 로그인만 둔다(계정 만들기는 로그인 화면 본문에서 이어 갈 수 있다). 머리줄이 넘치지 않게. */
+  .app-header .header-signup { display: none; }
 }
 
 @media (max-width: 760px) {
