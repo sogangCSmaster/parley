@@ -47,6 +47,7 @@ docs/
 
 - **저장소: SQLite, 서버 프로세스 안에** (`rusqlite`, WAL 모드, 같은 EC2의 로컬 디스크 파일). 네트워크 왕복이 없어 조회가 마이크로초 단위이고, 따로 운영할 DB 서버도 없다. 표: `users`, `sessions`, `email_tokens`, `subscriptions`, `usage`. 서버 재시작에도 로그인이 유지된다.
   - 쓰기는 한 번에 하나라 연결 하나를 전용 스레드(또는 `spawn_blocking`)에 두고, 비동기 작업이 DB를 기다리며 잠금을 쥐지 않게 한다(서버는 잠금을 쥔 채 await하지 않는다는 규칙 그대로).
+  - Paddle 동의 철회: privacy@로 요청을 받으면 `UPDATE users SET paddle_consent_withdrawn_at = unixepoch() WHERE email = '…'`로 기록한다(초 단위). 그 뒤 요금제를 바꾸려면 결제 화면에서 두 동의를 다시 체크해야 하고, 새 결제도 매번 동의를 받으므로 그때 철회 기록이 지워진다.
   - 백업: 한 대에 모든 데이터가 있으므로 **Litestream으로 S3에 연속 복제**한다(초 단위 지연, 인스턴스가 사라져도 복구). 앱 성능에는 영향이 없다.
     보관은 `retention: 23h`, `retention-check-interval: 1h`(기본값)로 둔다. 가장 오래 남는 시간은 retention + check interval이므로 합이 24시간을 넘지 않게 한다.
     S3 버킷 버전 관리는 끈다(켜면 지운 파일이 옛 버전으로 남는다). DB는 `secure_delete = ON`으로 지운 행(한 페이지를 넘는 큰 값 포함)을 0으로 덮어 파일·스냅숏에 남기지 않는다.

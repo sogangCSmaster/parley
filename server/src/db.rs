@@ -129,6 +129,8 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE users ADD COLUMN paddle_event_at INTEGER NOT NULL DEFAULT 0;",
     // Paddle(판매 대행사)에 제공·국외 이전하는 데 동의한 마지막 시각(개인정보 보호법 제17조·제28조의8 동의의 기록)
     "ALTER TABLE users ADD COLUMN paddle_consent_at INTEGER;",
+    // Paddle 동의를 철회한 시각(운영자가 철회 요청을 받아 기록). 다시 동의하기 전까지 결제·요금제 변경을 막는다.
+    "ALTER TABLE users ADD COLUMN paddle_consent_withdrawn_at INTEGER;",
 ];
 
 impl Db {

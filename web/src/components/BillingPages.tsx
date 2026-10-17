@@ -75,6 +75,7 @@ export function Checkout() {
   const [consentProvide, setConsentProvide] = useState(false)
   const [consentTransfer, setConsentTransfer] = useState(false)
   const consent = consentProvide && consentTransfer
+  const [needReconsent, setNeedReconsent] = useState(false)
   const [error, setError] = useState<MessageKey | null>(null)
 
   useEffect(() => {
@@ -92,9 +93,16 @@ export function Checkout() {
     setBusy(true)
     setError(null)
     if (changing) {
-      const r = await api.post('/api/billing/change', { plan: sel })
+      const r = await api.post('/api/billing/change', { plan: sel, consentProvide, consentTransfer })
       setBusy(false)
-      if (!r.ok) return setError('account.billingFailed')
+      if (!r.ok) {
+        // 동의를 철회한 사람: 두 동의 항목을 보여 다시 동의하게 한다.
+        if (r.code === 'consent') {
+          setNeedReconsent(true)
+          return setError('checkout.consentWithdrawn')
+        }
+        return setError('account.billingFailed')
+      }
       return navigate(`/billing/done?item=${sel}`)
     }
     const r = await api.post<CheckoutData | { dev: true }>('/api/billing/checkout', {
@@ -105,7 +113,7 @@ export function Checkout() {
     })
     if (!r.ok) {
       setBusy(false)
-      // 업데이트 전에 열어 둔 화면은 동의 값을 보내지 않으므로 새로고침을 안내한다.
+      // 버튼이 동의 전에는 꺼져 있으므로 보통은 오지 않는다. 서버가 동의 없음으로 거절하면 그대로 알린다.
       return setError(r.code === 'consent' ? 'checkout.consentNeeded' : 'account.billingFailed')
     }
     if ('dev' in r.data) {
@@ -218,7 +226,7 @@ export function Checkout() {
               {t(error)}
             </p>
           )}
-          {!same && !changing && (
+          {!same && (!changing || needReconsent) && (
             <div className="consent-box" id="paddle-consent">
               <label className="check-row">
                 <input type="checkbox" checked={consentProvide} onChange={(e) => setConsentProvide(e.target.checked)} />
@@ -247,8 +255,8 @@ export function Checkout() {
           ) : (
             <button
               className="btn btn-primary btn-lg"
-              disabled={busy || (!changing && !consent) || (!features().billing && !features().devBilling)}
-              aria-describedby={!changing && !consent ? 'paddle-consent' : undefined}
+              disabled={busy || ((!changing || needReconsent) && !consent) || (!features().billing && !features().devBilling)}
+              aria-describedby={(!changing || needReconsent) && !consent ? 'paddle-consent' : undefined}
               onClick={() => void pay()}
             >
               {changing ? t('checkout.change', { plan: sel === 'pro' ? 'Pro' : 'Basic' }) : t('checkout.pay', { price: priceLabel })}

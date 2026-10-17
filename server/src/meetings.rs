@@ -899,7 +899,13 @@ fn one() -> i64 {
 /// Paddle 제공·국외 이전 동의 시각을 남긴다(개인정보 보호법 제17조·제28조의8 동의의 기록).
 async fn record_consent(db: &Db, uid: i64) -> bool {
     let now = now_secs();
-    db.call(move |c| c.execute("UPDATE users SET paddle_consent_at = ?2 WHERE id = ?1", params![uid, now]))
+    // 새로 동의하면 예전 철회 기록은 지운다.
+    db.call(move |c| {
+        c.execute(
+            "UPDATE users SET paddle_consent_at = ?2, paddle_consent_withdrawn_at = NULL WHERE id = ?1",
+            params![uid, now],
+        )
+    })
         .await
         .is_ok()
 }
@@ -1027,9 +1033,15 @@ async fn subscription_of(db: &Db, uid: i64) -> (Option<String>, Option<String>) 
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlanReq {
     #[serde(default)]
     plan: String,
+    /// 동의를 철회한 사람이 요금제를 바꾸며 다시 동의할 때(결제 화면의 두 체크박스)
+    #[serde(default)]
+    consent_provide: bool,
+    #[serde(default)]
+    consent_transfer: bool,
 }
 
 /// cancel: 이번 기간이 끝나면 해지 · resume: 예약된 해지 취소 · change: 요금제 바꾸기
@@ -1044,6 +1056,29 @@ pub async fn manage(
         Err(r) => return r,
     };
     let db = state.auth.db().clone();
+    // Paddle 동의를 철회했으면 다시 동의하기 전까지 요금제를 바꾸지 않는다(해지·이어 쓰기는 된다).
+    // 결제 화면이 두 동의를 함께 보내면 그 자리에서 다시 동의한 것으로 기록하고 진행한다.
+    if action == "change" {
+        let withdrawn = db
+            .call(move |c| {
+                c.query_row(
+                    "SELECT paddle_consent_withdrawn_at IS NOT NULL FROM users WHERE id = ?1",
+                    params![uid],
+                    |r| r.get::<_, bool>(0),
+                )
+            })
+            .await;
+        match withdrawn {
+            Ok(false) => {}
+            Ok(true) if req.consent_provide && req.consent_transfer => {
+                if !record_consent(&db, uid).await {
+                    return error(StatusCode::INTERNAL_SERVER_ERROR, "failed");
+                }
+            }
+            Ok(true) => return error(StatusCode::FORBIDDEN, "consent"),
+            Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "failed"),
+        }
+    }
     let Some(b) = &state.billing else {
         // 개발 모드: Paddle 없이 같은 결과를 흉내 낸다.
         if !state.dev_mode {

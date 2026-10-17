@@ -266,7 +266,8 @@ const en = {
   'checkout.consentProvide': '(Required) Provision to a third party: I agree that my email address, account ID and plan are provided to Paddle.com Market Limited, our reseller, to process payment, invoices, refunds and tax. Paddle keeps them for the period its privacy policy and tax law require.',
   'checkout.consentTransfer': '(Required) Transfer abroad: I agree that these items are transferred to Paddle in the United Kingdom (privacy@paddle.com) over an encrypted connection (TLS) when the checkout opens.',
   'checkout.consentNote': 'You can refuse by leaving the boxes unticked, but then you can’t pay (you can still join meetings as a guest). Details: {privacy}.',
-  'checkout.consentNeeded': 'Please agree to both items above to pay. If you don’t see them, refresh the page.',
+  'checkout.consentNeeded': 'Please agree to both items to pay. If you don’t see them, refresh the page.',
+  'checkout.consentWithdrawn': 'You withdrew your consent to share payment details with Paddle. To change the plan, tick both items below to consent again.',
 } as const
 
 export type PageKey = keyof typeof en
@@ -534,7 +535,8 @@ const ko: Messages = {
   'checkout.consentProvide': '(필수) 제3자 제공: 결제·영수증·환불·세금 처리를 위해 이메일 주소, 계정 ID, 요금제를 판매 대행사 Paddle.com Market Limited에 제공하는 데 동의해요. Paddle은 자체 개인정보 처리방침과 세법이 정한 기간 동안 보관해요.',
   'checkout.consentTransfer': '(필수) 국외 이전: 이 항목이 결제창을 열 때 암호화된 연결(TLS)로 영국의 Paddle(privacy@paddle.com)에 이전되는 데 동의해요.',
   'checkout.consentNote': '동의하지 않으려면 체크하지 않으면 돼요. 그러면 결제할 수 없지만, 손님으로 회의에 참여하는 데에는 지장이 없어요. 자세한 내용: {privacy}',
-  'checkout.consentNeeded': '결제하려면 위의 두 가지에 동의해 주세요. 동의 항목이 보이지 않으면 페이지를 새로고침해 주세요.',
+  'checkout.consentNeeded': '결제하려면 두 가지 항목에 모두 동의해 주세요. 동의 항목이 보이지 않으면 페이지를 새로고침해 주세요.',
+  'checkout.consentWithdrawn': 'Paddle에 결제 정보를 제공하는 동의를 철회했어요. 요금제를 바꾸려면 아래 두 항목에 다시 동의해 주세요.',
 
 }
 
@@ -800,7 +802,8 @@ const ja: Messages = {
   'checkout.consentProvide': '（必須）第三者提供: 決済・領収書・返金・税務処理のため、メールアドレス、アカウント ID、プランを販売代理店 Paddle.com Market Limited に提供することに同意します。Paddle は自社のプライバシーポリシーと税法が定める期間保管します。',
   'checkout.consentTransfer': '（必須）国外移転: これらの項目が決済画面を開くときに暗号化された接続（TLS）で英国の Paddle（privacy@paddle.com）に移転されることに同意します。',
   'checkout.consentNote': '同意しない場合はチェックしなければ大丈夫です。その場合は決済できませんが、ゲストとして会議に参加することはできます。詳細: {privacy}',
-  'checkout.consentNeeded': '決済するには上の2つに同意してください。同意項目が表示されない場合はページを再読み込みしてください。',
+  'checkout.consentNeeded': '決済するには2つの項目すべてに同意してください。同意項目が表示されない場合はページを再読み込みしてください。',
+  'checkout.consentWithdrawn': 'Paddle への決済情報の提供の同意を撤回しています。プランを変更するには、下の2つの項目に再度同意してください。',
 
 }
 

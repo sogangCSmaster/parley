@@ -1480,11 +1480,18 @@ pub async fn export(State(state): State<AppState>, headers: HeaderMap) -> Respon
     let db = state.auth.db().clone();
     let mut user = user_json(&db, uid, None).await;
     // 결제 전에 받은 Paddle 제공·국외 이전 동의 시각도 내 정보에 포함한다.
-    let consent: Option<i64> = db
-        .call(move |c| c.query_row("SELECT paddle_consent_at FROM users WHERE id = ?1", params![uid], |r| r.get(0)))
+    let consent: (Option<i64>, Option<i64>) = db
+        .call(move |c| {
+            c.query_row(
+                "SELECT paddle_consent_at, paddle_consent_withdrawn_at FROM users WHERE id = ?1",
+                params![uid],
+                |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, Option<i64>>(1)?)),
+            )
+        })
         .await
-        .unwrap_or(None);
-    user["paddleConsentAt"] = json!(consent);
+        .unwrap_or((None, None));
+    user["paddleConsentAt"] = json!(consent.0);
+    user["paddleConsentWithdrawnAt"] = json!(consent.1);
     let meetings = db
         .call(move |c| {
             let mut stmt = c.prepare(
