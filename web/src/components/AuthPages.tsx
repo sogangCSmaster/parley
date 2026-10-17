@@ -144,14 +144,14 @@ function MfaStep({ ticket, onRestart }: { ticket: string; onRestart: () => void 
     if (r.ok) return enterApp()
     setPending(false)
     setCode('')
-    // 이 로그인의 횟수를 다 썼으면 다시 로그인하라고, 사용자 한도에 걸렸으면 기다리라고 알린다(둘 다 다시 로그인 버튼).
+    // 이 로그인의 횟수를 다 썼으면 다시 로그인하라고(버튼), 사용자 한도에 걸렸으면 나중에 다시 하라고 알린다.
     setError(
       r.status === 401 && r.code === 'expired'
         ? 'mfa.expired'
         : r.status === 429
           ? r.code === 'ticket_spent'
             ? 'mfa.tooMany'
-            : 'auth.locked'
+            : 'mfa.locked'
           : 'mfa.wrong',
     )
   }
@@ -224,7 +224,7 @@ function MfaStep({ ticket, onRestart }: { ticket: string; onRestart: () => void 
         >
           {recovery ? t('mfa.useApp') : t('mfa.useRecovery')}
         </button>
-        {(error === 'mfa.expired' || error === 'mfa.tooMany' || error === 'auth.locked') && (
+        {(error === 'mfa.expired' || error === 'mfa.tooMany') && (
           <button type="button" className="btn btn-outline" onClick={onRestart}>
             {t('mfa.loginAgain')}
           </button>

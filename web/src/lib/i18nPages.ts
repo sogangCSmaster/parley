@@ -260,6 +260,7 @@ const en = {
   'checkout.downgradeNote': 'The new plan starts now. The unused part of your current plan is credited toward your next bill.',
   'mfa.tooMany': 'Too many wrong codes. Log in again to try once more.',
   'mfa.loginAgain': 'Log in again',
+  'mfa.locked': 'Too many attempts for now. Please try again later.',
 } as const
 
 export type PageKey = keyof typeof en
@@ -521,6 +522,8 @@ const ko: Messages = {
   'checkout.downgradeNote': '새 요금제는 바로 시작돼요. 지금 요금제에서 쓰지 않은 기간만큼은 다음 결제에서 빼 드려요.',
   'mfa.tooMany': '코드를 너무 많이 틀렸어요. 다시 로그인하면 새로 시도할 수 있어요.',
   'mfa.loginAgain': '다시 로그인',
+  'mfa.locked': '지금은 시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.',
+
 }
 
 const ja: Messages = {
@@ -779,6 +782,8 @@ const ja: Messages = {
   'checkout.downgradeNote': '新しいプランはすぐに始まります。今のプランで使っていない期間の分は、次回の請求から差し引かれます。',
   'mfa.tooMany': 'コードを何度も間違えました。もう一度ログインするとやり直せます。',
   'mfa.loginAgain': 'もう一度ログイン',
+  'mfa.locked': '試行回数が多すぎます。しばらくしてからもう一度お試しください。',
+
 }
 
 registerMessages({ en, ko, ja })

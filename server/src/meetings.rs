@@ -164,6 +164,24 @@ pub fn end_rooms(c: &rusqlite::Connection, codes: &[String], now: i64) -> rusqli
 }
 
 /// 메모리에 없는 회의 코드: 예약된(아직 안 끝난) 회의면 방을 연다.
+/// 서버가 다시 시작되면 메모리의 즉석 회의 방은 모두 사라진다. 그 회의 기록을 닫아 둔다
+/// (시작했으면 마지막 활동 시각으로 끝내고, 시작도 안 했으면 지운다). 예약 회의는 링크로 다시 열 수 있으므로 그대로 둔다.
+pub fn close_orphans(db: &Db) -> rusqlite::Result<()> {
+    let now = now_secs();
+    db.blocking(move |c| {
+        c.execute(
+            "UPDATE meetings SET ended_at = COALESCE(last_active_at, started_at, ?1)
+             WHERE starts_at IS NULL AND started_at IS NOT NULL AND ended_at IS NULL",
+            params![now],
+        )?;
+        c.execute(
+            "DELETE FROM meetings WHERE starts_at IS NULL AND started_at IS NULL AND ended_at IS NULL",
+            [],
+        )?;
+        Ok(())
+    })
+}
+
 pub async fn ensure_room(db: &Db, rooms: &Rooms, code: &str) {
     if rooms.exists(code) {
         return;
@@ -403,19 +421,21 @@ pub async fn list(State(state): State<AppState>, headers: HeaderMap) -> Response
         .auth
         .db()
         .call(move |c| {
+            // 예약 회의 링크는 끝날 시각 + RESERVED_GRACE까지 쓸 수 있으므로(ensure_room) 그때까지는 다가오는 회의로 둔다.
+            let open_until = now - RESERVED_GRACE;
             let mut up = c.prepare(&format!(
                 "SELECT {MEETING_COLUMNS} FROM meetings WHERE owner_id = ?1 AND ended_at IS NULL AND starts_at IS NOT NULL
                    AND starts_at + duration_min * 60 > ?2 ORDER BY starts_at LIMIT 50"
             ))?;
-            let upcoming = up.query_map(params![uid, now], meeting_json)?.collect::<rusqlite::Result<Vec<_>>>()?;
-            // 지난 회의: 끝난 회의와, 번역 없이(또는 열리지 않고) 예약 시간이 지난 회의.
+            let upcoming = up.query_map(params![uid, open_until], meeting_json)?.collect::<rusqlite::Result<Vec<_>>>()?;
+            // 지난 회의: 끝난 회의와, 번역 없이(또는 열리지 않고) 링크를 쓸 수 있는 시간이 지난 회의.
             // 뒤의 것도 보여야 그 기록(이름·초대한 사람 주소)을 지울 수 있다.
             let mut past = c.prepare(&format!(
                 "SELECT {MEETING_COLUMNS} FROM meetings WHERE owner_id = ?1 AND (ended_at IS NOT NULL
                    OR (starts_at IS NOT NULL AND starts_at + duration_min * 60 <= ?2))
                  ORDER BY COALESCE(ended_at, starts_at + duration_min * 60) DESC LIMIT 50"
             ))?;
-            let past = past.query_map(params![uid, now], meeting_json)?.collect::<rusqlite::Result<Vec<_>>>()?;
+            let past = past.query_map(params![uid, open_until], meeting_json)?.collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(json!({ "upcoming": upcoming, "past": past }))
         })
         .await;

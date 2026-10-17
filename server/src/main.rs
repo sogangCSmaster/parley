@@ -154,6 +154,9 @@ async fn run() {
         .unwrap_or_else(|e| panic!("database {db_path}: {e}"));
     // 운영자 계정(HOST_ACCOUNTS·개발용 계정)은 시작할 때마다 DB를 목록에 맞춘다(빠진 계정은 권한을 거둔다).
     auth::sync_operators(&db, &accounts).unwrap_or_else(|e| panic!("operator accounts: {e}"));
+    if let Err(e) = meetings::close_orphans(&db) {
+        tracing::warn!(error = %e, "could not close meetings left open by a restart");
+    }
     let auth = Arc::new(Auth::with_db(db));
     // dev 모드는 http://localhost 이므로 기본 false. 그 외에는 명시하지 않으면 항상 Secure.
     let cookie_secure = std::env::var("COOKIE_SECURE")

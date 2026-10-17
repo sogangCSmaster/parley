@@ -148,9 +148,14 @@ impl Accounts {
     /// 로그인 중 이 클라이언트가 이 사용자의 2차 인증 코드를 한 번 더 맞혀 봐도 되는지.
     fn may_try_login_mfa(&self, user_id: i64, ip: IpAddr) -> bool {
         let key = format!("{user_id}:{}", auth::client_key(ip));
-        self.mfa_by_client.check(&key)
+        let user = user_id.to_string();
+        // 셋 다 허용될 때만 쓴다(하루 한도에 막힌 요청이 15분 한도를 쓰지 않게).
+        self.mfa_by_client.allows(&key)
+            && self.mfa_daily_by_client.allows(&key)
+            && self.mfa_daily.allows(&user)
+            && self.mfa_by_client.check(&key)
             && self.mfa_daily_by_client.check(&key)
-            && self.mfa_daily.check(&user_id.to_string())
+            && self.mfa_daily.check(&user)
     }
 
     /// 로그인한 사용자가 2차 인증 코드를 한 번 더 확인해 봐도 되는지.
