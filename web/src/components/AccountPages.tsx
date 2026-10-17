@@ -623,12 +623,12 @@ async function refreshUser() {
 }
 
 /** 민감한 작업 전 비밀번호 한 번(비밀번호가 없는 계정은 묻지 않고 서버가 최근 로그인을 본다). */
-function PasswordGate({ user, onPass, label }: { user: User; onPass: (password: string) => void; label: string }) {
+function PasswordGate({ user, onPass, label, busy = false }: { user: User; onPass: (password: string) => void; label: string; busy?: boolean }) {
   const { t } = useI18n()
   const [password, setPassword] = useState('')
   if (!user.hasPassword)
     return (
-      <button className="btn btn-primary" onClick={() => onPass('')}>
+      <button className="btn btn-primary" disabled={busy} onClick={() => onPass('')}>
         {label}
       </button>
     )
@@ -641,7 +641,7 @@ function PasswordGate({ user, onPass, label }: { user: User; onPass: (password: 
       }}
     >
       <input className="input input-sm" type="password" autoComplete="current-password" placeholder={t('account.currentPassword')} value={password} onChange={(e) => setPassword(e.target.value)} aria-label={t('account.currentPassword')} autoFocus />
-      <button className="btn btn-sm btn-primary" disabled={!password}>
+      <button className="btn btn-sm btn-primary" disabled={!password || busy}>
         {label}
       </button>
     </form>
@@ -855,6 +855,16 @@ function PasswordCard({ user }: { user: User }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<MessageKey | null>(null)
   const [note, setNote] = useState<MessageKey | null>(null)
+  // Google에서 뒤로 가기로 돌아오면(bfcache) 연결 중 상태가 남아 있으므로 풀어 준다.
+  useEffect(() => {
+    const back = (e: PageTransitionEvent) => {
+      if (!e.persisted) return
+      setBusy(false)
+      setLinking(false)
+    }
+    addEventListener('pageshow', back)
+    return () => removeEventListener('pageshow', back)
+  }, [])
 
   async function save(e: FormEvent) {
     e.preventDefault()
@@ -934,7 +944,7 @@ function PasswordCard({ user }: { user: User }) {
       </Row>
       {linking && (
         <div className="settings-row">
-          <PasswordGate user={user} label={t('account.continue')} onPass={(p) => void link(p)} />
+          <PasswordGate user={user} label={t('account.continue')} onPass={(p) => void link(p)} busy={busy} />
         </div>
       )}
       {!open && <Message error={error} note={note} />}

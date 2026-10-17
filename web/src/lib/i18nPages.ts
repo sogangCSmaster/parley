@@ -58,7 +58,6 @@ const en = {
   'mfa.submit': 'Confirm',
   'mfa.wrong': 'That code isn’t right.',
   'mfa.expired': 'This took too long. Please log in again.',
-  'mfa.otherAccount': 'Log in with another account',
   'forgot.title': 'Reset your password',
   'forgot.lead': 'Enter your account email and we’ll send a reset link. It works for 30 minutes.',
   'forgot.submit': 'Send reset link',
@@ -256,8 +255,11 @@ const en = {
   'meetings.deleteConfirm': 'Delete “{title}”? Anyone you sent the link to won’t be able to join.',
   'paid.pending': 'Your payment is still being confirmed. This can take a minute.',
   'paid.checkAgain': 'Check again',
-  'checkout.changeNote': 'The new plan starts now. The prorated difference for the rest of this billing period is charged right away to your saved payment method.',
+  'checkout.changeNote': 'The new plan starts now. The difference for the rest of this billing period is charged right away to your saved payment method.',
   'meetings.deletePastConfirm': 'Delete the record of “{title}”? Its title, time and invited guests’ addresses will be removed.',
+  'checkout.downgradeNote': 'The new plan starts now. The unused part of your current plan is credited toward your next bill.',
+  'mfa.tooMany': 'Too many wrong codes. Log in again to try once more.',
+  'mfa.loginAgain': 'Log in again',
 } as const
 
 export type PageKey = keyof typeof en
@@ -317,7 +319,6 @@ const ko: Messages = {
   'mfa.submit': '확인',
   'mfa.wrong': '코드가 맞지 않아요.',
   'mfa.expired': '시간이 지났어요. 처음부터 다시 로그인해 주세요.',
-  'mfa.otherAccount': '다른 계정으로 로그인',
   'forgot.title': '비밀번호 재설정',
   'forgot.lead': '가입한 이메일을 입력하면 재설정 링크를 보내 드려요. 링크는 30분 동안 쓸 수 있어요.',
   'forgot.submit': '재설정 링크 보내기',
@@ -517,7 +518,9 @@ const ko: Messages = {
   'paid.checkAgain': '다시 확인',
   'checkout.changeNote': '새 요금제는 바로 시작돼요. 이번 결제 기간에 남은 날만큼의 차액이 등록된 결제 수단으로 바로 청구돼요.',
   'meetings.deletePastConfirm': '“{title}” 회의 기록을 삭제할까요? 회의 이름, 시간, 초대한 사람의 주소가 지워져요.',
-
+  'checkout.downgradeNote': '새 요금제는 바로 시작돼요. 지금 요금제에서 쓰지 않은 기간만큼은 다음 결제에서 빼 드려요.',
+  'mfa.tooMany': '코드를 너무 많이 틀렸어요. 다시 로그인하면 새로 시도할 수 있어요.',
+  'mfa.loginAgain': '다시 로그인',
 }
 
 const ja: Messages = {
@@ -574,7 +577,6 @@ const ja: Messages = {
   'mfa.submit': '確認',
   'mfa.wrong': 'コードが正しくありません。',
   'mfa.expired': '時間が経ちすぎました。もう一度ログインしてください。',
-  'mfa.otherAccount': '別のアカウントでログイン',
   'forgot.title': 'パスワードの再設定',
   'forgot.lead': '登録したメールアドレスを入力すると、再設定リンクを送ります。リンクは30分間有効です。',
   'forgot.submit': '再設定リンクを送る',
@@ -774,7 +776,9 @@ const ja: Messages = {
   'paid.checkAgain': 'もう一度確認',
   'checkout.changeNote': '新しいプランはすぐに始まります。今の請求期間の残り日数分の差額が、登録済みのお支払い方法にすぐ請求されます。',
   'meetings.deletePastConfirm': '「{title}」の記録を削除しますか？会議名、日時、招待した人のアドレスが消えます。',
-
+  'checkout.downgradeNote': '新しいプランはすぐに始まります。今のプランで使っていない期間の分は、次回の請求から差し引かれます。',
+  'mfa.tooMany': 'コードを何度も間違えました。もう一度ログインするとやり直せます。',
+  'mfa.loginAgain': 'もう一度ログイン',
 }
 
 registerMessages({ en, ko, ja })

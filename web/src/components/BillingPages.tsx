@@ -195,7 +195,7 @@ export function Checkout() {
           </div>
           {changing ? (
             // 요금제 바꾸기는 결제창 없이 등록된 결제 수단으로 남은 기간만큼 바로 정산된다.
-            <p className="form-note">{t('checkout.changeNote')}</p>
+            <p className="form-note">{t(sel === 'basic' ? 'checkout.downgradeNote' : 'checkout.changeNote')}</p>
           ) : (
             <div className="pay-line muted">
               <span>{t('checkout.tax')}</span>
